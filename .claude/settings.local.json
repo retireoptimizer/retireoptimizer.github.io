@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/shailendra.parikh/Downloads/**)",
+      "Bash(python3)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/Users/shailendra.parikh/.claude/projects/-Users-shailendra-parikh-Claude-FireOpt/409ab797-888a-4ee1-8553-82947347c69a/tool-results/toolu_01FH6y3Km2GQUiycTzZojMmD.json'\\)\\); print\\(len\\(d\\)\\); print\\(type\\(d[0]\\)\\); print\\(list\\(d[0].keys\\(\\)\\)\\)\")",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}

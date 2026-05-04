@@ -30,3 +30,4 @@ frontend/.vercel/
 .idea/
 .vscode/
 *.swp
+supabase/.temp/

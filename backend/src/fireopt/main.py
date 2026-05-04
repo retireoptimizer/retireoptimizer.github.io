@@ -1,14 +1,14 @@
 import uuid
+
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
-from .config import settings
-from .logging import configure_logging
-from .exceptions import FireOptError
 from .api.errors import fireopt_exception_handler
 from .api.v1.router import router as v1_router
+from .config import settings
+from .exceptions import FireOptError
+from .logging import configure_logging
 
 configure_logging()
 logger = structlog.get_logger()
