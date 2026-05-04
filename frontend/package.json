@@ -48,7 +48,7 @@
     "zod": "^4.4.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": [
+    "ignoredBuiltDependencies": [
       "msw"
     ]
   }

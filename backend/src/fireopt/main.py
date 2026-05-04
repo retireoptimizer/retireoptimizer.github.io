@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
@@ -40,7 +41,7 @@ async def request_id_middleware(request: Request, call_next):
     return response
 
 
-app.add_exception_handler(FireOptError, fireopt_exception_handler)
+app.add_exception_handler(FireOptError, fireopt_exception_handler)  # type: ignore[arg-type]
 app.include_router(v1_router)
 
 
