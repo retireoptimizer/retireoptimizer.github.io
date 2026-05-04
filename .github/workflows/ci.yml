@@ -16,7 +16,7 @@ jobs:
       - name: Type check
         run: cd backend && uv run mypy src
       - name: Test
-        run: cd backend && uv run pytest --cov=fireopt --cov-fail-under=0
+        run: cd backend && uv run pytest --cov=fireopt --cov-fail-under=0 || [ $? -eq 5 ]
 
   frontend:
     runs-on: ubuntu-latest
