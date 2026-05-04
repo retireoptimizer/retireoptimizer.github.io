@@ -1,0 +1,32 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/src/**/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/*.egg-info/
+backend/dist/
+*.pyc
+*.pyo
+
+# Environment
+.env.local
+.env.*.local
+*.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vercel/
+
+# Supabase
+.supabase/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp

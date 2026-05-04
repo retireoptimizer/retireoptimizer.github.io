@@ -1,0 +1,65 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: fireopt-prod
+  REGION: us-central1
+  SERVICE: fireopt-api
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push image
+        run: |
+          gcloud builds submit backend \
+            --tag gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }}
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --min-instances 1 \
+            --max-instances 5 \
+            --memory 1Gi \
+            --cpu 1 \
+            --set-secrets SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_JWKS_URL=SUPABASE_JWKS_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest \
+            --set-env-vars LOG_LEVEL=INFO,CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install deps
+        run: cd frontend && pnpm install --frozen-lockfile
+      - name: Deploy to Vercel
+        run: cd frontend && pnpm vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Push migrations
+        run: supabase db push --include-all
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
