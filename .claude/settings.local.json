@@ -4,7 +4,24 @@
       "Read(//Users/shailendra.parikh/Downloads/**)",
       "Bash(python3)",
       "Bash(python3 -c \"import json; d=json.load\\(open\\('/Users/shailendra.parikh/.claude/projects/-Users-shailendra-parikh-Claude-FireOpt/409ab797-888a-4ee1-8553-82947347c69a/tool-results/toolu_01FH6y3Km2GQUiycTzZojMmD.json'\\)\\); print\\(len\\(d\\)\\); print\\(type\\(d[0]\\)\\); print\\(list\\(d[0].keys\\(\\)\\)\\)\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm dev *)",
+      "Read(//tmp/**)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(pnpm tsc *)",
+      "Bash(uv run *)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d['paths'].keys\\(\\)\\)\\)\")",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -E \"useStore|draftPlan|apiClient|use\\(Projection|MonteCarlo|Compare\\)|/api|hooks/\" {} | head -8')",
+      "Bash(python3 -m pip install openpyxl -q)",
+      "Bash(awk '{print $9, \"\\(\" $5 \"\\)\"}')",
+      "Bash(rm -rf backend frontend supabase .github .claude CLAUDE.md .pre-commit-config.yaml .DS_Store)",
+      "Bash(rm -f /Users/shailendra.parikh/.claude/plans/users-shailendra-parikh-downloads-retir-nifty-backus.md)"
+    ],
+    "additionalDirectories": [
+      "/Users/shailendra.parikh/Claude/FireOpt/.claude",
+      "/Users/shailendra.parikh/.claude/plans"
     ]
   }
 }
