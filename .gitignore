@@ -1,33 +1,24 @@
-# Python
-backend/.venv/
-backend/__pycache__/
-backend/src/**/__pycache__/
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/.ruff_cache/
-backend/*.egg-info/
-backend/dist/
-*.pyc
-*.pyo
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Environment
-.env.local
-.env.*.local
-*.env
+node_modules
+dist
+dist-ssr
+*.local
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.vercel/
-
-# Supabase
-.supabase/
-
-# macOS
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
 .DS_Store
-
-# IDE
-.idea/
-.vscode/
-*.swp
-supabase/.temp/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
