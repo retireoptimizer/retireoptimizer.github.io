@@ -1,4 +1,29 @@
+import { usePlanStore } from '../store/usePlanStore';
+
+const dobToDisplay = (iso: string): string => {
+  const [y, m, d] = iso.split('-');
+  return `${m}/${d}/${y}`;
+};
+const displayToIso = (s: string): string | null => {
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[1]}-${m[2]}`;
+};
+const ageFromDob = (iso: string): number => {
+  return new Date().getFullYear() - parseInt(iso.slice(0, 4), 10);
+};
+
 export default function PersonalDetails() {
+  const plan = usePlanStore((s) => s.plan);
+  const setPersonA = usePlanStore((s) => s.setPersonA);
+  const setPersonB = usePlanStore((s) => s.setPersonB);
+  const setAssumptions = usePlanStore((s) => s.setAssumptions);
+  const setStateField = usePlanStore((s) => s.setState);
+
+  const A = plan.personA;
+  const B = plan.personB!;
+  const asm = plan.assumptions;
+
   return (
     <div className="page">
       <div className="page-header">
@@ -21,38 +46,68 @@ export default function PersonalDetails() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Person A — Full Name</label>
-                  <input type="text" defaultValue="David Johnson" />
+                  <input type="text" value={A.name} onChange={(e) => setPersonA({ name: e.target.value })} />
                 </div>
                 <div className="form-group">
                   <label>Person B — Full Name</label>
-                  <input type="text" defaultValue="Sarah Barfield" />
+                  <input type="text" value={B.name} onChange={(e) => setPersonB({ name: e.target.value })} />
                 </div>
                 <div className="form-group">
                   <label>Person A — Date of Birth</label>
-                  <input type="text" defaultValue="03/15/1973" />
-                  <div className="helper-text">Age 52 · Born 1973 → RMD starts age 75 (SECURE 2.0)</div>
+                  <input
+                    type="text"
+                    value={dobToDisplay(A.dob)}
+                    onChange={(e) => {
+                      const iso = displayToIso(e.target.value);
+                      if (iso) setPersonA({ dob: iso });
+                    }}
+                  />
+                  <div className="helper-text">Age {ageFromDob(A.dob)} · Born {A.dob.slice(0, 4)}</div>
                 </div>
                 <div className="form-group">
                   <label>Person B — Date of Birth</label>
-                  <input type="text" defaultValue="09/22/1975" />
-                  <div className="helper-text">Age 50 · Born 1975 → RMD starts age 75 (SECURE 2.0)</div>
+                  <input
+                    type="text"
+                    value={dobToDisplay(B.dob)}
+                    onChange={(e) => {
+                      const iso = displayToIso(e.target.value);
+                      if (iso) setPersonB({ dob: iso });
+                    }}
+                  />
+                  <div className="helper-text">Age {ageFromDob(B.dob)} · Born {B.dob.slice(0, 4)}</div>
                 </div>
                 <div className="form-group">
                   <label>Person A — Target Retirement Age</label>
-                  <input type="number" defaultValue={65} />
+                  <input type="number" value={A.retirementAge} onChange={(e) => setPersonA({ retirementAge: parseInt(e.target.value) || 0 })} />
                 </div>
                 <div className="form-group">
                   <label>Person B — Target Retirement Age</label>
-                  <input type="number" defaultValue={62} />
+                  <input type="number" value={B.retirementAge} onChange={(e) => setPersonB({ retirementAge: parseInt(e.target.value) || 0 })} />
                 </div>
                 <div className="form-group">
                   <label>Person A — Plan-To Age</label>
-                  <input type="number" defaultValue={95} />
+                  <input type="number" value={A.planToAge} onChange={(e) => setPersonA({ planToAge: parseInt(e.target.value) || 0 })} />
                   <div className="helper-text">Projection horizon</div>
                 </div>
                 <div className="form-group">
                   <label>Person B — Plan-To Age</label>
-                  <input type="number" defaultValue={95} />
+                  <input type="number" value={B.planToAge} onChange={(e) => setPersonB({ planToAge: parseInt(e.target.value) || 0 })} />
+                </div>
+                <div className="form-group">
+                  <label>Person A — SS PIA (at FRA, $/yr)</label>
+                  <div className="input-prefix-wrap"><span className="input-prefix">$</span><input type="number" value={A.ssPIA} style={{ paddingLeft: 22 }} onChange={(e) => setPersonA({ ssPIA: parseFloat(e.target.value) || 0 })} /></div>
+                </div>
+                <div className="form-group">
+                  <label>Person B — SS PIA (at FRA, $/yr)</label>
+                  <div className="input-prefix-wrap"><span className="input-prefix">$</span><input type="number" value={B.ssPIA} style={{ paddingLeft: 22 }} onChange={(e) => setPersonB({ ssPIA: parseFloat(e.target.value) || 0 })} /></div>
+                </div>
+                <div className="form-group">
+                  <label>Person A — SS Claim Age</label>
+                  <input type="number" value={A.ssClaimAge} min={62} max={70} onChange={(e) => setPersonA({ ssClaimAge: parseInt(e.target.value) || 67 })} />
+                </div>
+                <div className="form-group">
+                  <label>Person B — SS Claim Age</label>
+                  <input type="number" value={B.ssClaimAge} min={62} max={70} onChange={(e) => setPersonB({ ssClaimAge: parseInt(e.target.value) || 67 })} />
                 </div>
               </div>
             </div>
@@ -64,12 +119,12 @@ export default function PersonalDetails() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Person A — Expected Passing Age</label>
-                  <input type="number" defaultValue={88} />
-                  <div className="helper-text">Used for survivor SS and income stream calculations</div>
+                  <input type="number" value={A.passingAge} onChange={(e) => setPersonA({ passingAge: parseInt(e.target.value) || 0 })} />
+                  <div className="helper-text">Used for survivor SS and filing-status switch</div>
                 </div>
                 <div className="form-group">
                   <label>Person B — Expected Passing Age</label>
-                  <input type="number" defaultValue={90} />
+                  <input type="number" value={B.passingAge} onChange={(e) => setPersonB({ passingAge: parseInt(e.target.value) || 0 })} />
                 </div>
               </div>
             </div>
@@ -81,34 +136,25 @@ export default function PersonalDetails() {
               <div className="form-grid-4">
                 <div className="form-group">
                   <label>Pre-Retirement Return</label>
-                  <div className="input-suffix-wrap"><input type="number" defaultValue={7.0} /><span className="input-suffix">%</span></div>
+                  <div className="input-suffix-wrap"><input type="number" step="0.1" value={(asm.preRetReturn * 100).toFixed(1)} onChange={(e) => setAssumptions({ preRetReturn: (parseFloat(e.target.value) || 0) / 100 })} /><span className="input-suffix">%</span></div>
                   <div className="helper-text">Nominal annualized</div>
                 </div>
                 <div className="form-group">
                   <label>Post-Retirement Return</label>
-                  <div className="input-suffix-wrap"><input type="number" defaultValue={5.5} /><span className="input-suffix">%</span></div>
+                  <div className="input-suffix-wrap"><input type="number" step="0.1" value={(asm.postRetReturn * 100).toFixed(1)} onChange={(e) => setAssumptions({ postRetReturn: (parseFloat(e.target.value) || 0) / 100 })} /><span className="input-suffix">%</span></div>
                 </div>
                 <div className="form-group">
                   <label>Inflation Rate</label>
-                  <div className="input-suffix-wrap"><input type="number" defaultValue={2.5} /><span className="input-suffix">%</span></div>
+                  <div className="input-suffix-wrap"><input type="number" step="0.1" value={(asm.inflation * 100).toFixed(1)} onChange={(e) => setAssumptions({ inflation: (parseFloat(e.target.value) || 0) / 100 })} /><span className="input-suffix">%</span></div>
                 </div>
                 <div className="form-group">
                   <label>RMD Start Age</label>
-                  <input type="number" defaultValue={75} />
+                  <input type="number" value={asm.rmdStartAge} onChange={(e) => setAssumptions({ rmdStartAge: parseInt(e.target.value) || 75 })} />
                   <div className="helper-text">SECURE 2.0 (born 1960+)</div>
                 </div>
                 <div className="form-group">
-                  <label>LTCG Rate</label>
-                  <div className="input-suffix-wrap"><input type="number" defaultValue={15.0} /><span className="input-suffix">%</span></div>
-                </div>
-                <div className="form-group">
-                  <label>SS Taxable %</label>
-                  <div className="input-suffix-wrap"><input type="number" defaultValue={85} /><span className="input-suffix">%</span></div>
-                </div>
-                <div className="form-group">
-                  <label>Conversion End Age</label>
-                  <input type="number" defaultValue={74} />
-                  <div className="helper-text">Default: RMD age − 1</div>
+                  <label>Contribution Growth</label>
+                  <div className="input-suffix-wrap"><input type="number" step="0.1" value={(asm.contribGrowth * 100).toFixed(1)} onChange={(e) => setAssumptions({ contribGrowth: (parseFloat(e.target.value) || 0) / 100 })} /><span className="input-suffix">%</span></div>
                 </div>
               </div>
             </div>
@@ -120,25 +166,14 @@ export default function PersonalDetails() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Current State</label>
-                  <select defaultValue="IL">
-                    <option value="CA">California (CA) — 9.3%</option>
-                    <option value="NY">New York (NY) — 6.85%</option>
+                  <select value={plan.state} onChange={(e) => setStateField(e.target.value)}>
+                    <option value="IL">Illinois (IL) — 4.95% (retirement income exempt)</option>
                     <option value="TX">Texas (TX) — No Income Tax</option>
                     <option value="FL">Florida (FL) — No Income Tax</option>
-                    <option value="WA">Washington (WA) — No Income Tax</option>
-                    <option value="IL">Illinois (IL) — 4.95%</option>
+                    <option value="CA">California (CA) — not yet modeled</option>
+                    <option value="NY">New York (NY) — not yet modeled</option>
                   </select>
-                </div>
-                <div className="form-group">
-                  <label>Planned Retirement State</label>
-                  <select defaultValue="IL">
-                    <option value="CA">California (CA) — 9.3%</option>
-                    <option value="NY">New York (NY) — 6.85%</option>
-                    <option value="TX">Texas (TX) — No Income Tax</option>
-                    <option value="FL">Florida (FL) — No Income Tax</option>
-                    <option value="IL">Illinois (IL) — 4.95%</option>
-                  </select>
-                  <div className="helper-text">Affects long-term tax projections</div>
+                  <div className="helper-text">v1 fully models IL; other states tax-free in projection until Phase 3.</div>
                 </div>
               </div>
             </div>
