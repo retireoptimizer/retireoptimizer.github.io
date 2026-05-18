@@ -17,7 +17,14 @@
       "Bash(python3 -m pip install openpyxl -q)",
       "Bash(awk '{print $9, \"\\(\" $5 \"\\)\"}')",
       "Bash(rm -rf backend frontend supabase .github .claude CLAUDE.md .pre-commit-config.yaml .DS_Store)",
-      "Bash(rm -f /Users/shailendra.parikh/.claude/plans/users-shailendra-parikh-downloads-retir-nifty-backus.md)"
+      "Bash(rm -f /Users/shailendra.parikh/.claude/plans/users-shailendra-parikh-downloads-retir-nifty-backus.md)",
+      "Bash(pnpm --version)",
+      "Bash(git --version)",
+      "Bash(code --version)",
+      "Bash(gh --version)",
+      "Bash(ls /Applications | grep -i -E \"visual studio code|vscode|cursor\" 2>&1)",
+      "Read(//Applications/**)",
+      "Bash(brew --version)"
     ],
     "additionalDirectories": [
       "/Users/shailendra.parikh/Claude/FireOpt/.claude",
