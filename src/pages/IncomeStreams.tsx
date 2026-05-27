@@ -1,10 +1,13 @@
 import { usePlanStore } from '../store/usePlanStore';
 import type { IncomeStream } from '../schemas/plan';
+import { NumberInput } from '../components/inputs/NumberInput';
 
 const headerStyle = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '1px', color: 'var(--text-muted)' };
 
 export default function IncomeStreams() {
   const streams = usePlanStore((s) => s.plan.incomeStreams);
+  const nameA = usePlanStore((s) => s.plan.personA.name);
+  const nameB = usePlanStore((s) => s.plan.personB?.name) ?? 'Person B';
   const addIncomeStream = usePlanStore((s) => s.addIncomeStream);
   const updateIncomeStream = usePlanStore((s) => s.updateIncomeStream);
   const removeIncomeStream = usePlanStore((s) => s.removeIncomeStream);
@@ -63,8 +66,8 @@ export default function IncomeStreams() {
               <div key={s.id} className="stream-row income-row">
                 <input type="text" value={s.description} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { description: e.target.value })} />
                 <select value={s.whose} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { whose: e.target.value as IncomeStream['whose'] })}>
-                  <option value="A">Person A</option>
-                  <option value="B">Person B</option>
+                  <option value="A">{nameA}</option>
+                  <option value="B">{nameB}</option>
                   <option value="Household">Household</option>
                 </select>
                 <select value={s.type} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { type: e.target.value as IncomeStream['type'] })}>
@@ -75,10 +78,15 @@ export default function IncomeStreams() {
                   <option value="Annuity">Annuity</option>
                   <option value="Other">Other</option>
                 </select>
-                <input type="number" value={s.startAge} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { startAge: parseInt(e.target.value) || 0 })} />
-                <input type="number" value={s.stopAge} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { stopAge: parseInt(e.target.value) || 0 })} />
-                <div className="input-prefix-wrap"><span className="input-prefix">$</span><input type="number" value={s.annualAmount} style={{ fontSize: 13, paddingLeft: 22 }} onChange={(e) => updateIncomeStream(s.id, { annualAmount: parseFloat(e.target.value) || 0 })} /></div>
-                <div className="input-suffix-wrap"><input type="number" step="0.1" value={(s.growthPct * 100).toFixed(1)} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { growthPct: (parseFloat(e.target.value) || 0) / 100 })} /><span className="input-suffix">%</span></div>
+                <NumberInput value={s.startAge} digits={0} min={0} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.round(v) })} />
+                <NumberInput value={s.stopAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { stopAge: Math.round(v) })} />
+                <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+                  <NumberInput value={s.annualAmount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateIncomeStream(s.id, { annualAmount: v })} />
+                </div>
+                <div className="input-suffix-wrap">
+                  <NumberInput value={s.growthPct} scale={100} digits={1} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { growthPct: v })} />
+                  <span className="input-suffix">%</span>
+                </div>
                 <button className="remove-btn" onClick={() => removeIncomeStream(s.id)}>×</button>
               </div>
             ))}

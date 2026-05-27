@@ -20,18 +20,38 @@ export const AssumptionsSchema = z.object({
 });
 export type Assumptions = z.infer<typeof AssumptionsSchema>;
 
-export const PortfolioSchema = z.object({
+export const PersonPortfolioSchema = z.object({
   taxable: z.number().nonnegative(),
   traditional: z.number().nonnegative(),
   roth: z.number().nonnegative(),
-  contribA: z.number().nonnegative(),
-  contribB: z.number().nonnegative(),
-  // How new contributions split across buckets (must sum to ~1)
-  splitTaxable: z.number().min(0).max(1).default(0.2),
-  splitTraditional: z.number().min(0).max(1).default(0.4),
-  splitRoth: z.number().min(0).max(1).default(0.4),
+  annualContribution: z.number().nonnegative(),
+  // How each year's contribution splits across buckets for this person (must sum to ~1)
+  contribSplit: z.object({
+    taxable: z.number().min(0).max(1),
+    traditional: z.number().min(0).max(1),
+    roth: z.number().min(0).max(1),
+  }),
+});
+export type PersonPortfolio = z.infer<typeof PersonPortfolioSchema>;
+
+export const PortfolioSchema = z.object({
+  personA: PersonPortfolioSchema,
+  personB: PersonPortfolioSchema.optional(),
 });
 export type Portfolio = z.infer<typeof PortfolioSchema>;
+
+/** Derived household totals from per-person portfolios. */
+export const householdTotals = (p: Portfolio) => {
+  const a = p.personA;
+  const b = p.personB;
+  return {
+    taxable: a.taxable + (b?.taxable ?? 0),
+    traditional: a.traditional + (b?.traditional ?? 0),
+    roth: a.roth + (b?.roth ?? 0),
+    contribA: a.annualContribution,
+    contribB: b?.annualContribution ?? 0,
+  };
+};
 
 export const IncomeStreamSchema = z.object({
   id: z.string(),
@@ -57,6 +77,22 @@ export const ExpenseStreamSchema = z.object({
 });
 export type ExpenseStream = z.infer<typeof ExpenseStreamSchema>;
 
+export const BlendWindowSchema = z.object({
+  fromAge: z.number().int(),
+  toAge: z.number().int(),
+  pctTaxable: z.number().min(0).max(1),
+  pctTraditional: z.number().min(0).max(1),
+  pctRoth: z.number().min(0).max(1),
+  tradCap: z.number().nonnegative().optional(),
+  convAmt: z.number().nonnegative().optional(),
+});
+export const BlendPolicySchema = z.object({
+  windows: z.array(BlendWindowSchema).min(1),
+  source: z.enum(['optimizer', 'manual']).optional(),
+  goal: z.string().optional(),
+});
+export type BlendPolicySchemaT = z.infer<typeof BlendPolicySchema>;
+
 export const ConversionParamsSchema = z.object({
   mode: z.enum(['off', 'manual', 'auto-window', 'bracket-fill']),
   startAge: z.number().int().default(65),
@@ -67,6 +103,21 @@ export const ConversionParamsSchema = z.object({
 });
 export type ConversionParams = z.infer<typeof ConversionParamsSchema>;
 
+export const GoalSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  targetAmount: z.number().nonnegative(),
+  targetYear: z.number().int(),
+  priority: z.enum(['Essential', 'Important', 'Aspirational']),
+  fundingMode: z.enum(['external', 'from-plan', 'aspirational']),
+  externalAccount: z.object({
+    currentBalance: z.number().nonnegative(),
+    monthlyContribution: z.number().nonnegative(),
+    expectedReturn: z.number(),
+  }).optional(),
+});
+export type Goal = z.infer<typeof GoalSchema>;
+
 export const PlanSchema = z.object({
   personA: PersonSchema,
   personB: PersonSchema.optional(),
@@ -75,52 +126,62 @@ export const PlanSchema = z.object({
   incomeStreams: z.array(IncomeStreamSchema).default([]),
   expenseStreams: z.array(ExpenseStreamSchema).default([]),
   withdrawalStrategy: z.enum(['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill']),
+  customPolicy: BlendPolicySchema.optional(),
   conversion: ConversionParamsSchema,
   state: z.string().default('IL'),
+  goals: z.array(GoalSchema).default([]),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
 export const defaultPlan = (): Plan => ({
   personA: {
-    name: 'Person A',
-    dob: '1973-01-01',
-    retirementAge: 65,
-    planToAge: 95,
-    passingAge: 90,
-    ssPIA: 45000,
-    ssClaimAge: 67,
+    name: 'Shailendra',
+    dob: '1974-05-03',
+    retirementAge: 58,
+    planToAge: 98,
+    passingAge: 100,
+    ssPIA: 44000,
+    ssClaimAge: 70,
   },
   personB: {
-    name: 'Person B',
-    dob: '1975-01-01',
-    retirementAge: 63,
-    planToAge: 95,
-    passingAge: 92,
-    ssPIA: 28000,
-    ssClaimAge: 67,
+    name: 'Sonal',
+    dob: '1977-08-26',
+    retirementAge: 55,
+    planToAge: 98,
+    passingAge: 100,
+    ssPIA: 18000,
+    ssClaimAge: 62,
   },
   assumptions: {
     preRetReturn: 0.065,
     postRetReturn: 0.05,
     inflation: 0.025,
-    contribGrowth: 0.03,
+    contribGrowth: 0,
     rmdStartAge: 75,
   },
   portfolio: {
-    taxable: 420000,
-    traditional: 680000,
-    roth: 185000,
-    contribA: 23000,
-    contribB: 18000,
-    splitTaxable: 0.2,
-    splitTraditional: 0.4,
-    splitRoth: 0.4,
+    personA: {
+      taxable: 271000,
+      traditional: 779000,
+      roth: 441000,
+      annualContribution: 60000,
+      contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
+    },
+    personB: {
+      taxable: 315000,
+      traditional: 106000,
+      roth: 171000,
+      annualContribution: 40000,
+      contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
+    },
   },
-  incomeStreams: [],
+  incomeStreams: [
+    { id: 'stream-ss-a', description: 'Shailendra SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-ss-b-early', description: 'Sonal SS', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-ss-b-late', description: 'Sonal SS', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: 0.025, taxablePct: 1 },
+  ],
   expenseStreams: [
-    { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 95000, inflationPct: 0.025 },
-    { id: 'health', description: 'Healthcare', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 28000, inflationPct: 0.048 },
-    { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, stopAge: 82, annualAmount: 18000, inflationPct: 0.03 },
+    { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: 0.025 },
   ],
   withdrawalStrategy: 'taxfirst',
   conversion: {
@@ -132,4 +193,5 @@ export const defaultPlan = (): Plan => ({
     manualSchedule: {},
   },
   state: 'IL',
+  goals: [],
 });

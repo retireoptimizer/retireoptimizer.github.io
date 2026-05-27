@@ -24,11 +24,15 @@
       "Bash(gh --version)",
       "Bash(ls /Applications | grep -i -E \"visual studio code|vscode|cursor\" 2>&1)",
       "Read(//Applications/**)",
-      "Bash(brew --version)"
+      "Bash(brew --version)",
+      "Bash(sed -n '10,1112p' /Users/shailendra.parikh/Claude/FireOpt/reference/retirement_plan_v2.html > /Users/shailendra.parikh/Claude/FireOpt/src/styles/clarity.css && wc -l /Users/shailendra.parikh/Claude/FireOpt/src/styles/clarity.css && echo \"Done\")",
+      "Bash(mkdir -p /Users/shailendra.parikh/Claude/FireOpt/src/styles)",
+      "Bash(sed -n '10,1112p' /Users/shailendra.parikh/Claude/FireOpt/reference/retirement_plan_v2.html)"
     ],
     "additionalDirectories": [
       "/Users/shailendra.parikh/Claude/FireOpt/.claude",
-      "/Users/shailendra.parikh/.claude/plans"
+      "/Users/shailendra.parikh/.claude/plans",
+      "/Users/shailendra.parikh/Claude/FireOpt/src/styles"
     ]
   }
 }

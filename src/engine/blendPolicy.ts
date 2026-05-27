@@ -10,10 +10,13 @@ export interface BlendWindow {
   pctTraditional: number;   // 0..1
   pctRoth: number;          // 0..1
   tradCap?: number;          // optional max $ from Trad in this window (today's $)
+  convAmt?: number;          // optional Trad→Roth conversion each year in this window (today's $); engine inflates
 }
 
 export interface BlendPolicy {
   windows: BlendWindow[];
+  source?: 'optimizer' | 'manual';
+  goal?: string;
 }
 
 export type PresetKey = 'taxfirst' | 'rothfirst' | 'tradfirst' | 'proportional' | 'bracketfill';

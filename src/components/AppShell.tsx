@@ -1,6 +1,44 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import LiveMetricsBar from './LiveMetricsBar';
+import { usePlanStore } from '../store/usePlanStore';
+import { downloadPlan, importPlanFromJSON, readFileAsText } from '../storage/exportImport';
 
 export default function AppShell() {
+  const plan = usePlanStore((s) => s.plan);
+  const displayMode = usePlanStore((s) => s.displayMode);
+  const setDisplayMode = usePlanStore((s) => s.setDisplayMode);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const onExport = () => {
+    downloadPlan(plan, `fireopt-${new Date().toISOString().slice(0, 10)}.json`);
+    setToast({ kind: 'ok', text: 'Plan exported' });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const onImportClick = () => fileRef.current?.click();
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await readFileAsText(file);
+      const result = importPlanFromJSON(text);
+      if (!result.ok || !result.plan) {
+        setToast({ kind: 'err', text: result.error || 'Import failed' });
+      } else {
+        // Overwrite plan via store internals — use the setter pattern
+        usePlanStore.setState({ plan: result.plan });
+        setToast({ kind: 'ok', text: 'Plan imported' });
+      }
+    } catch (err) {
+      setToast({ kind: 'err', text: `Read error: ${(err as Error).message}` });
+    }
+    e.target.value = '';
+    setTimeout(() => setToast(null), 3500);
+  };
+
   return (
     <>
       <div className="topbar">
@@ -12,13 +50,42 @@ export default function AppShell() {
           </div>
         </div>
         <div className="topbar-right">
+          <div className="toggle-group" role="radiogroup" aria-label="Dollar display mode" style={{ marginRight: 8 }}>
+            <button
+              className={`toggle-opt ${displayMode === 'real' ? 'active' : ''}`}
+              onClick={() => setDisplayMode('real')}
+              role="radio"
+              aria-checked={displayMode === 'real'}
+              title="Show all charts in today's purchasing power"
+            >Today's $</button>
+            <button
+              className={`toggle-opt ${displayMode === 'nominal' ? 'active' : ''}`}
+              onClick={() => setDisplayMode('nominal')}
+              role="radio"
+              aria-checked={displayMode === 'nominal'}
+              title="Show inflated nominal dollars"
+            >Nominal $</button>
+          </div>
           <div className="client-badge">
             <div className="avatar">SP</div>
             <div className="client-name">My Retirement Plan</div>
           </div>
-          <button className="save-btn">Save Plan</button>
+          <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={onFileChange} />
+          <button className="btn btn-ghost" onClick={onImportClick} style={{ padding: '8px 14px', fontSize: 12 }}>Import</button>
+          <button className="save-btn" onClick={onExport}>Export Plan</button>
         </div>
       </div>
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 80, right: 24, zIndex: 1000,
+          padding: '10px 16px', borderRadius: 8,
+          background: toast.kind === 'ok' ? 'var(--success)' : 'var(--danger)',
+          color: '#fff', fontSize: 13, fontWeight: 600,
+          boxShadow: 'var(--shadow-lg)',
+        }}>
+          {toast.text}
+        </div>
+      )}
 
       <div className="app-shell">
         <div className="sidebar">
@@ -31,12 +98,6 @@ export default function AppShell() {
               <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
             </svg>
             Dashboard
-          </NavLink>
-          <NavLink to="/plan-health" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M12 20l-7-7a4 4 0 1 1 5.66-5.66l1.34 1.34 1.34-1.34A4 4 0 1 1 19 13l-7 7z" strokeWidth="1.8"/>
-            </svg>
-            Plan Health
           </NavLink>
 
           <div className="sidebar-section-label">Inputs</div>
@@ -66,27 +127,21 @@ export default function AppShell() {
             Portfolio
           </NavLink>
 
-          <div className="sidebar-section-label">Analysis</div>
-          <NavLink to="/projections" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2c2.76 0 5.26 1.12 7.07 2.93M22 2l-3.5 3.5M16 2h6v6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Projections
-          </NavLink>
-          <NavLink to="/withdrawal" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <div className="sidebar-section-label">Strategy</div>
+          <NavLink to="/strategy" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" strokeWidth="1.8"/>
             </svg>
-            Withdrawal Strategy
+            Strategy
           </NavLink>
-          <NavLink to="/roth" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <NavLink to="/scenarios" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 6h16M4 12h16M4 18h16M9 3v18M15 3v18" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
-            Roth Conversions
+            Scenarios
           </NavLink>
 
-          <div className="sidebar-section-label">Tax &amp; Risk</div>
+          <div className="sidebar-section-label">Tax</div>
           <NavLink to="/taxes" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.8"/>
@@ -94,23 +149,21 @@ export default function AppShell() {
             </svg>
             Tax Planning
           </NavLink>
-          <NavLink to="/irmaa" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            IRMAA Analysis
-          </NavLink>
+
+          <div className="sidebar-section-label">Risk</div>
           <NavLink to="/montecarlo" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M18 20V10M12 20V4M6 20v-6" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
             Monte Carlo
           </NavLink>
-          <NavLink to="/scenarios" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+
+          <div className="sidebar-section-label">Projections</div>
+          <NavLink to="/projections" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M4 6h16M4 12h16M4 18h16M9 3v18M15 3v18" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2c2.76 0 5.26 1.12 7.07 2.93M22 2l-3.5 3.5M16 2h6v6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            Scenarios
+            Projections
           </NavLink>
 
           <div className="sidebar-spacer"></div>
@@ -120,6 +173,7 @@ export default function AppShell() {
         </div>
 
         <div className="content">
+          <LiveMetricsBar />
           <Outlet />
         </div>
       </div>

@@ -1,29 +1,25 @@
-import { PRESETS, type PresetKey } from './blendPolicy';
+import { PRESETS, findWindow, type PresetKey, type BlendPolicy } from './blendPolicy';
 
 export interface WithdrawalInputs {
   strategy: PresetKey;
-  gap: number;             // dollars to raise (net spending need - SS - other income - rmd)
+  gap: number;
   taxable: number;
   traditional: number;
   roth: number;
   rmd: number;
   ssA: number;
   ssB: number;
-  ssTaxablePct: number;    // typically 0.85
+  ssTaxablePct: number;
   stdD: number;
   inflationFactor: number;
 }
 
 export interface WithdrawalOutputs {
-  wdTax: number;           // from taxable brokerage (in addition to RMD)
-  wdTrd: number;           // from traditional (in addition to RMD)
-  wdRth: number;           // from Roth
+  wdTax: number;
+  wdTrd: number;
+  wdRth: number;
 }
 
-/**
- * Given the user's strategy + dollar gap to fund, decide how much to draw from each bucket.
- * RMDs are assumed to already be subtracted from `gap` upstream (they are forced).
- */
 export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
   const { strategy, taxable, traditional, roth, ssA, ssB, ssTaxablePct, stdD, inflationFactor } = inp;
   let rem = Math.max(0, inp.gap);
@@ -40,7 +36,6 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
       const filled = wdTax + wdTrd + wdRth;
       const leftover = rem - filled;
       if (leftover > 0.01) {
-        // Fill shortfall from largest remaining bucket
         const remTaxable = taxable - wdTax;
         const remTrad = traditional - wdTrd;
         const remRoth = roth - wdRth;
@@ -50,7 +45,6 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
       }
     }
   } else if (preset.kind === 'bracketfill') {
-    // Fill 12% bracket with Traditional, residual from Roth then Taxable
     const bracketTop12 = 96950 * inflationFactor;
     const baseOrdInc = ssA * ssTaxablePct + ssB * ssTaxablePct;
     const roomIn12 = Math.max(0, bracketTop12 - stdD - baseOrdInc);
@@ -66,6 +60,61 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
       else if (src === 'trad' && traditional > 0) { wdTrd = Math.min(traditional, rem); rem -= wdTrd; }
       else if (src === 'roth' && roth > 0) { wdRth = Math.min(roth, rem); rem -= wdRth; }
     }
+  }
+
+  return { wdTax, wdTrd, wdRth };
+}
+
+/**
+ * Apply a custom blend policy: find the active age window, allocate the gap
+ * by its percentages (honoring balance and optional Trad cap), then spill any
+ * shortfall to Taxable → Traditional → Roth in order.
+ */
+export function applyBlendPolicy(inp: {
+  policy: BlendPolicy;
+  ageA: number;
+  gap: number;
+  taxable: number;
+  traditional: number;
+  roth: number;
+}): WithdrawalOutputs {
+  const rem = Math.max(0, inp.gap);
+  if (rem <= 0) {
+    return { wdTax: 0, wdTrd: 0, wdRth: 0 };
+  }
+  const w = findWindow(inp.policy, inp.ageA);
+  // When the active age isn't covered by any window (manual-blend gaps, or a scenario that
+  // shifts retirement age outside the optimizer's window range), spill the entire gap
+  // taxable→traditional→roth so the projection still funds expenses rather than silently
+  // recording unfilled withdrawals.
+  if (!w) {
+    let r = rem;
+    const wdTaxF = Math.min(inp.taxable, r); r -= wdTaxF;
+    const wdTrdF = Math.min(inp.traditional, r); r -= wdTrdF;
+    const wdRthF = Math.min(inp.roth, r);
+    return { wdTax: wdTaxF, wdTrd: wdTrdF, wdRth: wdRthF };
+  }
+
+  let wdTax = Math.min(inp.taxable, rem * w.pctTaxable);
+  let wdTrd = Math.min(inp.traditional, rem * w.pctTraditional);
+  let wdRth = Math.min(inp.roth, rem * w.pctRoth);
+
+  if (w.tradCap != null && wdTrd > w.tradCap) {
+    wdTrd = Math.max(0, Math.min(inp.traditional, w.tradCap));
+  }
+
+  let leftover = rem - (wdTax + wdTrd + wdRth);
+  if (leftover > 0.01) {
+    const addTax = Math.min(inp.taxable - wdTax, leftover);
+    wdTax += addTax; leftover -= addTax;
+  }
+  if (leftover > 0.01) {
+    const addTrd = Math.min(inp.traditional - wdTrd, leftover);
+    wdTrd += addTrd; leftover -= addTrd;
+  }
+  if (leftover > 0.01) {
+    const addRth = Math.min(inp.roth - wdRth, leftover);
+    wdRth += addRth; leftover -= addRth;
   }
 
   return { wdTax, wdTrd, wdRth };

@@ -1,11 +1,14 @@
 import type { Plan, IncomeStream, ExpenseStream } from '../schemas/plan';
+import { householdTotals } from '../schemas/plan';
 import { SS_TAXABLE_PCT, TAXABLE_BASIS_PCT } from './taxConstants';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor } from './rmd';
 import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction } from './tax';
 import { rothConversion } from './conversion';
-import { applyWithdrawalOrder } from './withdrawal';
+import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
+import type { BlendPolicy } from './blendPolicy';
+import { findWindow } from './blendPolicy';
 import { annualIRMAACost } from './irmaa';
 import { stateTax } from './stateTax';
 
@@ -114,7 +117,15 @@ const sumExpenseStreams = (
  * Run the full 75-year projection. Year 0 = plan start (today's $ baseline).
  * Returns one row per year for ages startAgeA..startAgeA+74 (max plan span).
  */
-export function runProjection(plan: Plan): ProjectionResult {
+export interface ProjectionOptions {
+  /** Override the active withdrawal policy without mutating the plan. */
+  policy?: BlendPolicy;
+  /** Per-year nominal return overrides (length matches projection years). Used by Monte Carlo. */
+  returnOverrides?: number[];
+}
+
+export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionResult {
+  const activePolicy: BlendPolicy | undefined = opts?.policy ?? (plan.customPolicy as BlendPolicy | undefined);
   const startYear = new Date().getFullYear();
   const startAgeA = ageAt(plan.personA.dob, startYear);
   const startAgeB = plan.personB ? ageAt(plan.personB.dob, startYear) : undefined;
@@ -124,9 +135,12 @@ export function runProjection(plan: Plan): ProjectionResult {
   const retireAgeB = plan.personB?.retirementAge ?? retireAgeA;
   const planToAge = plan.personA.planToAge;
 
-  let taxable = plan.portfolio.taxable;
-  let trad = plan.portfolio.traditional;
-  let roth = plan.portfolio.roth;
+  const totals = householdTotals(plan.portfolio);
+  let taxable = totals.taxable;
+  let trad = totals.traditional;
+  let roth = totals.roth;
+  const pfA = plan.portfolio.personA;
+  const pfB = plan.portfolio.personB;
 
   const rows: ProjectionRow[] = [];
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
@@ -154,8 +168,8 @@ export function runProjection(plan: Plan): ProjectionResult {
 
     // Contributions during working years
     const cgFactor = Math.pow(1 + plan.assumptions.contribGrowth, i);
-    const contribA = (!retiredA && aliveA) ? plan.portfolio.contribA * cgFactor : 0;
-    const contribB = (!retiredB && aliveB && plan.personB) ? plan.portfolio.contribB * cgFactor : 0;
+    const contribA = (!retiredA && aliveA) ? pfA.annualContribution * cgFactor : 0;
+    const contribB = (!retiredB && aliveB && plan.personB && pfB) ? pfB.annualContribution * cgFactor : 0;
 
     // Social Security
     const ss = householdSS({
@@ -182,22 +196,32 @@ export function runProjection(plan: Plan): ProjectionResult {
     // Standard deduction this year
     const stdD = standardDeduction(filingStatus, ageA, ageB, inflationFactor);
 
-    // Roth conversion (BEFORE withdrawals — increases ord income for the year)
+    // Roth conversion (BEFORE withdrawals — increases ord income for the year).
+    // If the active blend policy has a per-window convAmt, that overrides the legacy four-mode logic.
     const baseOrdIncForConv = ss.total * SS_TAXABLE_PCT + rmdAmt + other.taxableAmt;
-    const conv = rothConversion({
-      params: plan.conversion,
-      ageA,
-      retired,
-      inflationFactor,
-      traditionalBalance: trad,
-      baseOrdinaryIncome: baseOrdIncForConv,
-      stdDeduction: stdD,
-    });
+    const policyWindow = activePolicy ? findWindow(activePolicy, ageA) : undefined;
+    const policyConv = policyWindow?.convAmt;
+    let conv: number;
+    if (retired && policyConv != null && policyConv > 0) {
+      conv = Math.min(Math.max(0, trad), policyConv * inflationFactor);
+    } else {
+      conv = rothConversion({
+        params: plan.conversion,
+        ageA,
+        retired,
+        inflationFactor,
+        traditionalBalance: trad,
+        baseOrdinaryIncome: baseOrdIncForConv,
+        stdDeduction: stdD,
+      });
+    }
     lifetimeConversion += conv;
 
-    // State tax — IL: only non-retirement non-exempt income is taxable.
-    // Computed from inputs that don't depend on withdrawals, so we can lift it out of the loop.
-    const stateAmt = stateTax(plan.state, other.nonExempt);
+    // State tax — depends on state profile.
+    // For IL/TX/FL/WA: only non-retirement non-exempt income is taxable.
+    // For CA/NY: retirement withdrawals + conversions are also taxable.
+    // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
+    let stateAmt = stateTax(plan.state, other.nonExempt, 0); // initial pass; refined below
 
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
@@ -212,12 +236,14 @@ export function runProjection(plan: Plan): ProjectionResult {
     for (let iter = 0; iter < 8; iter++) {
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
       gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA);
-      const w = applyWithdrawalOrder({
-        strategy: plan.withdrawalStrategy,
-        gap, taxable, traditional: trad, roth,
-        rmd: rmdAmt, ssA: ss.ssA, ssB: ss.ssB, ssTaxablePct: SS_TAXABLE_PCT,
-        stdD, inflationFactor,
-      });
+      const w = activePolicy
+        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable, traditional: trad, roth })
+        : applyWithdrawalOrder({
+            strategy: plan.withdrawalStrategy,
+            gap, taxable, traditional: trad, roth,
+            rmd: rmdAmt, ssA: ss.ssA, ssB: ss.ssB, ssTaxablePct: SS_TAXABLE_PCT,
+            stdD, inflationFactor,
+          });
       wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;
 
       const ltcg = wdTax * (1 - TAXABLE_BASIS_PCT);
@@ -234,22 +260,39 @@ export function runProjection(plan: Plan): ProjectionResult {
       const magi = ordIncomeFinal + ltcgFinal;
       irmaa = numAt65Plus > 0 ? annualIRMAACost(magi, inflationFactor, numAt65Plus) : 0;
 
+      // Refine state tax to include retirement distributions for states that tax them
+      stateAmt = stateTax(plan.state, other.nonExempt, wdTrd + rmdAmt + conv);
+
       if (Math.abs(fedTax - prevTax) < 1 && Math.abs(irmaa - prevIRMAA) < 1) break;
       prevTax = fedTax;
       prevIRMAA = irmaa;
     }
 
     // Update balances. Withdrawals were sized to cover all cash needs.
-    const totalContrib = contribA + contribB;
-    const gRate = retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn;
+    // Contributions are split per-person using each person's own contribSplit.
+    const gRate = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
     const begTaxable = taxable, begTrad = trad, begRoth = roth;
+    const splitAtoTax = pfA.contribSplit.taxable, splitAtoTrad = pfA.contribSplit.traditional, splitAtoRoth = pfA.contribSplit.roth;
+    const splitBtoTax = pfB?.contribSplit.taxable ?? 0, splitBtoTrad = pfB?.contribSplit.traditional ?? 0, splitBtoRoth = pfB?.contribSplit.roth ?? 0;
+    const contribToTax = contribA * splitAtoTax + contribB * splitBtoTax;
+    const contribToTrad = contribA * splitAtoTrad + contribB * splitBtoTrad;
+    const contribToRoth = contribA * splitAtoRoth + contribB * splitBtoRoth;
 
-    taxable = Math.max(0, taxable * (1 + gRate) + totalContrib * plan.portfolio.splitTaxable - wdTax);
-    trad    = Math.max(0, trad    * (1 + gRate) + totalContrib * plan.portfolio.splitTraditional - wdTrd - rmdAmt - conv);
-    roth    = Math.max(0, roth    * (1 + gRate) + totalContrib * plan.portfolio.splitRoth - wdRth + conv);
+    taxable = Math.max(0, taxable * (1 + gRate) + contribToTax - wdTax);
+    trad    = Math.max(0, trad    * (1 + gRate) + contribToTrad - wdTrd - rmdAmt - conv);
+    roth    = Math.max(0, roth    * (1 + gRate) + contribToRoth - wdRth + conv);
 
     const endTotal = taxable + trad + roth;
-    if (retired && endTotal <= 0 && !ranOut) ranOut = true;
+    // Depletion is "could not fund the year's spending need from the portfolio", NOT just
+    // "endTotal reached exactly zero". Each bucket's update is max(0, bal*g - wd), and wd is
+    // capped at bal, so residuals decay geometrically toward zero but never quite hit it —
+    // the old `endTotal <= 0` check failed to fire and the plan appeared to survive forever
+    // while silently failing to pay expenses.
+    if (retired && !ranOut) {
+      const fundedFromPortfolio = wdTax + wdTrd + wdRth;
+      const neededFromPortfolio = gap;  // gap is netSpend + taxes - SS - other - RMD
+      if (neededFromPortfolio - fundedFromPortfolio > 1) ranOut = true;
+    }
 
     lifetimeFedTax += fedTax;
 
@@ -295,4 +338,17 @@ export function runProjection(plan: Plan): ProjectionResult {
     yearsCovered: rows.length,
     ranOut,
   };
+}
+
+/**
+ * First retirement-phase age where the portfolio hits zero, or null if it never does.
+ * Use to drive "Plan Lasts To" / depletion warnings.
+ */
+export function depletionAge(proj: ProjectionResult): number | null {
+  for (const r of proj.rows) {
+    if ((r.phase === 'Retire' || r.phase === 'Survivor') && r.endTotal <= 0) {
+      return r.ageA;
+    }
+  }
+  return null;
 }
