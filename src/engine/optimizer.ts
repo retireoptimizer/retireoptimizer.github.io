@@ -222,7 +222,10 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
         bestWindows = trial;
         bestPolicy = trialPolicy;
         bestProj = proj;
-        bestScore = Math.max(bestScore, trialScore);
+        // Use the trial's actual score, not the prior peak — otherwise `metric` reports
+        // a value that doesn't match the projection it's paired with (Layer 2's score
+        // round-trip property catches this).
+        bestScore = trialScore;
         return true;
       }
       return false;
