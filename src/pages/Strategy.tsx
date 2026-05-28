@@ -172,10 +172,16 @@ export default function Strategy() {
               gap: 8,
             }}>
               <button
-                className="btn btn-ghost"
+                className="btn"
                 onClick={reloadEngine}
                 title="Force a fresh engine worker. Fixes 'Apply isn't updating' when dev-mode caching keeps the worker on stale engine code."
-                style={{ fontSize: 11, padding: '6px 12px' }}
+                style={{
+                  fontSize: 11,
+                  padding: '6px 12px',
+                  background: 'rgba(13,27,46,0.06)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-light)',
+                }}
               >
                 ↻ Reload Engine
               </button>
@@ -677,10 +683,16 @@ function OptimizerResultPanel({ goal, running, progress, result, applyOptimized,
                     style={{ opacity: currentPolicyMatchesResult ? 0.5 : 1 }}>
                     {currentPolicyMatchesResult ? 'Already Applied' : 'Apply This Policy'}
                   </button>
-                  <button className="btn btn-ghost" onClick={reloadEngine}
+                  <button className="btn" onClick={reloadEngine}
                     title="Force a fresh engine worker. Use if results look stale despite running optimizer + hard reload."
-                    style={{ fontSize: 11, padding: '6px 10px' }}>
-                    Reload Engine
+                    style={{
+                      fontSize: 11,
+                      padding: '6px 10px',
+                      background: 'rgba(13,27,46,0.06)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-light)',
+                    }}>
+                    ↻ Reload Engine
                   </button>
                 </div>
               </div>
