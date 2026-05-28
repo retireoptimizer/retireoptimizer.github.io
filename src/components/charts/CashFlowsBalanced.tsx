@@ -72,11 +72,19 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
       },
       {
         type: 'line',
-        label: 'Net (Inflows − Outflows)',
-        data: rows.map((r) => {
-          const inflow = r.contribA + r.contribB + r.totalSS + r.otherIncome + r.totalWD;
-          const outflow = r.netSpend + r.fedTax + r.stateTaxAmt + r.irmaa;
-          return scale(inflow - outflow, r.inflationFactor);
+        // Portfolio Δ = year-over-year change in total wealth.
+        // Inflows−outflows is uninformative here: the gross-up loop sizes withdrawals
+        // to make sources ≈ uses every retirement year (net ≈ $0). Portfolio Δ shows
+        // whether wealth is growing or shrinking — directly answers "am I living
+        // within my means this year?" Positive = wealth growing, negative = drawing down.
+        label: real ? 'Portfolio Δ (real $)' : 'Portfolio Δ (nominal $)',
+        data: rows.map((r, i) => {
+          const endVal = scale(r.endTotal, r.inflationFactor);
+          const begTotal = r.begTaxable + r.begTraditional + r.begRoth;
+          const begVal = i === 0
+            ? begTotal // year 1: begTotal is today's $ (inflF = 1.0)
+            : scale(rows[i - 1].endTotal, rows[i - 1].inflationFactor);
+          return endVal - begVal;
         }),
         borderColor: palette.navy,
         backgroundColor: palette.navy,
