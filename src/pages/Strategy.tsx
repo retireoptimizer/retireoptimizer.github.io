@@ -164,7 +164,23 @@ export default function Strategy() {
           </>
         )}
         {tab === 'optimize' && (
-          <RecommendPanel
+          <>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginBottom: 12,
+              gap: 8,
+            }}>
+              <button
+                className="btn btn-ghost"
+                onClick={reloadEngine}
+                title="Force a fresh engine worker. Fixes 'Apply isn't updating' when dev-mode caching keeps the worker on stale engine code."
+                style={{ fontSize: 11, padding: '6px 12px' }}
+              >
+                ↻ Reload Engine
+              </button>
+            </div>
+            <RecommendPanel
             goal={goal}
             setGoal={setGoal}
             useNM={useNM}
@@ -184,6 +200,7 @@ export default function Strategy() {
             resetRec={resetRec}
             reloadEngine={reloadEngine}
           />
+          </>
         )}
       </div>
     </div>
