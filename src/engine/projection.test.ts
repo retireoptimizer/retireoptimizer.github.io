@@ -3,9 +3,18 @@ import { runProjection } from './projection';
 import { defaultPlan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 import { optimizeStrategy } from './optimizer';
+import { assertProjectionInvariants, assertDeterministic } from './__invariants__/assertions';
 
 describe('runProjection (smoke)', () => {
   const result = runProjection(defaultPlan());
+
+  it('satisfies all dollar-flow invariants on the default plan', () => {
+    assertProjectionInvariants(result, defaultPlan());
+  });
+
+  it('is deterministic — same plan twice produces identical rows', () => {
+    assertDeterministic(defaultPlan());
+  });
 
   it('produces rows up to plan-to age', () => {
     expect(result.rows.length).toBeGreaterThan(30);

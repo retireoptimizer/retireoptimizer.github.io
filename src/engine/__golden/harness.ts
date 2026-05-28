@@ -1,5 +1,6 @@
 import type { Plan } from '../../schemas/plan';
 import { runProjection, type ProjectionRow } from '../projection';
+import { assertProjectionInvariants } from '../__invariants__/assertions';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -77,6 +78,15 @@ export function saveGolden(name: string, rows: GoldenRow[]): void {
 
 export function runAndCompare(name: string, plan: Plan, opts: { regenerate?: boolean; tolerance?: number } = {}): { ok: boolean; message?: string } {
   const proj = runProjection(plan);
+
+  // Invariants run before CSV comparison so a math violation surfaces with its own pointed
+  // error message instead of being summarized as a generic "value drift" diff.
+  try {
+    assertProjectionInvariants(proj, plan);
+  } catch (e) {
+    return { ok: false, message: `Invariant violation in ${name}: ${(e as Error).message}` };
+  }
+
   const actual = projectionToGolden(proj.rows);
 
   if (opts.regenerate || process.env.UPDATE_GOLDENS === '1') {

@@ -227,14 +227,19 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
     let stateAmt = stateTax(plan.state, other.nonExempt, 0); // initial pass; refined below
 
-    // Trad balance available to fund the policy's discretionary wdTrd.
-    // Conv and RMD both draw from the Trad bucket in parallel with wdTrd, so the cap must
-    // account for them — otherwise applyBlendPolicy can authorize wdTrd large enough that
-    // (wdTrd + rmd + conv) exceeds trad, ends up clamped to zero by the end-of-year update,
-    // and silently funds the spending gap with phantom cash.
+    // Per-bucket "available to withdraw" caps. All three buckets are debited by the
+    // end-of-year update `bucket = max(0, bucket*(1+g) + contrib +/- credits - withdrawal)`,
+    // so the withdrawal must respect what that update would actually leave non-negative —
+    // otherwise wdX exceeds the cap, the bucket clamps to zero, and the projection silently
+    // funds the spending gap with phantom cash (the historic bug class). Same cap formula
+    // applied to both withdrawal code paths (legacy preset + custom blend policy).
     const gRateThisYear = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
+    const contribToTaxEarly = contribA * pfA.contribSplit.taxable + contribB * (pfB?.contribSplit.taxable ?? 0);
     const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
+    const contribToRothEarly = contribA * pfA.contribSplit.roth + contribB * (pfB?.contribSplit.roth ?? 0);
+    const taxAvail = Math.max(0, taxable * (1 + gRateThisYear) + contribToTaxEarly);
     const tradAvail = Math.max(0, trad * (1 + gRateThisYear) + contribToTradEarly - rmdAmt - conv);
+    const rothAvail = Math.max(0, roth * (1 + gRateThisYear) + contribToRothEarly + conv);
 
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
@@ -250,10 +255,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
       gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA);
       const w = activePolicy
-        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable, traditional: tradAvail, roth })
+        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail })
         : applyWithdrawalOrder({
             strategy: plan.withdrawalStrategy,
-            gap, taxable, traditional: trad, roth,
+            gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail,
             rmd: rmdAmt, ssA: ss.ssA, ssB: ss.ssB, ssTaxablePct: SS_TAXABLE_PCT,
             stdD, inflationFactor,
           });
