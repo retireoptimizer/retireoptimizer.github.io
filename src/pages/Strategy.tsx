@@ -5,7 +5,7 @@ import { NumberInput } from '../components/inputs/NumberInput';
 import type { Plan, ConversionParams } from '../schemas/plan';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
 import { describePolicy, type OptimizeResult } from '../engine/optimizer';
-import { getEngineWorker } from '../engine/workerClient';
+import { getEngineWorker, disposeEngineWorker } from '../engine/workerClient';
 import { fmtUSD, fmtK, fmtM } from '../lib/format';
 import RothVsRmd from '../components/charts/RothVsRmd';
 
@@ -81,6 +81,13 @@ export default function Strategy() {
     } finally {
       setRunning(false);
     }
+  };
+
+  /** Force-recreate the engine worker. Use when dev-mode caching keeps the worker
+   *  on stale bundled engine code despite source edits + page reloads. */
+  const reloadEngine = () => {
+    disposeEngineWorker();
+    setResult(null);
   };
 
   const applyOptimized = () => {
@@ -175,6 +182,7 @@ export default function Strategy() {
                 : false
             }
             resetRec={resetRec}
+            reloadEngine={reloadEngine}
           />
         )}
       </div>
@@ -518,6 +526,7 @@ interface RecPanelProps {
   applyOptimized: () => void;
   currentPolicyMatchesResult: boolean;
   resetRec: () => void;
+  reloadEngine: () => void;
 }
 
 function RecommendPanel(p: RecPanelProps) {
@@ -583,7 +592,7 @@ function GoalSelectPanel({ goal, setGoal, useNM, setUseNM, thorough, setThorough
   );
 }
 
-function OptimizerResultPanel({ goal, running, progress, result, applyOptimized, currentPolicyMatchesResult, resetRec }: RecPanelProps) {
+function OptimizerResultPanel({ goal, running, progress, result, applyOptimized, currentPolicyMatchesResult, resetRec, reloadEngine }: RecPanelProps) {
   const goalSpec = USER_GOALS[goal];
   const meta = GOAL_BADGES[goal];
 
@@ -646,10 +655,17 @@ function OptimizerResultPanel({ goal, running, progress, result, applyOptimized,
                     Lifetime fed tax: <strong>{fmtK(result.projection.lifetimeFedTax)}</strong>
                   </div>
                 </div>
-                <button className="btn btn-gold" onClick={applyOptimized} disabled={currentPolicyMatchesResult}
-                  style={{ opacity: currentPolicyMatchesResult ? 0.5 : 1 }}>
-                  {currentPolicyMatchesResult ? 'Already Applied' : 'Apply This Policy'}
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button className="btn btn-gold" onClick={applyOptimized} disabled={currentPolicyMatchesResult}
+                    style={{ opacity: currentPolicyMatchesResult ? 0.5 : 1 }}>
+                    {currentPolicyMatchesResult ? 'Already Applied' : 'Apply This Policy'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={reloadEngine}
+                    title="Force a fresh engine worker. Use if results look stale despite running optimizer + hard reload."
+                    style={{ fontSize: 11, padding: '6px 10px' }}>
+                    Reload Engine
+                  </button>
+                </div>
               </div>
             </div>
 
