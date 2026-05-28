@@ -106,7 +106,11 @@ describe('Optimizer ↔ Projection coordination', () => {
     const totalConv = convs.reduce((a, b) => a + b, 0);
     if (totalConv > 1) {
       const ratio = totalVariation / totalConv;
-      expect(ratio, `Conversion variation/total ratio ${ratio.toFixed(3)} suggests spiky schedule`).toBeLessThan(1.0);
+      // 0.5 threshold: a healthy optimizer run on this plan produces ~0.24; the
+      // user-reported lumpy browser output produced 0.91. 0.5 is the regression
+      // tripwire that fires if smoothing gets disabled or coordinate descent
+      // re-introduces spikes.
+      expect(ratio, `Conversion variation/total ratio ${ratio.toFixed(3)} suggests spiky schedule`).toBeLessThan(0.5);
     }
   }, 120_000);
 
