@@ -244,14 +244,16 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
     // are accounted for as resources. Conversion CREATES tax; loop sizes withdrawals to cover it.
-    let prevTax = 0, prevIRMAA = 0;
+    let prevTax = 0, prevIRMAA = 0, prevStateAmt = 0;
     let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0;
     let irmaa = 0;
     let gap = 0;
 
     const numAt65Plus = (aliveA && ageA >= 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= 65 ? 1 : 0);
 
-    for (let iter = 0; iter < 8; iter++) {
+    // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
+    // need more to fully converge fedTax + irmaa + stateAmt jointly.
+    for (let iter = 0; iter < 16; iter++) {
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
       gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA);
       const w = activePolicy
@@ -278,12 +280,20 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const magi = ordIncomeFinal + ltcgFinal;
       irmaa = numAt65Plus > 0 ? annualIRMAACost(magi, inflationFactor, numAt65Plus) : 0;
 
-      // Refine state tax to include retirement distributions for states that tax them
+      // Refine state tax to include retirement distributions for states that tax them.
+      // Include stateAmt in the convergence check — for CA/NY plans, state tax is a
+      // material gross-up term and ignoring its delta caused ~$15 spending shortfalls
+      // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
       stateAmt = stateTax(plan.state, other.nonExempt, wdTrd + rmdAmt + conv);
 
-      if (Math.abs(fedTax - prevTax) < 1 && Math.abs(irmaa - prevIRMAA) < 1) break;
+      if (
+        Math.abs(fedTax - prevTax) < 1 &&
+        Math.abs(irmaa - prevIRMAA) < 1 &&
+        Math.abs(stateAmt - prevStateAmt) < 1
+      ) break;
       prevTax = fedTax;
       prevIRMAA = irmaa;
+      prevStateAmt = stateAmt;
     }
 
     // Update balances. Withdrawals were sized to cover all cash needs.
