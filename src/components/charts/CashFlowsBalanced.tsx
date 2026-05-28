@@ -72,26 +72,18 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
       },
       {
         type: 'line',
-        // Portfolio Δ = year-over-year change in total wealth.
-        // Inflows−outflows is uninformative here: the gross-up loop sizes withdrawals
-        // to make sources ≈ uses every retirement year (net ≈ $0). Portfolio Δ shows
-        // whether wealth is growing or shrinking — directly answers "am I living
-        // within my means this year?" Positive = wealth growing, negative = drawing down.
-        label: real ? 'Portfolio Δ (real $)' : 'Portfolio Δ (nominal $)',
-        data: rows.map((r, i) => {
-          const endVal = scale(r.endTotal, r.inflationFactor);
-          const begTotal = r.begTaxable + r.begTraditional + r.begRoth;
-          const begVal = i === 0
-            ? begTotal // year 1: begTotal is today's $ (inflF = 1.0)
-            : scale(rows[i - 1].endTotal, rows[i - 1].inflationFactor);
-          return endVal - begVal;
-        }),
+        // Total portfolio balance — plotted on a secondary y-axis (right side) so its
+        // scale ($M) doesn't compress the cash-flow bars. Shows the wealth trajectory
+        // directly: trending up = building, trending down = drawing down, slope = pace.
+        label: real ? 'Portfolio Total (real $)' : 'Portfolio Total (nominal $)',
+        data: rows.map((r) => scale(r.endTotal, r.inflationFactor)),
         borderColor: palette.navy,
         backgroundColor: palette.navy,
-        borderWidth: 2,
+        borderWidth: 2.5,
         pointRadius: 0,
         tension: 0.2,
         fill: false,
+        yAxisID: 'yPortfolio',
         order: 0,
       },
     ],
@@ -119,6 +111,14 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
         stacked: true,
         ticks: { callback: (v) => fmtCompact(Math.abs(Number(v))) },
         grid: { color: palette.borderLight },
+        title: { display: true, text: 'Annual cash flow ($)', font: { size: 10 } },
+      },
+      yPortfolio: {
+        position: 'right',
+        beginAtZero: true,
+        ticks: { callback: (v) => fmtCompact(Number(v)) },
+        grid: { display: false },
+        title: { display: true, text: 'Portfolio total ($)', font: { size: 10 } },
       },
     },
   };
