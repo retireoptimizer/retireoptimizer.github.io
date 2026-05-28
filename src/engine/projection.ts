@@ -197,12 +197,16 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const stdD = standardDeduction(filingStatus, ageA, ageB, inflationFactor);
 
     // Roth conversion (BEFORE withdrawals — increases ord income for the year).
-    // If the active blend policy has a per-window convAmt, that overrides the legacy four-mode logic.
+    // If the active blend policy's window has an explicit convAmt (including 0), that is
+    // authoritative — it represents a fully-specified strategy. Fall back to plan.conversion
+    // (the Pick-tab "mode") only when convAmt is undefined (e.g., a hand-edited custom blend
+    // with a cleared cell). The optimizer always sets convAmt explicitly, so its trials never
+    // hit the fallback — keeping the search independent of the Pick-tab settings.
     const baseOrdIncForConv = ss.total * SS_TAXABLE_PCT + rmdAmt + other.taxableAmt;
     const policyWindow = activePolicy ? findWindow(activePolicy, ageA) : undefined;
     const policyConv = policyWindow?.convAmt;
     let conv: number;
-    if (retired && policyConv != null && policyConv > 0) {
+    if (retired && policyConv != null) {
       conv = Math.min(Math.max(0, trad), policyConv * inflationFactor);
     } else {
       conv = rothConversion({
