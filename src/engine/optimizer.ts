@@ -123,9 +123,13 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
   // For convAmt cap: per year, cap = min(tradBalance_today's_$, 3 × 12%-bracket-top).
   // convAmt is stored in today's $ (real) per BlendWindow's schema; projection inflates it.
   // So both terms of the cap must be in today's $: divide begTraditional (nominal) by inflF.
-  // We compute this from the *current best* projection (forward-greedy).
+  //
+  // IMPORTANT: bestWindows[yi] corresponds to age (retireAge + yi), but projection rows are
+  // indexed from the plan's start year (current age, not retirement). The offset between
+  // them is found by locating the row whose ageA matches retireAge.
+  const retireRowOffset = bestProj.rows.findIndex((r) => r.ageA === retireAge);
   const convCapAtYear = (proj: ProjectionResult, yi: number): number => {
-    const r = proj.rows[yi];
+    const r = proj.rows[yi + retireRowOffset];
     if (!r) return 0;
     const ceiling = 3 * BRACKET_12_TOP;
     const tradReal = r.begTraditional / r.inflationFactor;

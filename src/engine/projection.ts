@@ -223,6 +223,15 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
     let stateAmt = stateTax(plan.state, other.nonExempt, 0); // initial pass; refined below
 
+    // Trad balance available to fund the policy's discretionary wdTrd.
+    // Conv and RMD both draw from the Trad bucket in parallel with wdTrd, so the cap must
+    // account for them — otherwise applyBlendPolicy can authorize wdTrd large enough that
+    // (wdTrd + rmd + conv) exceeds trad, ends up clamped to zero by the end-of-year update,
+    // and silently funds the spending gap with phantom cash.
+    const gRateThisYear = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
+    const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
+    const tradAvail = Math.max(0, trad * (1 + gRateThisYear) + contribToTradEarly - rmdAmt - conv);
+
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
     // are accounted for as resources. Conversion CREATES tax; loop sizes withdrawals to cover it.
@@ -237,7 +246,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
       gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA);
       const w = activePolicy
-        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable, traditional: trad, roth })
+        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable, traditional: tradAvail, roth })
         : applyWithdrawalOrder({
             strategy: plan.withdrawalStrategy,
             gap, taxable, traditional: trad, roth,
