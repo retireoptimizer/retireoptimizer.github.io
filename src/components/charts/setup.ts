@@ -54,12 +54,21 @@ export const palette = {
   danger: '#c0392b',
   textMuted: '#7a96b0',
   borderLight: 'rgba(13,27,46,0.08)',
+
+  // Semantic tokens — prefer these over raw color names in chart code. Lets us
+  // recolor a concept (e.g. "Other income") in one place without hunting through
+  // every chart that referenced palette.slate.
+  bucketTaxable: '#1a8a5a',   // success — matches the Taxable bucket convention
+  bucketTrad:    '#0d1b2e',   // navy
+  bucketRoth:    '#c9a84c',   // gold
+  incomeOther:   '#3b5e8a',   // blue-slate — distinct from textMuted
+  taxOther:      '#7a96b0',   // textMuted — kept for state-tax / IRMAA aggregate
 };
 
 export const bucketColors = {
-  taxable: palette.success,
-  traditional: palette.navy,
-  roth: palette.gold,
+  taxable: palette.bucketTaxable,
+  traditional: palette.bucketTrad,
+  roth: palette.bucketRoth,
 };
 
 export const fmtCompact = (n: number): string => {
@@ -69,3 +78,26 @@ export const fmtCompact = (n: number): string => {
   if (abs >= 1_000) return '$' + Math.round(n / 1_000) + 'K';
   return '$' + Math.round(n);
 };
+
+/** Full-precision currency formatter for tooltips and tables. Mirrors fmtFull from lib/format.ts
+ *  but is kept here so chart files can import a single setup module without crossing layers. */
+export const fmtFull = (n: number): string => {
+  if (!isFinite(n)) return '—';
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.round(Math.abs(n)).toLocaleString();
+};
+
+/** Shared multi-line tooltip body. Renders each dataset with `<label>: <value>`,
+ *  using `fmtFull` so the precise dollar amount is visible on hover. Pass to a
+ *  chart options object as `plugins.tooltip.callbacks.label`. */
+export const tooltipLabelFull = (item: { dataset: { label?: string }; parsed: { y: number | null } }): string => {
+  const v = item.parsed.y ?? 0;
+  return `${item.dataset.label ?? ''}: ${fmtFull(Math.abs(v))}`;
+};
+
+/** Common interaction config: hover anywhere in the chart highlights all datasets
+ *  at that x-position. Used by line/bar charts where multiple datasets share a year. */
+export const indexInteraction = { mode: 'index' as const, intersect: false };
+
+/** Tooltip title showing "Age <n>" for age-indexed charts. */
+export const ageTooltipTitle = (items: Array<{ label: string }>): string => `Age ${items[0]?.label ?? ''}`;

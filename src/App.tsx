@@ -9,7 +9,6 @@ import Projections from './pages/Projections';
 import Strategy from './pages/Strategy';
 import TaxPlanning from './pages/TaxPlanning';
 import MonteCarlo from './pages/MonteCarlo';
-import Scenarios from './pages/Scenarios';
 
 export default function App() {
   return (
@@ -25,8 +24,9 @@ export default function App() {
           <Route path="strategy" element={<Strategy />} />
           <Route path="taxes" element={<TaxPlanning />} />
           <Route path="montecarlo" element={<MonteCarlo />} />
-          <Route path="scenarios" element={<Scenarios />} />
           {/* Legacy URL redirects */}
+          <Route path="scenarios" element={<Navigate to="/" replace />} />
+          <Route path="compare" element={<Navigate to="/" replace />} />
           <Route path="withdrawal" element={<Navigate to="/strategy" replace />} />
           <Route path="roth" element={<Navigate to="/strategy" replace />} />
           <Route path="plan-health" element={<Navigate to="/" replace />} />

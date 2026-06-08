@@ -1,0 +1,391 @@
+{
+  "app": "fireopt",
+  "version": 1,
+  "exportedAt": "2026-05-29T02:35:02.970Z",
+  "plan": {
+    "personA": {
+      "name": "Shailendra",
+      "dob": "1974-05-03",
+      "retirementAge": 59,
+      "planToAge": 98,
+      "passingAge": 100,
+      "ssPIA": 44000,
+      "ssClaimAge": 70
+    },
+    "personB": {
+      "name": "Sonal",
+      "dob": "1977-08-26",
+      "retirementAge": 56,
+      "planToAge": 98,
+      "passingAge": 100,
+      "ssPIA": 18000,
+      "ssClaimAge": 62
+    },
+    "assumptions": {
+      "preRetReturn": 0.065,
+      "postRetReturn": 0.05,
+      "inflation": 0.025,
+      "contribGrowth": 0,
+      "rmdStartAge": 75
+    },
+    "portfolio": {
+      "personA": {
+        "taxable": 271000,
+        "traditional": 779000,
+        "roth": 441000,
+        "annualContribution": 60000,
+        "contribSplit": {
+          "taxable": 0.2,
+          "traditional": 0.4,
+          "roth": 0.4
+        }
+      },
+      "personB": {
+        "taxable": 315000,
+        "traditional": 106000,
+        "roth": 171000,
+        "annualContribution": 40000,
+        "contribSplit": {
+          "taxable": 0.2,
+          "traditional": 0.4,
+          "roth": 0.4
+        }
+      }
+    },
+    "incomeStreams": [
+      {
+        "id": "stream-1780021717523-klvn",
+        "description": "New Income Stream",
+        "whose": "A",
+        "type": "SS",
+        "startAge": 70,
+        "stopAge": 100,
+        "annualAmount": 55000,
+        "growthPct": 0.025,
+        "taxablePct": 1
+      },
+      {
+        "id": "stream-1780021834763-ldh1",
+        "description": "New Income Stream",
+        "whose": "B",
+        "type": "SS",
+        "startAge": 62,
+        "stopAge": 67,
+        "annualAmount": 12000,
+        "growthPct": 0.025,
+        "taxablePct": 1
+      },
+      {
+        "id": "stream-1780021920550-prcb",
+        "description": "New Income Stream",
+        "whose": "B",
+        "type": "Other",
+        "startAge": 68,
+        "stopAge": 100,
+        "annualAmount": 15000,
+        "growthPct": 0.025,
+        "taxablePct": 1
+      }
+    ],
+    "expenseStreams": [
+      {
+        "id": "core",
+        "description": "Core Household Spending",
+        "whose": "Household",
+        "startAge": 59,
+        "stopAge": 98,
+        "annualAmount": 150000,
+        "inflationPct": 0.025
+      }
+    ],
+    "withdrawalStrategy": "taxfirst",
+    "conversion": {
+      "mode": "off",
+      "startAge": 65,
+      "endAge": 72,
+      "autoAmount": 70000,
+      "bracketCeiling": 96950,
+      "manualSchedule": {}
+    },
+    "state": "IL",
+    "goals": [],
+    "customPolicy": {
+      "windows": [
+        {
+          "fromAge": 58,
+          "toAge": 58,
+          "pctTaxable": 0.15763888888888888,
+          "pctTraditional": 0.8243055555555558,
+          "pctRoth": 0.01805555555555527,
+          "convAmt": 80699.56544876102
+        },
+        {
+          "fromAge": 59,
+          "toAge": 59,
+          "pctTaxable": 0.09742798353909465,
+          "pctTraditional": 0.2671810699588476,
+          "pctRoth": 0.6353909465020577,
+          "convAmt": 72354.38544202733
+        },
+        {
+          "fromAge": 60,
+          "toAge": 60,
+          "pctTaxable": 0.03333333333333333,
+          "pctTraditional": 0.4083333333333333,
+          "pctRoth": 0.5583333333333333,
+          "convAmt": 48616.055030822754
+        },
+        {
+          "fromAge": 61,
+          "toAge": 61,
+          "pctTaxable": 0,
+          "pctTraditional": 0.2083333333333333,
+          "pctRoth": 0.7916666666666667,
+          "convAmt": 48244.99505281446
+        },
+        {
+          "fromAge": 62,
+          "toAge": 62,
+          "pctTaxable": 0.09742798353909465,
+          "pctTraditional": 0.2671810699588476,
+          "pctRoth": 0.6353909465020577,
+          "convAmt": 66737.30986762929
+        },
+        {
+          "fromAge": 63,
+          "toAge": 63,
+          "pctTaxable": 0.10104595336076816,
+          "pctTraditional": 0.2820130315500685,
+          "pctRoth": 0.6169410150891633,
+          "convAmt": 55429.452050114836
+        },
+        {
+          "fromAge": 64,
+          "toAge": 64,
+          "pctTaxable": 0.014471879286694102,
+          "pctTraditional": 0.4423982624599909,
+          "pctRoth": 0.543129858253315,
+          "convAmt": 39549.66150774386
+        },
+        {
+          "fromAge": 65,
+          "toAge": 65,
+          "pctTaxable": 0.11388888888888889,
+          "pctTraditional": 0.2657407407407408,
+          "pctRoth": 0.6203703703703702,
+          "convAmt": 63070.70126401053
+        },
+        {
+          "fromAge": 66,
+          "toAge": 66,
+          "pctTaxable": 0.6608024691358023,
+          "pctTraditional": 0.2506172839506172,
+          "pctRoth": 0.08858024691358046,
+          "convAmt": 65790.515658723
+        },
+        {
+          "fromAge": 67,
+          "toAge": 67,
+          "pctTaxable": 0,
+          "pctTraditional": 0.25,
+          "pctRoth": 0.75,
+          "convAmt": 62418.11666786671
+        },
+        {
+          "fromAge": 68,
+          "toAge": 68,
+          "pctTaxable": 0.5122000116365258,
+          "pctTraditional": 0.4044666550301411,
+          "pctRoth": 0.08333333333333304,
+          "convAmt": 47755.925309842016
+        },
+        {
+          "fromAge": 69,
+          "toAge": 69,
+          "pctTaxable": 0.0002314814814814815,
+          "pctTraditional": 0.2678712277091907,
+          "pctRoth": 0.7318972908093279,
+          "convAmt": 59964.59820684581
+        },
+        {
+          "fromAge": 70,
+          "toAge": 70,
+          "pctTaxable": 0.1701646090534979,
+          "pctTraditional": 0.6127572016460905,
+          "pctRoth": 0.21707818930041167,
+          "convAmt": 0
+        },
+        {
+          "fromAge": 71,
+          "toAge": 71,
+          "pctTaxable": 0.2888888888888889,
+          "pctTraditional": 0.5236111111111112,
+          "pctRoth": 0.18749999999999978,
+          "convAmt": 3002.0747857647057
+        },
+        {
+          "fromAge": 72,
+          "toAge": 72,
+          "pctTaxable": 0.5030864197530864,
+          "pctTraditional": 0.3577160493827158,
+          "pctRoth": 0.13919753086419778,
+          "convAmt": 20718.54460213161
+        },
+        {
+          "fromAge": 73,
+          "toAge": 73,
+          "pctTaxable": 0,
+          "pctTraditional": 0.175,
+          "pctRoth": 0.825,
+          "convAmt": 13141.702898475938
+        },
+        {
+          "fromAge": 74,
+          "toAge": 74,
+          "pctTaxable": 0,
+          "pctTraditional": 0.29467592592592595,
+          "pctRoth": 0.705324074074074,
+          "convAmt": 15520.842653269103
+        },
+        {
+          "fromAge": 75,
+          "toAge": 75,
+          "pctTaxable": 0.07791495198902607,
+          "pctTraditional": 0.24802812071330582,
+          "pctRoth": 0.6740569272976681,
+          "convAmt": 13248.205423722287
+        },
+        {
+          "fromAge": 76,
+          "toAge": 76,
+          "pctTaxable": 0.12109053497942388,
+          "pctTraditional": 0.002469135802469136,
+          "pctRoth": 0.876440329218107,
+          "convAmt": 7838.638137725631
+        },
+        {
+          "fromAge": 77,
+          "toAge": 77,
+          "pctTaxable": 0.125,
+          "pctTraditional": 0.25,
+          "pctRoth": 0.625,
+          "convAmt": 6802.290943592967
+        },
+        {
+          "fromAge": 78,
+          "toAge": 78,
+          "pctTaxable": 0.10925925925925925,
+          "pctTraditional": 0.011111111111111112,
+          "pctRoth": 0.8796296296296297,
+          "convAmt": 4797.143307164219
+        },
+        {
+          "fromAge": 79,
+          "toAge": 79,
+          "pctTaxable": 0.125,
+          "pctTraditional": 0,
+          "pctRoth": 0.875,
+          "convAmt": 6206.609909524883
+        },
+        {
+          "fromAge": 80,
+          "toAge": 80,
+          "pctTaxable": 0.125,
+          "pctTraditional": 0,
+          "pctRoth": 0.875,
+          "convAmt": 3718.225315456314
+        },
+        {
+          "fromAge": 81,
+          "toAge": 81,
+          "pctTaxable": 0.1993827160493827,
+          "pctTraditional": 0.17808641975308648,
+          "pctRoth": 0.6225308641975308,
+          "convAmt": 3723.878142676221
+        },
+        {
+          "fromAge": 82,
+          "toAge": 82,
+          "pctTaxable": 0.12638888888888888,
+          "pctTraditional": 0,
+          "pctRoth": 0.8736111111111111,
+          "convAmt": 1437.4679859323342
+        },
+        {
+          "fromAge": 83,
+          "toAge": 83,
+          "pctTaxable": 0.12509765625,
+          "pctTraditional": 0.0025390624999999997,
+          "pctRoth": 0.87236328125,
+          "convAmt": 2273.5968298763664
+        },
+        {
+          "fromAge": 84,
+          "toAge": 84,
+          "pctTaxable": 0.11015625000000001,
+          "pctTraditional": 0.0140625,
+          "pctRoth": 0.8757812500000001,
+          "convAmt": 1924.601341062058
+        },
+        {
+          "fromAge": 85,
+          "toAge": 85,
+          "pctTaxable": 0,
+          "pctTraditional": 0.5,
+          "pctRoth": 0.5,
+          "convAmt": 1563.0833053185925
+        },
+        {
+          "fromAge": 86,
+          "toAge": 86,
+          "pctTaxable": 0.125,
+          "pctTraditional": 0,
+          "pctRoth": 0.875,
+          "convAmt": 1207.5635577980688
+        },
+        {
+          "fromAge": 87,
+          "toAge": 87,
+          "pctTaxable": 0,
+          "pctTraditional": 0.5,
+          "pctRoth": 0.5,
+          "convAmt": 603.7817788990344
+        },
+        {
+          "fromAge": 88,
+          "toAge": 88,
+          "pctTaxable": 0,
+          "pctTraditional": 0.25,
+          "pctRoth": 0.75,
+          "convAmt": 603.7817788990344
+        },
+        {
+          "fromAge": 89,
+          "toAge": 89,
+          "pctTaxable": 0,
+          "pctTraditional": 0.5,
+          "pctRoth": 0.5,
+          "convAmt": 0
+        },
+        {
+          "fromAge": 90,
+          "toAge": 90,
+          "pctTaxable": 0,
+          "pctTraditional": 0,
+          "pctRoth": 1,
+          "convAmt": 0
+        },
+        {
+          "fromAge": 91,
+          "toAge": 98,
+          "pctTaxable": 1,
+          "pctTraditional": 0,
+          "pctRoth": 0,
+          "convAmt": 0
+        }
+      ],
+      "source": "optimizer",
+      "goal": "max-sustainable-spending"
+    }
+  }
+}

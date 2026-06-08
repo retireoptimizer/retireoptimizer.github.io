@@ -14,10 +14,21 @@ export interface ComparisonResult {
   endTotalNo: number[];
 }
 
-/** Run the plan twice — once as-is, once with Roth conversions forced off — and diff. */
+/** Run the plan twice — once as-is, once with Roth conversions forced off — and diff.
+ *  When a customPolicy is active (e.g. after the optimizer is applied) conversions are
+ *  driven by per-window `convAmt`, which entirely bypasses `plan.conversion.mode`. To
+ *  truly compare with-vs-without we must also zero every `convAmt` in customPolicy —
+ *  keeping the blend (pctTaxable/Traditional/Roth) so the delta isolates conversions,
+ *  not the withdrawal strategy. */
 export function compareWithWithoutConversion(plan: Plan): ComparisonResult {
   const withConv = runProjection(plan);
-  const planNoConv: Plan = { ...plan, conversion: { ...plan.conversion, mode: 'off' } };
+  const planNoConv: Plan = {
+    ...plan,
+    conversion: { ...plan.conversion, mode: 'off' },
+    customPolicy: plan.customPolicy
+      ? { ...plan.customPolicy, windows: plan.customPolicy.windows.map((w) => ({ ...w, convAmt: 0 })) }
+      : plan.customPolicy,
+  };
   const noConv = runProjection(planNoConv);
 
   const cumulativeTaxWith: number[] = [];

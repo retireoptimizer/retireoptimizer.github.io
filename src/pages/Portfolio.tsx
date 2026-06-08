@@ -1,10 +1,9 @@
-import { usePlanStore, useProjection } from '../store/usePlanStore';
+import { usePlanStore } from '../store/usePlanStore';
 import { householdTotals } from '../schemas/plan';
 import type { PersonPortfolio } from '../schemas/plan';
 import { fmtM, fmtK } from '../lib/format';
 import { NumberInput } from '../components/inputs/NumberInput';
 import BucketDonut from '../components/charts/BucketDonut';
-import BucketCompositionStacked from '../components/charts/BucketCompositionStacked';
 
 interface PersonPanelProps {
   name: string;
@@ -15,8 +14,17 @@ interface PersonPanelProps {
 function PersonPanel({ name, data, onChange }: PersonPanelProps) {
   const subtotal = data.taxable + data.traditional + data.roth;
   const split = data.contribSplit;
-  const allocSum = split.taxable + split.traditional + split.roth;
-  const allocBad = Math.abs(allocSum - 1) > 0.001;
+
+  // 2-input model: user controls Taxable % and Pre-tax %; Roth % is the auto-computed
+  // remainder. Clamp so the two free inputs never sum above 100.
+  const setSplit = (tax: number, trad: number) => {
+    const cleanTax = Math.max(0, Math.min(1, tax));
+    let cleanTrad = Math.max(0, Math.min(1 - cleanTax, trad));
+    const roth = Math.max(0, 1 - cleanTax - cleanTrad);
+    // Floating-point cleanup so the three values sum to exactly 1.
+    cleanTrad = 1 - cleanTax - roth;
+    onChange({ contribSplit: { taxable: cleanTax, traditional: cleanTrad, roth } });
+  };
 
   return (
     <div className="panel">
@@ -56,30 +64,32 @@ function PersonPanel({ name, data, onChange }: PersonPanelProps) {
         </div>
 
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginTop: 18, marginBottom: 8 }}>Contribution Mix</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="form-group">
             <label>→ Taxable %</label>
             <div className="input-suffix-wrap">
-              <NumberInput value={split.taxable} scale={100} digits={0} min={0} max={100} onCommit={(v) => onChange({ contribSplit: { ...split, taxable: v } })} />
+              <NumberInput value={split.taxable} scale={100} digits={0} min={0} max={100} onCommit={(v) => setSplit(v, split.traditional)} />
               <span className="input-suffix">%</span>
             </div>
           </div>
           <div className="form-group">
             <label>→ Pre-tax %</label>
             <div className="input-suffix-wrap">
-              <NumberInput value={split.traditional} scale={100} digits={0} min={0} max={100} onCommit={(v) => onChange({ contribSplit: { ...split, traditional: v } })} />
-              <span className="input-suffix">%</span>
-            </div>
-          </div>
-          <div className="form-group">
-            <label>→ Roth %</label>
-            <div className="input-suffix-wrap">
-              <NumberInput value={split.roth} scale={100} digits={0} min={0} max={100} onCommit={(v) => onChange({ contribSplit: { ...split, roth: v } })} />
+              <NumberInput value={split.traditional} scale={100} digits={0} min={0} max={100} onCommit={(v) => setSplit(split.taxable, v)} />
               <span className="input-suffix">%</span>
             </div>
           </div>
         </div>
-        {allocBad && <div style={{ fontSize: 12, marginTop: 8, color: 'var(--danger)' }}>⚠ Mix must sum to 100% (currently {Math.round(allocSum * 100)}%)</div>}
+        {/* Roth is the auto-computed remainder, shown as a non-editable bar so users can see what's left. */}
+        <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>→ Roth (auto)</span>
+          <div style={{ flex: 1, height: 6, background: 'rgba(13,27,46,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.round(split.roth * 100)}%`, height: '100%', background: 'var(--gold)' }} />
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)', fontFamily: "'DM Mono', monospace", minWidth: 44, textAlign: 'right' }}>
+            {Math.round(split.roth * 100)}%
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -87,10 +97,8 @@ function PersonPanel({ name, data, onChange }: PersonPanelProps) {
 
 export default function Portfolio() {
   const plan = usePlanStore((s) => s.plan);
-  const proj = useProjection();
   const setPersonAPortfolio = usePlanStore((s) => s.setPersonAPortfolio);
   const setPersonBPortfolio = usePlanStore((s) => s.setPersonBPortfolio);
-  const setAssumptions = usePlanStore((s) => s.setAssumptions);
   const resetPlan = usePlanStore((s) => s.resetPlan);
 
   const pf = plan.portfolio;
@@ -153,59 +161,10 @@ export default function Portfolio() {
           )}
         </div>
 
-        <div className="two-col" style={{ marginTop: 20, gridTemplateColumns: '1fr 1fr' }}>
-          <div className="panel">
-            <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Household Bucket Mix</div></div>
-            <div className="panel-body">
-              <BucketDonut taxable={totals.taxable} traditional={totals.traditional} roth={totals.roth} height={220} />
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Return, Inflation &amp; Contribution Growth</div></div>
-            <div className="panel-body">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="form-group">
-                  <label>Return — Accumulation</label>
-                  <div className="input-suffix-wrap">
-                    <NumberInput value={plan.assumptions.preRetReturn} scale={100} digits={1} onCommit={(v) => setAssumptions({ preRetReturn: v })} />
-                    <span className="input-suffix">%</span>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Return — Retirement</label>
-                  <div className="input-suffix-wrap">
-                    <NumberInput value={plan.assumptions.postRetReturn} scale={100} digits={1} onCommit={(v) => setAssumptions({ postRetReturn: v })} />
-                    <span className="input-suffix">%</span>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Inflation Rate</label>
-                  <div className="input-suffix-wrap">
-                    <NumberInput value={plan.assumptions.inflation} scale={100} digits={1} onCommit={(v) => setAssumptions({ inflation: v })} />
-                    <span className="input-suffix">%</span>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Contribution Growth Rate</label>
-                  <div className="input-suffix-wrap">
-                    <NumberInput value={plan.assumptions.contribGrowth} scale={100} digits={1} onCommit={(v) => setAssumptions({ contribGrowth: v })} />
-                    <span className="input-suffix">%</span>
-                  </div>
-                  <div className="helper-text">Nominal · set = inflation for real-constant contributions</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div className="panel" style={{ marginTop: 20 }}>
-          <div className="panel-header">
-            <div className="panel-title"><div className="panel-title-dot"></div>Bucket Composition Over Time (%)</div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>How Taxable / Pre-tax / Roth mix evolves year by year</span>
-          </div>
+          <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Household Bucket Mix</div></div>
           <div className="panel-body">
-            <BucketCompositionStacked proj={proj} height={240} />
+            <BucketDonut taxable={totals.taxable} traditional={totals.traditional} roth={totals.roth} height={220} />
           </div>
         </div>
       </div>

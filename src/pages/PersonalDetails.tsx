@@ -1,6 +1,10 @@
+import { useMemo } from 'react';
 import { usePlanStore } from '../store/usePlanStore';
 import { NumberInput } from '../components/inputs/NumberInput';
+import InlineEcho from '../components/InlineEcho';
 import { listStates } from '../engine/stateTax';
+import { runProjection, depletionAge } from '../engine/projection';
+import { fmtM } from '../lib/format';
 
 const ageFromDob = (iso: string): number => {
   if (!iso || iso.length < 4) return 0;
@@ -17,6 +21,17 @@ export default function PersonalDetails() {
   const A = plan.personA;
   const B = plan.personB!;
   const asm = plan.assumptions;
+
+  // Lightweight derived facts to echo under the inputs. Memoized so we don't
+  // re-run the engine on every keystroke into an unrelated field.
+  const proj = useMemo(() => runProjection(plan), [plan]);
+  const currentAgeA = ageFromDob(A.dob);
+  const yearsToRetire = Math.max(0, A.retirementAge - currentAgeA);
+  const retireRow = proj.rows.find((r) => r.ageA === A.retirementAge);
+  const projectedAtRetire = retireRow ? retireRow.endTotal / retireRow.inflationFactor : 0;
+  const dep = depletionAge(proj);
+  const lasts = dep === null;
+  const longevity = dep ?? A.planToAge;
 
   return (
     <div className="page">
@@ -67,6 +82,9 @@ export default function PersonalDetails() {
                 <div className="form-group">
                   <label>{A.name} — Target Retirement Age</label>
                   <NumberInput value={A.retirementAge} digits={0} min={40} max={80} onCommit={(v) => setPersonA({ retirementAge: Math.round(v) })} />
+                  <InlineEcho>
+                    Retires in {yearsToRetire} year{yearsToRetire === 1 ? '' : 's'} · Projected portfolio at retirement: <strong>{fmtM(projectedAtRetire)}</strong> (today's $)
+                  </InlineEcho>
                 </div>
                 <div className="form-group">
                   <label>{B.name} — Target Retirement Age</label>
@@ -76,30 +94,23 @@ export default function PersonalDetails() {
                   <label>{A.name} — Plan-To Age</label>
                   <NumberInput value={A.planToAge} digits={0} min={70} max={110} onCommit={(v) => setPersonA({ planToAge: Math.round(v) })} />
                   <div className="helper-text">Projection horizon</div>
+                  <InlineEcho tone={lasts ? 'positive' : 'warning'}>
+                    {lasts ? `Plan funds through age ${A.planToAge} ✓` : `Plan runs out at age ${longevity} ⚠`}
+                  </InlineEcho>
                 </div>
                 <div className="form-group">
                   <label>{B.name} — Plan-To Age</label>
                   <NumberInput value={B.planToAge} digits={0} min={70} max={110} onCommit={(v) => setPersonB({ planToAge: Math.round(v) })} />
                 </div>
-                <div className="form-group">
-                  <label>{A.name} — SS PIA (at FRA, $/yr)</label>
-                  <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                    <NumberInput value={A.ssPIA} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => setPersonA({ ssPIA: v })} />
+                {/* Social Security inputs moved to Income Streams.
+                    FireOpt no longer computes SS from PIA + claim age; users enter the
+                    annual amounts they expect each year (often computed in an external
+                    SS-claiming-strategy tool) as SS-typed rows on the Income page. */}
+                <div className="form-group" style={{ gridColumn: '1 / -1', padding: '12px 14px', background: 'rgba(13,27,46,0.03)', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 4 }}>Social Security</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    SS is entered as one or more rows on <a href="/income" style={{ color: 'var(--gold)', textDecoration: 'underline' }}>Income Streams</a> with type=SS — one row per claiming phase. Compute the per-phase amounts in your preferred SS-strategy tool and enter the results here.
                   </div>
-                </div>
-                <div className="form-group">
-                  <label>{B.name} — SS PIA (at FRA, $/yr)</label>
-                  <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                    <NumberInput value={B.ssPIA} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => setPersonB({ ssPIA: v })} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>{A.name} — SS Claim Age</label>
-                  <NumberInput value={A.ssClaimAge} digits={0} min={62} max={70} onCommit={(v) => setPersonA({ ssClaimAge: Math.round(v) })} />
-                </div>
-                <div className="form-group">
-                  <label>{B.name} — SS Claim Age</label>
-                  <NumberInput value={B.ssClaimAge} digits={0} min={62} max={70} onCommit={(v) => setPersonB({ ssClaimAge: Math.round(v) })} />
                 </div>
               </div>
             </div>

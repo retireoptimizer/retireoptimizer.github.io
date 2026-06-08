@@ -171,7 +171,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const contribA = (!retiredA && aliveA) ? pfA.annualContribution * cgFactor : 0;
     const contribB = (!retiredB && aliveB && plan.personB && pfB) ? pfB.annualContribution * cgFactor : 0;
 
-    // Social Security
+    // Social Security. If the user has SS-typed income streams, they override
+    // the PIA-based actuarial calc per person/year (so editing the stream's
+    // annualAmount on the Income page moves the projection).
     const ss = householdSS({
       piaA: plan.personA.ssPIA,
       claimAgeA: plan.personA.ssClaimAge,
@@ -180,6 +182,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       claimAgeB: plan.personB?.ssClaimAge,
       ageB, aliveB,
       inflationFactor,
+      ssStreams: plan.incomeStreams,
+      yearIndex: i,
     });
 
     // Other income streams
@@ -205,16 +209,23 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const baseOrdIncForConv = ss.total * SS_TAXABLE_PCT + rmdAmt + other.taxableAmt;
     const policyWindow = activePolicy ? findWindow(activePolicy, ageA) : undefined;
     const policyConv = policyWindow?.convAmt;
+    // True conversion cap: what's actually available in Trad AFTER growth + contrib
+    // and AFTER RMD has been satisfied. Capping at the bare begin-of-year balance
+    // (`trad`) let the optimizer pick conv values that, combined with rmd, exceeded
+    // post-growth available — surfacing as a Trad OVERDRAW invariant violation.
+    const gRateThisYear = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
+    const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
+    const maxConv = Math.max(0, trad * (1 + gRateThisYear) + contribToTradEarly - rmdAmt);
     let conv: number;
     if (retired && policyConv != null) {
-      conv = Math.min(Math.max(0, trad), policyConv * inflationFactor);
+      conv = Math.min(maxConv, policyConv * inflationFactor);
     } else {
       conv = rothConversion({
         params: plan.conversion,
         ageA,
         retired,
         inflationFactor,
-        traditionalBalance: trad,
+        traditionalBalance: maxConv,
         baseOrdinaryIncome: baseOrdIncForConv,
         stdDeduction: stdD,
       });
@@ -233,9 +244,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // otherwise wdX exceeds the cap, the bucket clamps to zero, and the projection silently
     // funds the spending gap with phantom cash (the historic bug class). Same cap formula
     // applied to both withdrawal code paths (legacy preset + custom blend policy).
-    const gRateThisYear = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
+    // gRateThisYear + contribToTradEarly are declared earlier (for the conv cap).
     const contribToTaxEarly = contribA * pfA.contribSplit.taxable + contribB * (pfB?.contribSplit.taxable ?? 0);
-    const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
     const contribToRothEarly = contribA * pfA.contribSplit.roth + contribB * (pfB?.contribSplit.roth ?? 0);
     const taxAvail = Math.max(0, taxable * (1 + gRateThisYear) + contribToTaxEarly);
     const tradAvail = Math.max(0, trad * (1 + gRateThisYear) + contribToTradEarly - rmdAmt - conv);

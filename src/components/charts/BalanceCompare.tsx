@@ -1,6 +1,6 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact } from './setup';
+import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
 import type { ComparisonResult } from '../../engine/comparison';
 
 interface Props {
@@ -45,8 +45,8 @@ export default function BalanceCompare({ cmp, height = 220 }: Props) {
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
-          label: (item) => `${item.dataset.label}: ${fmtCompact(item.parsed.y ?? 0)}`,
+          title: ageTooltipTitle,
+          label: (item) => `${item.dataset.label}: ${fmtFull(item.parsed.y ?? 0)}`,
         },
       },
     },

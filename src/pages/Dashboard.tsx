@@ -3,12 +3,22 @@ import { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { fmtM, fmtK, fmtPct } from '../lib/format';
 import GoalModal from '../components/GoalModal';
+import WhatIfBar from '../components/WhatIfBar';
+import ScenarioCompare from '../components/ScenarioCompare';
+import StrategyChooser from '../components/StrategyChooser';
+import type { Scenario } from '../engine/scenario';
 import { evaluateGoals } from '../engine/goals';
 import { depletionAge } from '../engine/projection';
 import PortfolioTrajectory from '../components/charts/PortfolioTrajectory';
-import IncomeSourcesDonut from '../components/charts/IncomeSourcesDonut';
+import BucketCompositionStacked from '../components/charts/BucketCompositionStacked';
+import IncomeSourcesArea from '../components/charts/IncomeSourcesArea';
 import CashFlowSankey from '../components/charts/CashFlowSankey';
+import ChartFrame from '../components/charts/ChartFrame';
 import { computeHealth } from '../engine/health';
+import { compareWithWithoutConversion } from '../engine/comparison';
+import { generateInsights, insightsForSurface } from '../engine/explain';
+import InsightCard from '../components/InsightCard';
+import { fmtCompactWithSign } from '../lib/format';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -18,8 +28,12 @@ export default function Dashboard() {
   const real = displayMode === 'real';
   const addGoal = usePlanStore((s) => s.addGoal);
   const removeGoal = usePlanStore((s) => s.removeGoal);
+  const addScenario = usePlanStore((s) => s.addScenario);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const health = useMemo(() => computeHealth(plan), [plan]);
+  const cmp = useMemo(() => compareWithWithoutConversion(plan), [plan]);
+  const insights = useMemo(() => insightsForSurface(generateInsights(plan, proj), 'dashboard').slice(0, 3), [plan, proj]);
   const goalStatuses = useMemo(() => evaluateGoals(plan, proj), [plan, proj]);
   const A = plan.personA;
   const startYear = new Date().getFullYear();
@@ -58,12 +72,6 @@ export default function Dashboard() {
   const [yearIdx, setYearIdx] = useState<number>(defaultYearIdx);
   const yearRow = proj.rows[Math.min(yearIdx, proj.rows.length - 1)] ?? proj.rows[0];
 
-  const srcWD = yearRow?.totalWD ?? 0;
-  const srcSS = yearRow?.totalSS ?? 0;
-  const srcOther = yearRow?.otherIncome ?? 0;
-  const srcTotal = srcWD + srcSS + srcOther;
-  const pct = (n: number) => srcTotal > 0 ? Math.round((n / srcTotal) * 100) : 0;
-  const incomeSampleAge = yearRow?.ageA ?? A.retirementAge;
 
   // Plan-derived "implicit" goals shown when no custom goals are defined
   const implicitGoals: Array<{ id?: string; name: string; detail: string; pct: number; status: 'on-track' | 'at-risk' | 'off-track' }> = [
@@ -101,32 +109,8 @@ export default function Dashboard() {
       </div>
       <div className="page-body">
 
-        <div className="metrics-grid">
-          <div className={`metric-card ${planLasts ? 'positive' : 'warning'}`}>
-            <div className="metric-label">Projected Portfolio at {A.retirementAge}</div>
-            <div className="metric-value">{retireRow ? fmtM(real ? retireRow.endTotal / retireRow.inflationFactor : retireRow.endTotal) : '—'}</div>
-            <div className={`metric-delta ${planLasts ? 'up' : 'neutral'}`}>{planLasts ? '↑ On track' : 'Below target'}</div>
-            <div className="metric-sub">{retireRow ? (real ? "Today's $" : 'Nominal $') : ''}</div>
-          </div>
-          <div className={`metric-card ${safeWR < 0.04 ? 'positive' : 'warning'}`}>
-            <div className="metric-label">Withdrawal Rate (Year 1)</div>
-            <div className="metric-value">{fmtPct(safeWR, 1).replace('%', '')}<span className="metric-unit">%</span></div>
-            <div className={`metric-delta ${safeWR < 0.04 ? 'up' : 'neutral'}`}>{safeWR < 0.04 ? 'Below 4% threshold' : 'Above 4% threshold'}</div>
-            <div className="metric-sub">{retireRow ? `${fmtK(retireRow.totalWD)}/yr from portfolio` : ''}</div>
-          </div>
-          <div className={`metric-card ${planLasts ? 'positive' : 'warning'}`}>
-            <div className="metric-label">Plan Longevity</div>
-            <div className="metric-value">Age<span className="metric-unit"> </span>{longevityAge}</div>
-            <div className={`metric-delta ${planLasts ? 'up' : 'neutral'}`}>{planLasts ? 'Lasts full plan' : 'Runs out early'}</div>
-            <div className="metric-sub">Plan horizon: age {A.planToAge}</div>
-          </div>
-          <div className="metric-card warning">
-            <div className="metric-label">Roth Conversion Headroom</div>
-            <div className="metric-value">{fmtK(convHeadroom)}</div>
-            <div className="metric-delta neutral">12% bracket headroom</div>
-            <div className="metric-sub">Year 1 · before RMDs</div>
-          </div>
-        </div>
+        <WhatIfBar defaultExpanded />
+        <StrategyChooser />
 
         <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-header">
@@ -134,9 +118,33 @@ export default function Dashboard() {
             <span className="badge badge-neutral">Stacked by bucket</span>
           </div>
           <div className="panel-body">
-            <PortfolioTrajectory proj={proj} real={real} height={300} />
+            <ChartFrame caption="Stacked balances by bucket over time. Hover for the year-by-year split.">
+              <PortfolioTrajectory proj={proj} real={real} height={300} />
+            </ChartFrame>
           </div>
         </div>
+
+        <div className="panel" style={{ marginBottom: 20 }}>
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Bucket Composition Over Time (%)</div>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>How Taxable / Pre-tax / Roth mix evolves year by year</span>
+          </div>
+          <div className="panel-body">
+            <BucketCompositionStacked proj={proj} height={240} />
+          </div>
+        </div>
+
+        {insights.length > 0 && (
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <div className="panel-header">
+              <div className="panel-title"><div className="panel-title-dot"></div>Insights</div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>What the engine notices about your plan</span>
+            </div>
+            <div className="panel-body">
+              {insights.map((i) => <InsightCard key={i.id} insight={i} />)}
+            </div>
+          </div>
+        )}
 
         <div className="two-col">
           <div className="panel">
@@ -148,6 +156,11 @@ export default function Dashboard() {
                 <div>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>Lifetime Federal Tax</div>
                   <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: 'var(--danger)' }}>{fmtM(proj.lifetimeFedTax)}</div>
+                  {Math.abs(cmp.lifetimeTaxDelta) > 1000 && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {fmtCompactWithSign(cmp.lifetimeTaxDelta)} vs. no conversions
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>Lifetime RMDs</div>
@@ -160,7 +173,12 @@ export default function Dashboard() {
                 <div>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>End-of-Plan Balance</div>
                   <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: 'var(--success)' }}>{fmtM(real ? proj.endTotalReal : proj.endTotalNominal)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{real ? "Today's $" : 'Nominal $'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {real ? "Today's $" : 'Nominal $'}
+                    {Math.abs(cmp.endBalanceDelta) > 1000 && (
+                      <> · {fmtCompactWithSign(cmp.endBalanceDelta)} vs. no conv</>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -227,22 +245,13 @@ export default function Dashboard() {
         <div className="two-col" style={{ marginTop: 20 }}>
           <div className="panel">
             <div className="panel-header">
-              <div className="panel-title"><div className="panel-title-dot"></div>Income Sources at Age {incomeSampleAge}</div>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Slider below updates this view</span>
+              <div className="panel-title"><div className="panel-title-dot"></div>Income Sources Over Time</div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Stacked by source</span>
             </div>
             <div className="panel-body">
-              {srcTotal > 0 ? (
-                <>
-                  <IncomeSourcesDonut withdrawals={srcWD} socialSecurity={srcSS} otherIncome={srcOther} height={240} />
-                  <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
-                    Total: {fmtK(srcTotal)} · Withdrawals {pct(srcWD)}% · SS {pct(srcSS)}% · Other {pct(srcOther)}%
-                  </div>
-                </>
-              ) : (
-                <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  No cash flows at age {incomeSampleAge} — try a later age via the slider, or set retirement age in Personal Details.
-                </div>
-              )}
+              <ChartFrame caption="Where retirement spending will come from in each year. The line on the right uses a year-by-year breakdown.">
+                <IncomeSourcesArea proj={proj} real={real} height={240} />
+              </ChartFrame>
             </div>
           </div>
 
@@ -250,16 +259,23 @@ export default function Dashboard() {
             <div className="panel-header">
               <div className="panel-title"><div className="panel-title-dot"></div>Cash Flow at Age {yearRow?.ageA}</div>
               <div className="panel-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+                  View age
+                </label>
                 <input type="range" min={0} max={proj.rows.length - 1} value={yearIdx}
                   onChange={(e) => setYearIdx(parseInt(e.target.value, 10))}
                   style={{ width: 180 }} aria-label="Cash-flow year selector" />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', minWidth: 28, textAlign: 'right' }}>
+                  {yearRow?.ageA}
+                </span>
               </div>
             </div>
             <div className="panel-body">
-              {yearRow ? <CashFlowSankey row={yearRow} height={240} /> : null}
-              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
-                Sources flow into spending, taxes, and savings (today's $).
-              </div>
+              {yearRow ? (
+                <ChartFrame caption="Sources (left) flow into spending, taxes, and savings (right). Drag the slider to view a different year.">
+                  <CashFlowSankey row={yearRow} height={240} />
+                </ChartFrame>
+              ) : null}
             </div>
           </div>
         </div>
@@ -296,14 +312,52 @@ export default function Dashboard() {
         </div>
         <GoalModal open={goalModalOpen} onClose={() => setGoalModalOpen(false)} onSave={(g) => { addGoal(g); setGoalModalOpen(false); }} />
 
+        <div className="panel" style={{ marginTop: 20 }}>
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Pinned Comparisons</div>
+            <button className="btn btn-ghost" onClick={() => setShowTemplatePicker((v) => !v)} style={{ fontSize: 11, padding: '4px 10px' }}>
+              {showTemplatePicker ? 'Close' : '+ Add From Template'}
+            </button>
+          </div>
+          {showTemplatePicker && (
+            <div className="panel-body" style={{ borderBottom: '1px solid var(--border-light)', padding: '12px 18px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                Pre-built what-ifs. For free-form exploration, use the What-if bar above (or on Projections).
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {scenarioTemplates(plan).map((t) => (
+                  <button
+                    key={t.id}
+                    className="btn btn-outline"
+                    style={{ justifyContent: 'flex-start', padding: '10px 12px', textAlign: 'left', fontSize: 12 }}
+                    onClick={() => {
+                      const sc: Scenario = {
+                        id: `${t.id}-${Date.now()}`,
+                        name: t.name,
+                        overrides: t.overrides,
+                        createdAt: new Date().toISOString(),
+                      };
+                      addScenario(sc);
+                      setShowTemplatePicker(false);
+                    }}
+                  >+ {t.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="panel-body" style={{ padding: 0 }}>
+            <ScenarioCompare limit={3} metricKeys={['longevity', 'endReal', 'lifetimeTax', 'wdRate']} allowRemove />
+          </div>
+        </div>
+
         <div className="panel" style={{ marginTop: 20, background: 'rgba(13,27,46,0.02)', borderStyle: 'dashed' }}>
           <div className="panel-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 24px' }}>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Want to dig deeper? <strong style={{ color: 'var(--text)' }}>Scenarios</strong> compares with/without Roth conversions · <strong style={{ color: 'var(--text)' }}>Tax Planning</strong> shows the tax drag breakdown · <strong style={{ color: 'var(--text)' }}>Projections</strong> has the full year-by-year math.
+              Want to dig deeper? <strong style={{ color: 'var(--text)' }}>Tax Planning</strong> shows the tax drag and Roth-conversion impact · <strong style={{ color: 'var(--text)' }}>Portfolio</strong> shows balance impact · <strong style={{ color: 'var(--text)' }}>Projections</strong> has the full year-by-year math.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => navigate('/scenarios')} style={{ fontSize: 12 }}>Scenarios →</button>
               <button className="btn btn-ghost" onClick={() => navigate('/taxes')} style={{ fontSize: 12 }}>Tax →</button>
+              <button className="btn btn-ghost" onClick={() => navigate('/projections')} style={{ fontSize: 12 }}>Projections →</button>
             </div>
           </div>
         </div>
@@ -311,4 +365,32 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+/** Inline templates for "+ Add From Template" in the Pinned Comparisons panel.
+ *  Each template is a function of the current plan so retirement-age deltas
+ *  stay correct no matter what the user's current retire age is. */
+function scenarioTemplates(plan: ReturnType<typeof usePlanStore.getState>['plan']): Array<{
+  id: string;
+  name: string;
+  overrides: Scenario['overrides'];
+}> {
+  const retire = plan.personA.retirementAge;
+  const pfA = plan.portfolio.personA;
+  const pfB = plan.portfolio.personB;
+  return [
+    { id: 'retire-earlier', name: 'Retire 3 Years Earlier', overrides: { personA: { retirementAge: Math.max(50, retire - 3) } } as Scenario['overrides'] },
+    { id: 'retire-later',   name: 'Retire 3 Years Later',   overrides: { personA: { retirementAge: Math.min(80, retire + 3) } } as Scenario['overrides'] },
+    { id: 'lower-return',   name: 'Lower Returns (4%)',     overrides: { assumptions: { postRetReturn: 0.04 } } as Scenario['overrides'] },
+    { id: 'higher-inflation', name: 'Higher Inflation (4%)', overrides: { assumptions: { inflation: 0.04 } } as Scenario['overrides'] },
+    { id: 'higher-savings', name: 'Save +50%', overrides: {
+        portfolio: {
+          personA: { annualContribution: Math.round(pfA.annualContribution * 1.5) },
+          ...(pfB ? { personB: { annualContribution: Math.round(pfB.annualContribution * 1.5) } } : {}),
+        },
+      } as Scenario['overrides'] },
+    { id: 'reduce-spending', name: 'Reduce Spending 20%', overrides: {
+        expenseStreams: plan.expenseStreams.map((e) => ({ ...e, annualAmount: Math.round(e.annualAmount * 0.8) })),
+      } as Scenario['overrides'] },
+  ];
 }

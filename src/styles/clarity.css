@@ -248,12 +248,14 @@ canvas {
 .page-eyebrow, .page-title, .page-subtitle { display: none; }
 .header-actions { display: flex; gap: 10px; align-items: center; }
 /* Ghost button needs a light-bg variant since the header is no longer dark navy */
-.page-header .btn-ghost {
+.page-header .btn-ghost,
+.panel-header .btn-ghost {
   background: rgba(13,27,46,0.06);
   color: var(--text-secondary);
   border: 1px solid var(--border-light);
 }
-.page-header .btn-ghost:hover { background: rgba(13,27,46,0.1); color: var(--text-primary); }
+.page-header .btn-ghost:hover,
+.panel-header .btn-ghost:hover { background: rgba(13,27,46,0.1); color: var(--text-primary); }
 .btn {
   display: inline-flex;
   align-items: center;

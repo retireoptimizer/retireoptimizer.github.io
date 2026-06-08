@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { usePlanStore } from '../store/usePlanStore';
 import type { IncomeStream } from '../schemas/plan';
 import { NumberInput } from '../components/inputs/NumberInput';
+import { INCOME_TEMPLATES } from '../engine/streamTemplates';
 
 const headerStyle = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '1px', color: 'var(--text-muted)' };
 
@@ -8,23 +10,19 @@ export default function IncomeStreams() {
   const streams = usePlanStore((s) => s.plan.incomeStreams);
   const nameA = usePlanStore((s) => s.plan.personA.name);
   const nameB = usePlanStore((s) => s.plan.personB?.name) ?? 'Person B';
+  const retirementAge = usePlanStore((s) => s.plan.personA.retirementAge);
+  const planToAge = usePlanStore((s) => s.plan.personA.planToAge);
   const addIncomeStream = usePlanStore((s) => s.addIncomeStream);
   const updateIncomeStream = usePlanStore((s) => s.updateIncomeStream);
   const removeIncomeStream = usePlanStore((s) => s.removeIncomeStream);
 
-  const handleAdd = () => {
-    const newStream: IncomeStream = {
-      id: `stream-${Date.now()}`,
-      description: 'New Income Stream',
-      whose: 'Household',
-      type: 'Other',
-      startAge: 65,
-      stopAge: 90,
-      annualAmount: 0,
-      growthPct: 0.025,
-      taxablePct: 1.0,
-    };
-    addIncomeStream(newStream);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const addFromTemplate = (tplId: string) => {
+    const tpl = INCOME_TEMPLATES.find((t) => t.id === tplId);
+    if (!tpl) return;
+    addIncomeStream(tpl.make({ retirementAge, planToAge }));
+    setPickerOpen(false);
   };
 
   return (
@@ -42,7 +40,34 @@ export default function IncomeStreams() {
         <div className="panel">
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Income Streams</div>
-            <button className="btn btn-gold" style={{ padding: '7px 14px', fontSize: 12 }} onClick={handleAdd}>+ Add Stream</button>
+            <div style={{ position: 'relative' }}>
+              <button className="btn btn-gold" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => setPickerOpen(!pickerOpen)}>
+                + Add Stream {pickerOpen ? '▴' : '▾'}
+              </button>
+              {pickerOpen && (
+                <>
+                  <div onClick={() => setPickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid var(--border-light)', borderRadius: 10, boxShadow: 'var(--shadow-lg)', padding: 6, zIndex: 20, minWidth: 240 }}>
+                    {INCOME_TEMPLATES.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => addFromTemplate(t.id)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '8px 10px', background: 'transparent', border: 'none',
+                          borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(201,168,76,0.08)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{t.label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <div className="panel-body" style={{ padding: '16px 24px' }}>
             <div className="stream-row income-row" style={{ padding: '6px 0', borderBottom: '2px solid var(--border-light)' }}>
@@ -91,7 +116,7 @@ export default function IncomeStreams() {
               </div>
             ))}
 
-            <button className="add-row-btn" onClick={handleAdd}>+ Add income stream</button>
+            <button className="add-row-btn" onClick={() => addFromTemplate('blank')}>+ Add income stream</button>
           </div>
         </div>
       </div>

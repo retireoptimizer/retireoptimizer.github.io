@@ -6,6 +6,7 @@ import { defaultPlan } from '../schemas/plan';
 import { runProjection, type ProjectionResult } from '../engine/projection';
 import type { Scenario } from '../engine/scenario';
 import { defaultScenarios } from '../engine/scenario';
+import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
 
 export type DisplayMode = 'real' | 'nominal';
 
@@ -13,6 +14,8 @@ interface PlanState {
   plan: Plan;
   scenarios: Scenario[];
   displayMode: DisplayMode;
+  setupDismissed: boolean;
+  setSetupDismissed: (v: boolean) => void;
   setDisplayMode: (m: DisplayMode) => void;
   addScenario: (s: Scenario) => void;
   updateScenario: (id: string, patch: Partial<Scenario>) => void;
@@ -33,6 +36,9 @@ interface PlanState {
   removeExpenseStream: (id: string) => void;
   setWithdrawalStrategy: (s: Plan['withdrawalStrategy']) => void;
   setCustomPolicy: (policy: BlendPolicy) => void;
+  /** Apply an entire next plan produced by applyResultToPlan (optimizer Apply).
+   *  Atomic — sets customPolicy + optimizedForGoal + any mutated expense / personA / personB fields in one go. */
+  applyOptimizerResult: (next: Plan) => void;
   clearCustomPolicy: () => void;
   setConversion: (patch: Partial<ConversionParams>) => void;
   setState: (state: string) => void;
@@ -48,6 +54,8 @@ export const usePlanStore = create<PlanState>()(
       plan: defaultPlan(),
       scenarios: defaultScenarios(),
       displayMode: 'real',
+      setupDismissed: false,
+      setSetupDismissed: (setupDismissed) => set({ setupDismissed }),
       setDisplayMode: (displayMode) => set({ displayMode }),
       addScenario: (s) => set((st) => ({ scenarios: [...st.scenarios, s] })),
       updateScenario: (id, patch) => set((st) => ({ scenarios: st.scenarios.map((x) => x.id === id ? { ...x, ...patch } : x) })),
@@ -75,10 +83,11 @@ export const usePlanStore = create<PlanState>()(
       })),
       removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id) } })),
       setWithdrawalStrategy: (withdrawalStrategy) => set((s) => ({
-        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined },
+        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, optimizedForGoal: undefined },
       })),
       setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy } })),
-      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined } })),
+      applyOptimizerResult: (next) => set(() => ({ plan: next })),
+      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined, optimizedForGoal: undefined } })),
       setConversion: (patch) => set((s) => ({ plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } })),
       setState: (state) => set((s) => ({ plan: { ...s.plan, state } })),
       addGoal: (g) => set((s) => ({ plan: { ...s.plan, goals: [...(s.plan.goals ?? []), g] } })),
@@ -132,8 +141,14 @@ export const usePlanStore = create<PlanState>()(
 );
 
 /** Selector hook — returns a memoized projection result, re-run on every plan change.
- *  Engine is fast (~1-5ms per full 75y run), so we just run on every render. */
+ *  Engine is fast (~1-5ms per full 75y run), so we just run on every render.
+ *
+ *  Honors transient what-if overrides from `useWhatIfStore`: when the bar is active
+ *  and any override is set, the projection is run against the overlaid plan instead.
+ *  The saved plan in usePlanStore is never mutated. */
 export function useProjection(): ProjectionResult {
   const plan = usePlanStore((s) => s.plan);
-  return runProjection(plan);
+  const whatIf = useWhatIfStore();
+  const effective = applyWhatIf(plan, whatIf);
+  return runProjection(effective);
 }

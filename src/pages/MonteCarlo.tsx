@@ -1,12 +1,36 @@
 import { useState } from 'react';
-import { usePlanStore } from '../store/usePlanStore';
+import { usePlanStore, useProjection } from '../store/usePlanStore';
 import type { MonteCarloResult } from '../engine/monteCarlo';
 import { getEngineWorker } from '../engine/workerClient';
 import MonteCarloFan from '../components/charts/MonteCarloFan';
 import { fmtM, fmtPct } from '../lib/format';
+import { generateInsights, insightsForSurface } from '../engine/explain';
+import InsightCard from '../components/InsightCard';
+
+interface RiskBand {
+  label: string;
+  body: string;
+  tone: 'success' | 'good' | 'warning' | 'danger';
+}
+
+function riskBandFor(successRate: number): RiskBand {
+  if (successRate >= 0.95) return { label: 'Robust', tone: 'success', body: 'Plan funds in nearly every market scenario.' };
+  if (successRate >= 0.90) return { label: 'Healthy', tone: 'good', body: 'Solid funding probability across realistic markets.' };
+  if (successRate >= 0.75) return { label: 'Watch', tone: 'warning', body: 'Meaningful failure tail — review sequence risk and spending.' };
+  if (successRate >= 0.50) return { label: 'Strained', tone: 'warning', body: 'A significant share of trials run out before plan-to age.' };
+  return { label: 'At risk', tone: 'danger', body: 'Most adverse trials deplete the portfolio — plan needs adjustment.' };
+}
+
+const bandColor = (t: RiskBand['tone']): string => {
+  if (t === 'success') return 'var(--success)';
+  if (t === 'good') return 'var(--success)';
+  if (t === 'warning') return 'var(--warning)';
+  return 'var(--danger)';
+};
 
 export default function MonteCarlo() {
   const plan = usePlanStore((s) => s.plan);
+  const proj = useProjection();
   const [trials, setTrials] = useState(500);
   const [stdDev, setStdDev] = useState(10);
   const [running, setRunning] = useState(false);
@@ -24,6 +48,9 @@ export default function MonteCarlo() {
   };
 
   const successColor = (rate: number) => rate >= 0.9 ? 'var(--success)' : rate >= 0.75 ? 'var(--warning)' : 'var(--danger)';
+
+  const band = result ? riskBandFor(result.successRate) : null;
+  const insights = result ? insightsForSurface(generateInsights(plan, proj, result), 'mc') : [];
 
   return (
     <div className="page">
@@ -72,11 +99,22 @@ export default function MonteCarlo() {
             <span className={`badge ${result ? 'badge-success' : 'badge-neutral'}`}>{running ? 'Running' : result ? 'Complete' : 'Idle'}</span>
           </div>
           <div className="panel-body">
+            {band && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px', marginBottom: 14, borderRadius: 8, background: 'rgba(13,27,46,0.04)', borderLeft: `4px solid ${bandColor(band.tone)}` }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: bandColor(band.tone), textTransform: 'uppercase', letterSpacing: '1px' }}>{band.label}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{band.body}</span>
+              </div>
+            )}
             {result ? (
               <MonteCarloFan mc={result} height={320} />
             ) : (
               <div style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(13,27,46,0.03)', borderRadius: 8 }}>
                 Run a simulation to see the percentile fan chart
+              </div>
+            )}
+            {insights.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                {insights.map((i) => <InsightCard key={i.id} insight={i} />)}
               </div>
             )}
           </div>

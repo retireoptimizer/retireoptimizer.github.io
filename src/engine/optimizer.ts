@@ -43,6 +43,10 @@ export interface OptimizeResult {
 
   // Outer-goal answers
   solvedSpendingMultiplier?: number;    // for 'max-sustainable-spending'
+  /** Absolute sum of expense streams the optimizer recommends per year (today's $).
+   *  Equals `originalAnnualSpend * solvedSpendingMultiplier`. Used by the apply
+   *  handler to detect "already applied" without double-scaling. */
+  recommendedAnnualSpend?: number;
   solvedRetirementAge?: number;         // for 'min-retirement-age'
 
   // Headline string shown in the UI (e.g. "$112,400/yr · today's $").
@@ -406,7 +410,7 @@ function packageResult(
   inner: InnerEval,
   goal: UserGoal,
   evals: number,
-  extras: { solvedSpendingMultiplier?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string },
+  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string },
 ): OptimizeResult {
   const spec = REC_GOALS['max-end'];
   return {
@@ -420,6 +424,7 @@ function packageResult(
     goalLabel: USER_GOALS[goal].label,
     projection: inner.proj,
     solvedSpendingMultiplier: extras.solvedSpendingMultiplier,
+    recommendedAnnualSpend: extras.recommendedAnnualSpend,
     solvedRetirementAge: extras.solvedRetirementAge,
     headline: extras.headline,
     headlineLabel: extras.headlineLabel,
@@ -491,19 +496,21 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       }
     }
     opts.onProgress?.(1, 'Done');
+    const baseAnnualSpend = plan.expenseStreams.reduce((sum, e) => sum + e.annualAmount, 0);
     if (!bestFeasible) {
       // Even at 0.5× the plan depletes — return that result with a warning.
       const inner = innerOptimize(scaleExpenses(plan, 0.5), opts, evalCounter);
       return packageResult(inner, goal, evalCounter.n, {
         solvedSpendingMultiplier: 0.5,
+        recommendedAnnualSpend: baseAnnualSpend * 0.5,
         headline: 'Plan depletes even at 50% spending',
         headlineLabel: 'Max sustainable spending',
       });
     }
-    const baseAnnualSpend = plan.expenseStreams.reduce((sum, e) => sum + e.annualAmount, 0);
     const sustainable = baseAnnualSpend * bestFeasible.s;
     return packageResult(bestFeasible.inner, goal, evalCounter.n, {
       solvedSpendingMultiplier: bestFeasible.s,
+      recommendedAnnualSpend: sustainable,
       headline: `${fmtUSD(sustainable)}/yr (today's $)`,
       headlineLabel: `Max sustainable spending — ${(bestFeasible.s * 100).toFixed(0)}% of current plan`,
     });

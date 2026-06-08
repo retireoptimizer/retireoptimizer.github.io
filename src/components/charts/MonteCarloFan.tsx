@@ -1,7 +1,36 @@
 import { Line } from 'react-chartjs-2';
-import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact } from './setup';
+import type { ChartOptions, ChartData, Plugin } from 'chart.js';
+import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
 import type { MonteCarloResult } from '../../engine/monteCarlo';
+
+/** Draws a red-tinted depletion-probability ribbon along the bottom of the chart.
+ *  At each x position, the ribbon's opacity scales with the fraction of trials
+ *  whose portfolio is ≤0 by that age. Visually answers "by what age does failure
+ *  start appearing, and how quickly does it accelerate?" */
+const depleteRibbonPlugin: Plugin<'line'> = {
+  id: 'depleteRibbon',
+  afterDatasetsDraw: (chart) => {
+    const data = (chart.config.options as { plugins?: { depleteRibbon?: { fracs?: number[] } } }).plugins?.depleteRibbon?.fracs;
+    if (!data || data.length === 0) return;
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales.x) return;
+    const xScale = scales.x;
+    const ribbonHeight = 6;
+    const y0 = chartArea.bottom - ribbonHeight;
+    ctx.save();
+    for (let i = 0; i < data.length; i++) {
+      const frac = data[i];
+      if (frac <= 0.001) continue;
+      const x = xScale.getPixelForValue(i);
+      const nextX = i + 1 < data.length ? xScale.getPixelForValue(i + 1) : x + 2;
+      const w = Math.max(1, nextX - x);
+      // Alpha grows with depletion fraction (0–1 maps to 0.1–0.85).
+      ctx.fillStyle = `rgba(192,57,43,${0.1 + frac * 0.75})`;
+      ctx.fillRect(x, y0, w, ribbonHeight);
+    }
+    ctx.restore();
+  },
+};
 
 interface Props {
   mc: MonteCarloResult;
@@ -74,13 +103,15 @@ export default function MonteCarloFan({ mc, height = 300 }: Props) {
       tooltip: {
         filter: (item) => item.dataset.label === 'Median Outcome' || item.dataset.label === '25th–75th Percentile' || item.dataset.label === 'p10' || item.dataset.label === 'p10-p25' || item.dataset.label === 'p75-p90',
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
+          title: ageTooltipTitle,
           label: (item) => {
             const lbl = item.dataset.label === 'p10' ? '10th pct' : item.dataset.label === 'p10-p25' ? '25th pct' : item.dataset.label === 'p75-p90' ? '90th pct' : item.dataset.label === '25th–75th Percentile' ? '75th pct' : 'Median';
-            return `${lbl}: ${fmtCompact(item.parsed.y ?? 0)}`;
+            return `${lbl}: ${fmtFull(item.parsed.y ?? 0)}`;
           },
         },
       },
+      // Custom plugin config — typed loosely so Chart.js doesn't complain.
+      ...({ depleteRibbon: { fracs: mc.depleteFracByAge ?? [] } } as Record<string, unknown>),
     },
     scales: {
       y: { ticks: { callback: (v) => fmtCompact(Number(v)) }, grid: { color: palette.borderLight } },
@@ -90,7 +121,7 @@ export default function MonteCarloFan({ mc, height = 300 }: Props) {
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} />
+      <Line data={data} options={options} plugins={[depleteRibbonPlugin]} />
     </div>
   );
 }

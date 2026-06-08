@@ -1,6 +1,6 @@
 import { Bar } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact } from './setup';
+import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -14,18 +14,23 @@ export default function RothVsRmd({ proj, real = true, height = 220 }: Props) {
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
 
+  // Diverging layout: Conversions above zero (positive bars), RMDs below zero
+  // (negative bars). Visually separates the *voluntary* (top) and *forced* (bottom)
+  // movements out of Pre-tax. Same stack so each year occupies one column.
   const data: ChartData<'bar'> = {
     labels,
     datasets: [
       {
-        label: 'Roth Conversions',
+        label: 'Roth Conversions (voluntary)',
         data: rows.map((r) => scale(r.rothConv, r.inflationFactor)),
         backgroundColor: palette.gold,
+        stack: 'conv-rmd',
       },
       {
-        label: 'RMDs',
-        data: rows.map((r) => scale(r.rmd, r.inflationFactor)),
+        label: 'RMDs (forced)',
+        data: rows.map((r) => -scale(r.rmd, r.inflationFactor)),
         backgroundColor: palette.warning,
+        stack: 'conv-rmd',
       },
     ],
   };
@@ -33,19 +38,21 @@ export default function RothVsRmd({ proj, real = true, height = 220 }: Props) {
   const options: ChartOptions<'bar'> = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: indexInteraction,
     plugins: {
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
-          label: (item) => `${item.dataset.label}: ${fmtCompact(item.parsed.y ?? 0)}`,
+          title: ageTooltipTitle,
+          label: (item) => `${item.dataset.label}: ${fmtFull(Math.abs(item.parsed.y ?? 0))}`,
         },
       },
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { stacked: true, grid: { display: false } },
       y: {
-        ticks: { callback: (v) => fmtCompact(Number(v)) },
+        stacked: true,
+        ticks: { callback: (v) => fmtCompact(Math.abs(Number(v))) },
         grid: { color: palette.borderLight },
       },
     },

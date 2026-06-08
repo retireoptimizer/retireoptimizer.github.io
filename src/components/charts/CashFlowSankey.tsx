@@ -1,4 +1,4 @@
-import { palette, fmtCompact } from './setup';
+import { palette, fmtFull } from './setup';
 import type { ProjectionRow } from '../../engine/projection';
 
 interface Props {
@@ -17,10 +17,11 @@ export default function CashFlowSankey({ row, height = 320 }: Props) {
   // Inflows (real $)
   const inflows: Node[] = [
     { id: 'wdTax', label: 'Withdrawal · Taxable', value: row.wdTax / inf, color: palette.success },
-    { id: 'wdTrd', label: 'Withdrawal · Pre-tax', value: (row.wdTrd + row.rmd) / inf, color: palette.navy },
+    { id: 'wdTrd', label: 'Withdrawal · Pre-tax', value: row.wdTrd / inf, color: palette.navy },
+    { id: 'rmd',   label: 'RMD · Pre-tax', value: row.rmd / inf, color: palette.warning },
     { id: 'wdRth', label: 'Withdrawal · Roth', value: row.wdRth / inf, color: palette.gold },
     { id: 'ss',    label: 'Social Security', value: row.totalSS / inf, color: palette.goldLight },
-    { id: 'oth',   label: 'Other Income', value: row.otherIncome / inf, color: palette.slate },
+    { id: 'oth',   label: 'Other Income', value: row.otherIncome / inf, color: palette.incomeOther },
   ].filter((n) => n.value > 0);
 
   const totalIn = inflows.reduce((s, n) => s + n.value, 0);
@@ -34,7 +35,7 @@ export default function CashFlowSankey({ row, height = 320 }: Props) {
   const outflows: Node[] = [
     { id: 'spend',  label: 'Net Spending', value: spending, color: palette.danger },
     { id: 'fed',    label: 'Federal Tax', value: fedTax, color: palette.warning },
-    { id: 'state',  label: 'State + IRMAA', value: stateTax + irmaa, color: palette.textMuted },
+    { id: 'state',  label: 'State + IRMAA', value: stateTax + irmaa, color: palette.taxOther },
     { id: 'save',   label: 'Net Savings', value: savings, color: palette.success },
   ].filter((n) => n.value > 0);
 
@@ -103,7 +104,7 @@ export default function CashFlowSankey({ row, height = 320 }: Props) {
               {n.label}
             </text>
             <text x={n.x - 6} y={n.y + n.h / 2 + 14} fontSize={10} textAnchor="end" dominantBaseline="middle" fill={palette.textMuted}>
-              {fmtCompact(n.value)}
+              {fmtFull(n.value)}
             </text>
           </g>
         ))}
@@ -114,7 +115,7 @@ export default function CashFlowSankey({ row, height = 320 }: Props) {
               {n.label}
             </text>
             <text x={n.x + nodeWidth + 6} y={n.y + n.h / 2 + 14} fontSize={10} textAnchor="start" dominantBaseline="middle" fill={palette.textMuted}>
-              {fmtCompact(n.value)}
+              {fmtFull(n.value)}
             </text>
           </g>
         ))}

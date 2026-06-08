@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
-import EffectiveTaxLine from '../components/charts/EffectiveTaxLine';
 import IrmaaMagiLine from '../components/charts/IrmaaMagiLine';
 import TaxDrag from '../components/charts/TaxDrag';
-import RothVsRmd from '../components/charts/RothVsRmd';
+import CumulativeTaxCompare from '../components/charts/CumulativeTaxCompare';
+import BalanceCompare from '../components/charts/BalanceCompare';
+import ChartFrame from '../components/charts/ChartFrame';
 import { STATE_PROFILES } from '../engine/stateTax';
+import { generateInsights, insightsForSurface } from '../engine/explain';
+import InsightCard from '../components/InsightCard';
+import { compareWithWithoutConversion } from '../engine/comparison';
+import { fmtK } from '../lib/format';
 
 type TaxTab = 'federal' | 'state' | 'irmaa';
 
@@ -22,6 +27,8 @@ export default function TaxPlanning() {
     return q === 'state' || q === 'irmaa' ? q : 'federal';
   })();
   const [tab, setTab] = useState<TaxTab>(initialTab);
+  const insights = insightsForSurface(generateInsights(plan, proj), 'taxes');
+  const cmp = useMemo(() => compareWithWithoutConversion(plan), [plan]);
 
   return (
     <div className="page">
@@ -30,7 +37,7 @@ export default function TaxPlanning() {
           <div>
             <div className="page-eyebrow">Tax</div>
             <div className="page-title">Tax Planning</div>
-            <div className="page-subtitle">Federal brackets · State tax · IRMAA tiers</div>
+            <div className="page-subtitle">Your projected federal trajectory, state tax exposure, and Medicare IRMAA crossings</div>
           </div>
           <div className="header-actions">
             <div className="toggle-group" role="tablist" aria-label="Tax view">
@@ -43,75 +50,21 @@ export default function TaxPlanning() {
       </div>
       <div className="page-body">
         {tab === 'federal' && (
-          <>
-            <div className="panel" style={{ marginBottom: 20 }}>
-              <div className="panel-header">
-                <div className="panel-title"><div className="panel-title-dot"></div>2025 Federal Tax Brackets (MFJ)</div>
-                <span className="badge badge-neutral">OBBBA · Pub. L. 119-21</span>
-              </div>
-              <div className="panel-body" style={{ padding: 0 }}>
-                <table className="data-table">
-                  <thead><tr><th>Rate</th><th>Income From</th><th>Income To</th><th>Your Exposure</th></tr></thead>
-                  <tbody>
-                    <tr><td><strong>10%</strong></td><td className="td-mono">$0</td><td className="td-mono">$23,850</td><td><span className="badge badge-success">✓ In range</span></td></tr>
-                    <tr><td><strong>12%</strong></td><td className="td-mono">$23,851</td><td className="td-mono">$96,950</td><td><span className="badge badge-success">✓ In range</span></td></tr>
-                    <tr><td><strong>22%</strong></td><td className="td-mono">$96,951</td><td className="td-mono">$206,700</td><td><span className="badge badge-neutral">Current bracket</span></td></tr>
-                    <tr><td><strong>24%</strong></td><td className="td-mono">$206,701</td><td className="td-mono">$394,600</td><td><span className="badge badge-warning">Roth boundary</span></td></tr>
-                    <tr><td><strong>32%</strong></td><td className="td-mono">$394,601</td><td className="td-mono">$501,050</td><td>—</td></tr>
-                    <tr><td><strong>35%</strong></td><td className="td-mono">$501,051</td><td className="td-mono">$751,600</td><td>—</td></tr>
-                    <tr><td><strong>37%</strong></td><td className="td-mono">$751,601+</td><td className="td-mono">—</td><td>—</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-light)', background: 'rgba(250,247,242,0.6)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 4 }}>MFJ Standard Deduction</div>
-                    <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 16, fontWeight: 600 }}>$31,500</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>OBBBA · Pub. L. 119-21</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 4 }}>Senior Add-On (65+)</div>
-                    <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 16, fontWeight: 600 }}>$1,600/person</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Per qualifying spouse</div>
-                  </div>
-                </div>
-              </div>
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <div className="panel-header">
+              <div className="panel-title"><div className="panel-title-dot"></div>Your Projected Tax Trajectory</div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Federal tax paid (bars, left axis) · Effective rate (line, right axis)</span>
             </div>
-
-            <div className="panel" style={{ marginBottom: 20 }}>
-              <div className="panel-header">
-                <div className="panel-title"><div className="panel-title-dot"></div>Effective Tax Rate Trajectory (%)</div>
-              </div>
-              <div className="panel-body">
-                <EffectiveTaxLine proj={proj} height={240} />
-              </div>
+            <div className="panel-body">
+              <ChartFrame caption="Bars are dollars of federal tax paid each year; the line is what % of taxable income that represents. To change the shape of this curve, adjust your withdrawal or Roth conversion strategy on the Strategy page.">
+                <TaxDrag proj={proj} real={real} height={300} />
+              </ChartFrame>
             </div>
-
-            <div className="panel" style={{ marginBottom: 20 }}>
-              <div className="panel-header">
-                <div className="panel-title"><div className="panel-title-dot"></div>Tax Drag Analysis ($)</div>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Federal tax paid (bars) · Effective rate on taxable income (line)</span>
-              </div>
-              <div className="panel-body">
-                <TaxDrag proj={proj} real={real} height={240} />
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header">
-                <div className="panel-title"><div className="panel-title-dot"></div>Roth Conversions vs RMDs ($)</div>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Conversions concentrated pre-RMD · RMDs forced after age {plan.assumptions.rmdStartAge}</span>
-              </div>
-              <div className="panel-body">
-                <RothVsRmd proj={proj} real={real} height={240} />
-              </div>
-            </div>
-          </>
+          </div>
         )}
 
         {tab === 'state' && (
-          <div className="panel">
+          <div className="panel" style={{ marginBottom: 20 }}>
             <div className="panel-header">
               <div className="panel-title"><div className="panel-title-dot"></div>State Tax · {stateProfile.name}</div>
             </div>
@@ -150,6 +103,17 @@ export default function TaxPlanning() {
 
         {tab === 'irmaa' && (
           <>
+            <div className="panel" style={{ marginBottom: 20 }}>
+              <div className="panel-header">
+                <div className="panel-title"><div className="panel-title-dot"></div>Projected MAGI vs IRMAA Thresholds</div>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Threshold lines are 2025 tiers in today's $</span>
+              </div>
+              <div className="panel-body">
+                <ChartFrame caption="The dashed horizontal lines are the 2025 IRMAA tier ceilings. Where your MAGI line crosses one, your Medicare premiums step up two years later.">
+                  <IrmaaMagiLine proj={proj} real={real} height={320} />
+                </ChartFrame>
+              </div>
+            </div>
             <div className="insight-card warning" style={{ marginBottom: 20, borderRadius: 'var(--radius)' }}>
               <div className="insight-icon">⚕</div>
               <div className="insight-content">
@@ -157,53 +121,58 @@ export default function TaxPlanning() {
                 <div className="insight-body">IRMAA is a 2-year lookback: today's MAGI affects premiums 2 years later. Roth conversions in low-bracket years can keep future MAGI below the next tier and save hundreds to thousands of dollars per year in Part B and Part D add-ons.</div>
               </div>
             </div>
-
-            <div className="panel" style={{ marginBottom: 20 }}>
-              <div className="panel-header">
-                <div className="panel-title"><div className="panel-title-dot"></div>2025 IRMAA Thresholds (MFJ)</div>
-              </div>
-              <div className="panel-body" style={{ padding: 0 }}>
-                <div style={{ padding: '12px 24px', background: 'rgba(13,27,46,0.03)', borderBottom: '1px solid var(--border-light)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>
-                  <div>MAGI (MFJ)</div><div>Part B Add</div><div>Part D Add</div><div>Status</div>
-                </div>
-                <div className="irmaa-tier">
-                  <div>≤ $206,000</div><div className="td-mono">$0</div><div className="td-mono">$0</div>
-                  <span className="badge badge-success">Base</span>
-                </div>
-                <div className="irmaa-tier">
-                  <div>$206,001 – $258,000</div><div className="td-mono">+$838/yr</div><div className="td-mono">+$226/yr</div>
-                  <span className="badge badge-warning">Tier 1</span>
-                </div>
-                <div className="irmaa-tier">
-                  <div>$258,001 – $322,000</div><div className="td-mono">+$2,092/yr</div><div className="td-mono">+$583/yr</div>
-                  <span className="badge badge-neutral">Tier 2</span>
-                </div>
-                <div className="irmaa-tier">
-                  <div>$322,001 – $386,000</div><div className="td-mono">+$3,346/yr</div><div className="td-mono">+$940/yr</div>
-                  <span className="badge badge-neutral">Tier 3</span>
-                </div>
-                <div className="irmaa-tier">
-                  <div>$386,001 – $750,000</div><div className="td-mono">+$4,600/yr</div><div className="td-mono">+$1,296/yr</div>
-                  <span className="badge badge-neutral">Tier 4</span>
-                </div>
-                <div className="irmaa-tier">
-                  <div>&gt; $750,000</div><div className="td-mono">+$5,854/yr</div><div className="td-mono">+$1,653/yr</div>
-                  <span className="badge badge-neutral">Tier 5</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header">
-                <div className="panel-title"><div className="panel-title-dot"></div>Projected MAGI vs IRMAA Thresholds ($)</div>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Threshold lines are 2025 tiers in today's $</span>
-              </div>
-              <div className="panel-body">
-                <IrmaaMagiLine proj={proj} real={real} height={300} />
-              </div>
-            </div>
           </>
         )}
+
+        {insights.length > 0 && (
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <div className="panel-header">
+              <div className="panel-title"><div className="panel-title-dot"></div>Key Tax Insights</div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Bracket and IRMAA observations from your plan</span>
+            </div>
+            <div className="panel-body">
+              {insights.map((i) => <InsightCard key={i.id} insight={i} />)}
+            </div>
+          </div>
+        )}
+
+        <div className="panel">
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Roth Conversion Impact · Cumulative Tax</div>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>With vs Without conversions</span>
+          </div>
+          <div className="panel-body">
+            <ChartFrame caption="With vs without Roth conversions. The gap is your lifetime federal tax delta from the conversion strategy.">
+              <CumulativeTaxCompare cmp={cmp} height={260} />
+            </ChartFrame>
+            <div style={{ marginTop: 10, fontSize: 12, color: cmp.lifetimeTaxDelta < 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+              {cmp.lifetimeTaxDelta < 0
+                ? `Conversions save ${fmtK(Math.abs(cmp.lifetimeTaxDelta))} in lifetime federal tax`
+                : cmp.lifetimeTaxDelta > 1000
+                ? `Conversions add ${fmtK(cmp.lifetimeTaxDelta)} in lifetime federal tax — consider reducing scope`
+                : 'Conversion impact is currently minimal — enable a conversion mode on the Strategy page'}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel" style={{ marginTop: 20 }}>
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Roth Conversion Impact · Portfolio Balance</div>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>With vs Without conversions</span>
+          </div>
+          <div className="panel-body">
+            <ChartFrame caption="Higher line = more end-of-plan wealth retained after the conversion strategy plays out.">
+              <BalanceCompare cmp={cmp} height={260} />
+            </ChartFrame>
+            <div style={{ marginTop: 10, fontSize: 12, color: cmp.endBalanceDelta > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+              {cmp.endBalanceDelta > 1000
+                ? `End balance with conversions: +${fmtK(cmp.endBalanceDelta)} (today's $)`
+                : cmp.endBalanceDelta < -1000
+                ? `End balance with conversions: ${fmtK(cmp.endBalanceDelta)} (today's $)`
+                : 'Negligible end-balance impact — enable a conversion mode on the Strategy page'}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

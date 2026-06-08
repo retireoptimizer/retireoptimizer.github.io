@@ -107,6 +107,19 @@ describe('optimizeStrategy (smoke)', () => {
     }
   }, 120_000);
 
+  it('max-sustainable-spending reports recommendedAnnualSpend = base × multiplier', () => {
+    // Regression: the apply handler needs this absolute number to detect "already
+    // applied" without snapshotting pre-apply spending. The displayed end balance
+    // (~$0 at boundary) matches the saved plan ONLY after expenses are scaled to
+    // this recommended level — if the consumer only applies policy, the global
+    // bar diverges materially from the optimizer panel.
+    const plan = defaultPlan();
+    const r = optimizeStrategy(plan, 'max-sustainable-spending', { useNelderMead: false });
+    expect(r.recommendedAnnualSpend).toBeDefined();
+    const baseSum = plan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
+    expect(r.recommendedAnnualSpend!).toBeCloseTo(baseSum * r.solvedSpendingMultiplier!, 0);
+  }, 120_000);
+
   it('min-retirement-age returns an age <= the current retirement age', () => {
     const plan = defaultPlan();
     const r = optimizeStrategy(plan, 'min-retirement-age', { useNelderMead: false });

@@ -1,6 +1,6 @@
 import { Chart } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact } from './setup';
+import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -50,12 +50,12 @@ export default function TaxDrag({ proj, real = true, height = 220 }: Props) {
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
+          title: ageTooltipTitle,
           label: (item) => {
             const v = item.parsed.y ?? 0;
             return item.dataset.yAxisID === 'y1'
               ? `${item.dataset.label}: ${v.toFixed(1)}%`
-              : `${item.dataset.label}: ${fmtCompact(v)}`;
+              : `${item.dataset.label}: ${fmtFull(v)}`;
           },
         },
       },

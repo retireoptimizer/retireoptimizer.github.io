@@ -7,50 +7,62 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('Dashboard loads with default plan and shows KPIs', async ({ page }) => {
+test('Dashboard loads with default plan and shows live metrics on the global ribbon', async ({ page }) => {
   await page.goto('/');
   // Sidebar nav present
   await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
-  // KPI tiles populated (not "—")
-  await expect(page.getByText('Projected Portfolio at')).toBeVisible();
-  await expect(page.getByText('Withdrawal Rate (Year 1)')).toBeVisible();
-  await expect(page.getByText('Plan Longevity')).toBeVisible();
-  // Live metrics bar visible
+  // Live metrics bar visible — the Dashboard KPI tiles were dropped (they
+  // duplicated the global ribbon).
   await expect(page.getByText(/Portfolio @ Retirement/i)).toBeVisible();
+  await expect(page.getByText(/Plan Lasts To/i)).toBeVisible();
+  await expect(page.getByText(/End Balance/i).first()).toBeVisible();
+  await expect(page.getByText('Initial Withdrawal Rate', { exact: true })).toBeVisible();
 });
 
-test('Personal Details page renders inputs and SS fields', async ({ page }) => {
+test('Personal Details page renders inputs and SS callout', async ({ page }) => {
   await page.goto('/personal');
   // Labels include the person's actual name, not the literal "Person A".
   await expect(page.getByText(/— Full Name$/).first()).toBeVisible();
   await expect(page.getByText(/— Target Retirement Age$/).first()).toBeVisible();
-  await expect(page.getByText(/SS PIA/).first()).toBeVisible();
-  await expect(page.getByText(/SS Claim Age/).first()).toBeVisible();
+  // SS PIA / SS Claim Age inputs were removed (SS now comes from Income Streams).
+  // A callout points users to the new location.
+  await expect(page.getByText(/Social Security/).first()).toBeVisible();
+  await expect(page.getByText(/Income Streams/i).first()).toBeVisible();
   // State selector populated with at least 6 states
   const stateSelect = page.locator('select').first();
   const options = await stateSelect.locator('option').count();
   expect(options).toBeGreaterThanOrEqual(6);
 });
 
-test('Strategy page exposes Pick + Optimize tabs and custom-blend disclosure', async ({ page }) => {
-  await page.goto('/withdrawal');
-  await expect(page.getByRole('button', { name: 'Pick', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Optimize', exact: true })).toBeVisible();
-  await expect(page.getByText('Pick a Withdrawal Order').first()).toBeVisible();
-  // Custom Blend is now a disclosure under Pick — open it.
-  await page.getByText('Customize the blend (advanced)').click();
+test('Set Goals page exposes the optimizer goal selector; Dashboard hosts the preset chips + Customize sheet', async ({ page }) => {
+  // After the Set Goals refactor, the /strategy page is now the focused goal-picker
+  // (3 optimizer goals only). Withdrawal-preset selection moved to Dashboard's
+  // StrategyChooser, and the rich Conversion + Custom Blend UI moved into a
+  // Customize side sheet triggered from Dashboard.
+  await page.goto('/strategy');
+  await expect(page.getByText(/what outcome do you want/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pick', exact: true })).toHaveCount(0);
+
+  await page.goto('/');
+  // Dashboard's StrategyChooser exposes preset chips.
+  await expect(page.getByRole('button', { name: 'Tax-first', exact: true })).toBeVisible();
+  // Customize opens the side sheet with the Custom Blend Editor.
+  await page.getByRole('button', { name: /Customize/ }).click();
   await expect(page.getByText('Custom Blend Editor')).toBeVisible();
 });
 
-test('Add a scenario and see it appear in the comparison table', async ({ page }) => {
-  await page.goto('/scenarios');
-  await expect(page.getByRole('button', { name: '+ Add Scenario' })).toBeVisible();
-  await page.getByRole('button', { name: '+ Add Scenario' }).click();
+test('Add a scenario from the Dashboard template picker and see it appear in Pinned Comparisons', async ({ page }) => {
+  // After the IA refactor, the standalone /scenarios route is gone. The
+  // "+ Add From Template" affordance lives inline on the Dashboard's Pinned
+  // Comparisons panel.
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: '+ Add From Template' })).toBeVisible();
+  await page.getByRole('button', { name: '+ Add From Template' }).click();
   await page.getByRole('button', { name: /Retire 3 Years Earlier/ }).first().click();
-  // After clicking, the modal closes and the new column appears
   await page.waitForTimeout(200);
-  // The default plan starts with 4 scenarios; adding another makes 5
+  // Dashboard's ScenarioCompare is limit=3 so only 3 scenario columns show, but the
+  // header row still has at least Metric + Base + 3 scenarios.
   const columns = page.locator('thead th');
   const count = await columns.count();
-  expect(count).toBeGreaterThanOrEqual(6); // Metric col + Base + at least 4 scenarios
+  expect(count).toBeGreaterThanOrEqual(5);
 });

@@ -17,6 +17,8 @@ export interface MonteCarloResult {
   p75: number[];
   p90: number[];
   successRate: number;          // fraction of trials where plan funds through plan-to age
+  /** Fraction of trials with portfolio ≤ 0 by each age (one entry per age). */
+  depleteFracByAge: number[];
   medianEndBalance: number;     // real $ at last age
   p10EndBalance: number;
   p90EndBalance: number;
@@ -101,6 +103,7 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
   }
 
   const p10: number[] = [], p25: number[] = [], p50: number[] = [], p75: number[] = [], p90: number[] = [];
+  const depleteFracByAge: number[] = [];
   for (const col of matrix) {
     const sorted = [...col].sort((a, b) => a - b);
     p10.push(quantile(sorted, 0.10));
@@ -108,6 +111,8 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
     p50.push(quantile(sorted, 0.50));
     p75.push(quantile(sorted, 0.75));
     p90.push(quantile(sorted, 0.90));
+    const depleted = col.reduce((n, v) => n + (v <= 0 ? 1 : 0), 0);
+    depleteFracByAge.push(depleted / col.length);
   }
 
   const sortedEnd = [...endTotals].sort((a, b) => a - b);
@@ -152,6 +157,7 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
     ages,
     p10, p25, p50, p75, p90,
     successRate: successCount / trials,
+    depleteFracByAge,
     medianEndBalance: quantile(sortedEnd, 0.5),
     p10EndBalance: quantile(sortedEnd, 0.10),
     p90EndBalance: quantile(sortedEnd, 0.90),

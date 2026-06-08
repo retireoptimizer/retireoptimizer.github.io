@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import LiveMetricsBar from './LiveMetricsBar';
 import { usePlanStore } from '../store/usePlanStore';
@@ -10,6 +10,13 @@ export default function AppShell() {
   const setDisplayMode = usePlanStore((s) => s.setDisplayMode);
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const navigate = useNavigate();
+
+  const onBuildPlan = () => {
+    navigate('/');
+    setToast({ kind: 'ok', text: 'Plan built — viewing dashboard' });
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const onExport = () => {
     downloadPlan(plan, `fireopt-${new Date().toISOString().slice(0, 10)}.json`);
@@ -89,17 +96,6 @@ export default function AppShell() {
 
       <div className="app-shell">
         <div className="sidebar">
-          <div className="sidebar-section-label">Overview</div>
-          <NavLink to="/" end className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
-              <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
-              <rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
-              <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
-            </svg>
-            Dashboard
-          </NavLink>
-
           <div className="sidebar-section-label">Inputs</div>
           <NavLink to="/personal" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -126,22 +122,37 @@ export default function AppShell() {
             </svg>
             Portfolio
           </NavLink>
-
-          <div className="sidebar-section-label">Strategy</div>
           <NavLink to="/strategy" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" strokeWidth="1.8"/>
             </svg>
-            Strategy
-          </NavLink>
-          <NavLink to="/scenarios" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M4 6h16M4 12h16M4 18h16M9 3v18M15 3v18" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            Scenarios
+            Set Goals
           </NavLink>
 
-          <div className="sidebar-section-label">Tax</div>
+          <button
+            className="btn btn-gold"
+            onClick={onBuildPlan}
+            style={{ margin: '12px 12px 8px 12px', justifyContent: 'center', fontSize: 13, padding: '10px 14px' }}
+          >
+            Build Plan →
+          </button>
+
+          <div className="sidebar-section-label">Results</div>
+          <NavLink to="/" end className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
+            </svg>
+            Dashboard
+          </NavLink>
+          <NavLink to="/projections" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2c2.76 0 5.26 1.12 7.07 2.93M22 2l-3.5 3.5M16 2h6v6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Projections
+          </NavLink>
           <NavLink to="/taxes" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.8"/>
@@ -149,21 +160,11 @@ export default function AppShell() {
             </svg>
             Tax Planning
           </NavLink>
-
-          <div className="sidebar-section-label">Risk</div>
           <NavLink to="/montecarlo" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M18 20V10M12 20V4M6 20v-6" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
             Monte Carlo
-          </NavLink>
-
-          <div className="sidebar-section-label">Projections</div>
-          <NavLink to="/projections" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2c2.76 0 5.26 1.12 7.07 2.93M22 2l-3.5 3.5M16 2h6v6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Projections
           </NavLink>
 
           <div className="sidebar-spacer"></div>

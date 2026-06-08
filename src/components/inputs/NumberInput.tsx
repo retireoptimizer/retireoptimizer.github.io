@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { formatWithCommas } from '../../lib/format';
 
 interface Props {
   value: number;
@@ -12,12 +13,14 @@ interface Props {
   placeholder?: string;
 }
 
-const formatFor = (v: number, scale: number, digits?: number): string => {
+const formatFor = (v: number, scale: number, digits?: number, withCommas = false): string => {
   if (!isFinite(v)) return '';
   const display = v * scale;
-  if (digits != null) return display.toFixed(digits);
-  return String(display);
+  const text = digits != null ? display.toFixed(digits) : String(display);
+  return withCommas ? formatWithCommas(text) : text;
 };
+
+const stripCommas = (s: string) => s.replace(/,/g, '');
 
 export function NumberInput({
   value,
@@ -30,34 +33,40 @@ export function NumberInput({
   style,
   placeholder,
 }: Props) {
-  const [draft, setDraft] = useState<string>(() => formatFor(value, scale, digits));
+  // Live comma formatting is only useful for unscaled, integer-ish dollar inputs.
+  // Percentage / decimal inputs (scale != 1 or digits set) skip it so the user
+  // can type "0.5" without seeing it morph mid-keystroke.
+  const useCommas = scale === 1 && digits == null;
+  const [draft, setDraft] = useState<string>(() => formatFor(value, scale, digits, useCommas));
   const focusedRef = useRef(false);
 
   useEffect(() => {
-    if (!focusedRef.current) setDraft(formatFor(value, scale, digits));
-  }, [value, scale, digits]);
+    if (!focusedRef.current) setDraft(formatFor(value, scale, digits, useCommas));
+  }, [value, scale, digits, useCommas]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = e.target.value;
-    setDraft(next);
-    if (next === '' || next === '-' || next === '.' || next === '-.') return;
-    const parsed = parseFloat(next);
+    const raw = e.target.value;
+    const stripped = useCommas ? stripCommas(raw) : raw;
+    setDraft(useCommas ? formatWithCommas(stripped) : raw);
+    if (stripped === '' || stripped === '-' || stripped === '.' || stripped === '-.') return;
+    const parsed = parseFloat(stripped);
     if (isNaN(parsed)) return;
     onCommit(parsed / scale);
   };
 
   const handleBlur = () => {
     focusedRef.current = false;
-    const parsed = parseFloat(draft);
+    const stripped = useCommas ? stripCommas(draft) : draft;
+    const parsed = parseFloat(stripped);
     if (isNaN(parsed)) {
-      setDraft(formatFor(value, scale, digits));
+      setDraft(formatFor(value, scale, digits, useCommas));
       return;
     }
     let committed = parsed / scale;
     if (min != null) committed = Math.max(min, committed);
     if (max != null) committed = Math.min(max, committed);
     onCommit(committed);
-    setDraft(formatFor(committed, scale, digits));
+    setDraft(formatFor(committed, scale, digits, useCommas));
   };
 
   return (

@@ -70,7 +70,7 @@ test('Dashboard KPIs match engine output for a fixture plan', async ({ page }) =
   expect(displayedLasts?.trim()).toBe(expectedLasts);
 });
 
-test('Real/nominal toggle changes End Balance number', async ({ page }) => {
+test('Real/nominal toggle changes LiveMetricsBar End Balance', async ({ page }) => {
   const plan = planA_simple();
   const proj = runProjection(plan);
 
@@ -83,17 +83,19 @@ test('Real/nominal toggle changes End Balance number', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText(/End Balance/i).first()).toBeVisible();
 
-  // Real value
   const endCell = page.locator('div', { hasText: /^End Balance$/i }).first();
-  const realText = (await endCell.locator('..').locator('div').nth(1).textContent())?.trim();
-  expect(realText).toBe(fmtM(proj.endTotalReal));
+  const readEnd = async () => (await endCell.locator('..').locator('div').nth(1).textContent())?.trim();
 
-  // If real and nominal differ meaningfully, toggling should change the display.
-  // LiveMetricsBar always shows real (today's $) per its current implementation,
-  // so we don't actually expect this number to change on the current dashboard —
-  // this test documents the current contract. When the AppShell toggle is wired
-  // to LiveMetricsBar in the future, update this assertion to expect a change.
+  // Real value first (the seeded displayMode).
+  expect(await readEnd()).toBe(fmtM(proj.endTotalReal));
+
+  // Flip the AppShell toggle to Nominal. The radio is keyed by accessible name.
+  await page.getByRole('radio', { name: /Nominal \$/i }).click();
+
+  // Bar must now show the nominal end balance — different from real for any
+  // plan with non-zero inflation.
   expect(proj.endTotalNominal).toBeGreaterThan(proj.endTotalReal);
+  expect(await readEnd()).toBe(fmtM(proj.endTotalNominal));
 });
 
 test('Plan export/import round-trip is byte-identical', async ({ page }) => {

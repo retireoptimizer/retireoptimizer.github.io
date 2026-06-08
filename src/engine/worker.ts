@@ -3,6 +3,7 @@ import * as Comlink from 'comlink';
 import type { Plan } from '../schemas/plan';
 import { runMonteCarlo, type MonteCarloOptions, type MonteCarloResult } from './monteCarlo';
 import { optimizeStrategy, type OptimizeResult } from './optimizer';
+import { previewAllPresets, type PresetPreviewResult } from './presetPreview';
 import type { UserGoal } from './recommender';
 
 export interface OptimizeWorkerOptions {
@@ -18,6 +19,7 @@ export interface EngineWorkerAPI {
     options?: OptimizeWorkerOptions,
     onProgress?: (frac: number, message?: string) => void,
   ): OptimizeResult;
+  previewPresets(plan: Plan): PresetPreviewResult;
 }
 
 const api: EngineWorkerAPI = {
@@ -30,6 +32,9 @@ const api: EngineWorkerAPI = {
       thorough: options?.thorough,
       onProgress: onProgress ? (frac, msg) => onProgress(frac, msg) : undefined,
     });
+  },
+  previewPresets(plan) {
+    return previewAllPresets(plan);
   },
 };
 

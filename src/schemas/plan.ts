@@ -98,7 +98,7 @@ export const ConversionParamsSchema = z.object({
   startAge: z.number().int().default(65),
   endAge: z.number().int().default(72),
   autoAmount: z.number().nonnegative().default(70000),
-  bracketCeiling: z.number().nonnegative().default(206700),
+  bracketCeiling: z.number().nonnegative().default(96950),
   manualSchedule: z.record(z.string(), z.number()).default({}),
 });
 export type ConversionParams = z.infer<typeof ConversionParamsSchema>;
@@ -127,6 +127,7 @@ export const PlanSchema = z.object({
   expenseStreams: z.array(ExpenseStreamSchema).default([]),
   withdrawalStrategy: z.enum(['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill']),
   customPolicy: BlendPolicySchema.optional(),
+  optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
   conversion: ConversionParamsSchema,
   state: z.string().default('IL'),
   goals: z.array(GoalSchema).default([]),
@@ -137,7 +138,7 @@ export const defaultPlan = (): Plan => ({
   personA: {
     name: 'Shailendra',
     dob: '1974-05-03',
-    retirementAge: 58,
+    retirementAge: 59,
     planToAge: 98,
     passingAge: 100,
     ssPIA: 44000,
@@ -146,7 +147,7 @@ export const defaultPlan = (): Plan => ({
   personB: {
     name: 'Sonal',
     dob: '1977-08-26',
-    retirementAge: 55,
+    retirementAge: 56,
     planToAge: 98,
     passingAge: 100,
     ssPIA: 18000,
@@ -189,7 +190,7 @@ export const defaultPlan = (): Plan => ({
     startAge: 65,
     endAge: 72,
     autoAmount: 70000,
-    bracketCeiling: 206700,
+    bracketCeiling: 96950,
     manualSchedule: {},
   },
   state: 'IL',

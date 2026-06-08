@@ -1,6 +1,6 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData, Plugin } from 'chart.js';
-import { bucketColors, fmtCompact, palette } from './setup';
+import { bucketColors, fmtCompact, fmtFull, palette, ageTooltipTitle, indexInteraction } from './setup';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -106,16 +106,16 @@ export default function PortfolioTrajectory({ proj, real = true, height = 320 }:
   const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
+    interaction: indexInteraction,
     plugins: {
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
-          label: (item) => `${item.dataset.label}: ${fmtCompact(item.parsed.y ?? 0)}`,
+          title: ageTooltipTitle,
+          label: (item) => `${item.dataset.label}: ${fmtFull(item.parsed.y ?? 0)}`,
           footer: (items) => {
             const total = items.reduce((s, it) => s + (it.parsed.y ?? 0), 0);
-            return `Total: ${fmtCompact(total)}`;
+            return `Total: ${fmtFull(total)}`;
           },
         },
         footerColor: palette.gold,

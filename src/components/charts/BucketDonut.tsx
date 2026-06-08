@@ -1,6 +1,6 @@
 import { Doughnut } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { bucketColors, fmtCompact } from './setup';
+import { bucketColors, fmtFull } from './setup';
 
 interface Props {
   taxable: number;
@@ -35,7 +35,7 @@ export default function BucketDonut({ taxable, traditional, roth, height = 220 }
           label: (ctx) => {
             const v = ctx.parsed;
             const pct = total > 0 ? Math.round((v / total) * 100) : 0;
-            return `${ctx.label}: ${fmtCompact(v)} (${pct}%)`;
+            return `${ctx.label}: ${fmtFull(v)} (${pct}%)`;
           },
         },
       },

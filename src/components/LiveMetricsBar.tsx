@@ -5,6 +5,8 @@ import { fmtM, fmtK } from '../lib/format';
 export default function LiveMetricsBar() {
   const proj = useProjection();
   const plan = usePlanStore((s) => s.plan);
+  const displayMode = usePlanStore((s) => s.displayMode);
+  const real = displayMode === 'real';
   const retAge = plan.personA.retirementAge;
   const planTo = plan.personA.planToAge;
 
@@ -16,20 +18,28 @@ export default function LiveMetricsBar() {
 
   // Initial withdrawal rate: Year-1 withdrawals ÷ portfolio at retirement (start-of-year balance).
   // endTotal is end-of-year so we add totalWD back to approximate start-of-year balance.
+  // The ratio is unit-invariant (both numerator and denominator are in the same year's
+  // nominal dollars), so it's identical in real and nominal mode.
   const wdRate = retRow && (retRow.endTotal + retRow.totalWD) > 0
     ? retRow.totalWD / (retRow.endTotal + retRow.totalWD)
     : 0;
-  const portAtRetReal = retRow ? retRow.endTotal / retRow.inflationFactor : 0;
+  // $-valued metrics honor the Real/Nominal toggle. Lifetime fed tax has no real
+  // analogue at the projection-aggregate level (it's a sum of nominal dollars
+  // across many years), so we still emit nominal there but the subtext makes
+  // that explicit so users don't mistake it for real.
+  const portAtRet = retRow ? (real ? retRow.endTotal / retRow.inflationFactor : retRow.endTotal) : 0;
+  const endBalance = real ? proj.endTotalReal : proj.endTotalNominal;
+  const dollarSub = real ? "today's $" : 'nominal $';
 
   const cells = [
-    { label: 'Portfolio @ Retirement', value: fmtM(portAtRetReal), sub: `Age ${retAge} · today's $` },
+    { label: 'Portfolio @ Retirement', value: fmtM(portAtRet), sub: `Age ${retAge} · ${dollarSub}` },
     {
       label: 'Plan Lasts To',
       value: `Age ${fundsTo}`,
       sub: fundsBad ? `⚠ runs out · target ${planTo}` : `Lasts full plan · target ${planTo}`,
       bad: fundsBad,
     },
-    { label: 'End Balance', value: fmtM(proj.endTotalReal), sub: `Age ${planTo} · today's $` },
+    { label: 'End Balance', value: fmtM(endBalance), sub: `Age ${planTo} · ${dollarSub}` },
     { label: 'Lifetime Fed Tax', value: fmtK(proj.lifetimeFedTax), sub: 'Nominal · all years' },
     { label: 'Initial Withdrawal Rate', value: wdRate > 0 ? (wdRate * 100).toFixed(2) + '%' : '—', sub: 'Year-1 withdrawal ÷ portfolio at retirement' },
   ];

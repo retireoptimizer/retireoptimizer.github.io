@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useProjection, usePlanStore } from '../store/usePlanStore';
 import type { DisplayMode } from '../store/usePlanStore';
 import { fmtUSD } from '../lib/format';
 import CashFlowsBalanced from '../components/charts/CashFlowsBalanced';
+import WhatIfBar from '../components/WhatIfBar';
+import ChartFrame from '../components/charts/ChartFrame';
 
 const fmt = (n: number, mode: DisplayMode, inflF: number): string => {
   if (!isFinite(n) || n === 0) return '—';
@@ -17,51 +20,100 @@ const stickyTd = (left: number, bg = '#fff', minWidth = 60): React.CSSProperties
   position: 'sticky', left, background: bg, zIndex: 2, minWidth,
 });
 
-const COLUMNS: Array<{ key: string; label: string; get: (r: ReturnType<typeof useProjection>['rows'][number]) => number | string }> = [
-  { key: 'year', label: 'Year', get: (r) => r.year },
-  { key: 'ageA', label: 'Age A', get: (r) => r.ageA },
-  { key: 'ageB', label: 'Age B', get: (r) => r.ageB ?? '' },
-  { key: 'phase', label: 'Phase', get: (r) => r.phase },
-  { key: 'contribA', label: 'Contrib A', get: (r) => r.contribA },
-  { key: 'contribB', label: 'Contrib B', get: (r) => r.contribB },
-  { key: 'ssA', label: 'SS A', get: (r) => r.ssA },
-  { key: 'ssB', label: 'SS B', get: (r) => r.ssB },
-  { key: 'totalSS', label: 'Total SS', get: (r) => r.totalSS },
-  { key: 'otherIncome', label: 'Other Inc', get: (r) => r.otherIncome },
-  { key: 'netSpend', label: 'Net Spend', get: (r) => r.netSpend },
-  { key: 'wdTax', label: 'WD Taxable', get: (r) => r.wdTax },
-  { key: 'wdTrd', label: 'WD Pre-tax', get: (r) => r.wdTrd },
-  { key: 'wdRth', label: 'WD Roth', get: (r) => r.wdRth },
-  { key: 'totalWD', label: 'Total WD', get: (r) => r.totalWD },
-  { key: 'rmd', label: 'RMD', get: (r) => r.rmd },
-  { key: 'rothConv', label: 'Roth Conv', get: (r) => r.rothConv },
-  { key: 'ordIncome', label: 'Ord Income', get: (r) => r.ordIncome },
-  { key: 'ltcg', label: 'LTCG', get: (r) => r.ltcg },
-  { key: 'fedTax', label: 'Fed Tax', get: (r) => r.fedTax },
-  { key: 'stateTaxAmt', label: 'State Tax', get: (r) => r.stateTaxAmt },
-  { key: 'irmaa', label: 'IRMAA', get: (r) => r.irmaa },
-  { key: 'effRate', label: 'Eff Rate %', get: (r) => +(r.effRate * 100).toFixed(2) },
-  { key: 'begTaxable', label: 'Beg Taxable', get: (r) => r.begTaxable },
-  { key: 'begTraditional', label: 'Beg Pre-tax', get: (r) => r.begTraditional },
-  { key: 'begRoth', label: 'Beg Roth', get: (r) => r.begRoth },
-  { key: 'endTaxable', label: 'End Taxable', get: (r) => r.endTaxable },
-  { key: 'endTraditional', label: 'End Pre-tax', get: (r) => r.endTraditional },
-  { key: 'endRoth', label: 'End Roth', get: (r) => r.endRoth },
-  { key: 'endTotal', label: 'End Total', get: (r) => r.endTotal },
+type Row = ReturnType<typeof useProjection>['rows'][number];
+type GroupKey = 'income' | 'taxes' | 'balances';
+
+interface Column {
+  key: string;
+  label: string;
+  group: 'identity' | GroupKey;
+  essential: boolean;
+  fmt?: 'money' | 'pct' | 'raw';
+  get: (r: Row) => number | string;
+  bg: string;
+}
+
+const COLUMNS: Column[] = [
+  // Identity (always shown)
+  { key: 'year', label: 'Yr', group: 'identity', essential: true, fmt: 'raw', get: (r) => r.year, bg: '#0d1b2e10' },
+  { key: 'ageA', label: 'Age A', group: 'identity', essential: true, fmt: 'raw', get: (r) => r.ageA, bg: '#0d1b2e10' },
+  { key: 'ageB', label: 'Age B', group: 'identity', essential: true, fmt: 'raw', get: (r) => r.ageB ?? '—', bg: '#0d1b2e10' },
+  { key: 'phase', label: 'Phase', group: 'identity', essential: true, fmt: 'raw', get: (r) => r.phase, bg: '#0d1b2e10' },
+
+  // Income
+  { key: 'contribA', label: 'Contrib A', group: 'income', essential: false, fmt: 'money', get: (r) => r.contribA, bg: 'rgba(201,168,76,0.12)' },
+  { key: 'contribB', label: 'Contrib B', group: 'income', essential: false, fmt: 'money', get: (r) => r.contribB, bg: 'rgba(201,168,76,0.12)' },
+  { key: 'totalSS', label: 'Total SS', group: 'income', essential: true, fmt: 'money', get: (r) => r.totalSS, bg: 'rgba(26,138,90,0.1)' },
+  { key: 'otherIncome', label: 'Other Inc', group: 'income', essential: true, fmt: 'money', get: (r) => r.otherIncome, bg: 'rgba(26,138,90,0.1)' },
+  { key: 'totalWD', label: 'Total WD', group: 'income', essential: true, fmt: 'money', get: (r) => r.totalWD, bg: 'rgba(192,57,43,0.08)' },
+  { key: 'wdTax', label: 'WD Tax', group: 'income', essential: false, fmt: 'money', get: (r) => r.wdTax, bg: 'rgba(192,57,43,0.08)' },
+  { key: 'wdTrd', label: 'WD Pre-tax', group: 'income', essential: false, fmt: 'money', get: (r) => r.wdTrd, bg: 'rgba(192,57,43,0.08)' },
+  { key: 'wdRth', label: 'WD Roth', group: 'income', essential: false, fmt: 'money', get: (r) => r.wdRth, bg: 'rgba(192,57,43,0.08)' },
+  { key: 'rmd', label: 'RMD', group: 'income', essential: false, fmt: 'money', get: (r) => r.rmd, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'rothConv', label: 'Roth Conv', group: 'income', essential: false, fmt: 'money', get: (r) => r.rothConv, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'netSpend', label: 'Net Spend', group: 'income', essential: false, fmt: 'money', get: (r) => r.netSpend, bg: 'rgba(192,57,43,0.08)' },
+
+  // Taxes
+  { key: 'fedTax', label: 'Fed Tax', group: 'taxes', essential: true, fmt: 'money', get: (r) => r.fedTax, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'stateTaxAmt', label: 'State Tax', group: 'taxes', essential: false, fmt: 'money', get: (r) => r.stateTaxAmt, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'irmaa', label: 'IRMAA', group: 'taxes', essential: false, fmt: 'money', get: (r) => r.irmaa, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'ordIncome', label: 'Ord Income', group: 'taxes', essential: false, fmt: 'money', get: (r) => r.ordIncome, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'ltcg', label: 'LTCG', group: 'taxes', essential: false, fmt: 'money', get: (r) => r.ltcg, bg: 'rgba(59,94,138,0.1)' },
+  { key: 'effRate', label: 'Eff Rate', group: 'taxes', essential: false, fmt: 'pct', get: (r) => r.effRate * 100, bg: 'rgba(59,94,138,0.1)' },
+
+  // Balances
+  { key: 'endTotal', label: 'End Total', group: 'balances', essential: true, fmt: 'money', get: (r) => r.endTotal, bg: 'rgba(13,27,46,0.05)' },
+  { key: 'begTaxable', label: 'Beg Tax', group: 'balances', essential: false, fmt: 'money', get: (r) => r.begTaxable, bg: 'rgba(13,27,46,0.05)' },
+  { key: 'begTraditional', label: 'Beg Trd', group: 'balances', essential: false, fmt: 'money', get: (r) => r.begTraditional, bg: 'rgba(13,27,46,0.05)' },
+  { key: 'begRoth', label: 'Beg Roth', group: 'balances', essential: false, fmt: 'money', get: (r) => r.begRoth, bg: 'rgba(13,27,46,0.05)' },
+  { key: 'endTaxable', label: 'End Tax', group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTaxable, bg: 'rgba(13,27,46,0.05)' },
+  { key: 'endTraditional', label: 'End Trd', group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTraditional, bg: 'rgba(13,27,46,0.05)' },
+  { key: 'endRoth', label: 'End Roth', group: 'balances', essential: false, fmt: 'money', get: (r) => r.endRoth, bg: 'rgba(13,27,46,0.05)' },
 ];
+
+const GROUP_LABELS: Record<GroupKey, string> = {
+  income: 'Income & Withdrawals',
+  taxes: 'Taxes',
+  balances: 'Balances',
+};
+
+const STORAGE_KEY = 'fireopt-projections-expanded-v1';
+
+const loadExpanded = (): Record<GroupKey, boolean> => {
+  if (typeof window === 'undefined') return { income: false, taxes: false, balances: false };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* fall through */ }
+  return { income: false, taxes: false, balances: false };
+};
 
 export default function Projections() {
   const mode = usePlanStore((s) => s.displayMode);
   const proj = useProjection();
+  const [expanded, setExpandedState] = useState<Record<GroupKey, boolean>>(loadExpanded);
+
+  const setExpanded = (key: GroupKey, value: boolean) => {
+    const next = { ...expanded, [key]: value };
+    setExpandedState(next);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+
+  // Visible columns: identity always; group columns based on essential + expansion.
+  const visibleColumns = COLUMNS.filter((c) => {
+    if (c.group === 'identity') return true;
+    if (c.essential) return true;
+    return expanded[c.group];
+  });
 
   const downloadCSV = () => {
+    // CSV always includes every column regardless of UI expansion.
     const header = COLUMNS.map((c) => c.label).join(',');
     const rows = proj.rows.map((r) =>
       COLUMNS.map((c) => {
         const v = c.get(r);
         if (typeof v === 'number') {
-          // Scale to display mode for $ columns; keep ages/years/effRate raw.
-          const isMoney = !['year', 'ageA', 'ageB', 'effRate'].includes(c.key);
+          const isMoney = c.fmt === 'money';
           const scaled = isMoney && mode === 'real' ? v / r.inflationFactor : v;
           return Math.round(scaled);
         }
@@ -100,97 +152,91 @@ export default function Projections() {
         </div>
       </div>
       <div className="page-body">
+        <WhatIfBar defaultExpanded />
+
         <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Annual Cash Flows ({mode === 'real' ? "Today's $" : 'Nominal $'})</div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Income above zero · Spending &amp; tax below zero · Net change line</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Income above zero · Spending &amp; tax below zero · Portfolio total line on right axis</span>
           </div>
           <div className="panel-body">
-            <CashFlowsBalanced proj={proj} real={mode === 'real'} height={320} />
+            <ChartFrame caption="Use this to see whether a year is a net build or net draw, and how taxes eat into income.">
+              <CashFlowsBalanced proj={proj} real={mode === 'real'} height={320} />
+            </ChartFrame>
           </div>
         </div>
 
         <div className="panel">
           <div className="panel-header">
-            <div className="panel-title"><div className="panel-title-dot"></div>Year-by-Year Detail Table</div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>First 4 columns stay visible while scrolling horizontally</span>
+            <div className="panel-title"><div className="panel-title-dot"></div>Year-by-Year Detail</div>
+            <div style={{ display: 'flex', gap: 6, fontSize: 11 }}>
+              {(Object.keys(GROUP_LABELS) as GroupKey[]).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setExpanded(g, !expanded[g])}
+                  style={{
+                    border: '1px solid var(--border-light)',
+                    background: expanded[g] ? 'var(--navy)' : 'rgba(13,27,46,0.04)',
+                    color: expanded[g] ? '#fff' : 'var(--text-secondary)',
+                    fontSize: 11,
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                  title={expanded[g] ? `Collapse ${GROUP_LABELS[g]}` : `Expand ${GROUP_LABELS[g]}`}
+                >
+                  {expanded[g] ? '−' : '+'} {GROUP_LABELS[g]}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="panel-body" style={{ padding: 0, overflowX: 'auto' }}>
-            <table className="data-table" style={{ minWidth: 1800, fontSize: 12 }}>
+            <table className="data-table" style={{ fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={stickyTh(0, '#0d1b2e10', 60)}>Yr</th>
-                  <th style={stickyTh(60, '#0d1b2e10', 60)}>Age A</th>
-                  <th style={stickyTh(120, '#0d1b2e10', 60)}>Age B</th>
-                  <th style={stickyTh(180, '#0d1b2e10', 90)}>Phase</th>
-                  <th style={{ background: 'rgba(201,168,76,0.12)' }}>Contrib A</th>
-                  <th style={{ background: 'rgba(201,168,76,0.12)' }}>Contrib B</th>
-                  <th style={{ background: 'rgba(26,138,90,0.1)' }}>SS A</th>
-                  <th style={{ background: 'rgba(26,138,90,0.1)' }}>SS B</th>
-                  <th style={{ background: 'rgba(26,138,90,0.1)' }}>Total SS</th>
-                  <th style={{ background: 'rgba(26,138,90,0.1)' }}>Other Inc</th>
-                  <th style={{ background: 'rgba(192,57,43,0.08)' }}>Net Spend</th>
-                  <th style={{ background: 'rgba(192,57,43,0.08)' }}>WD Taxable</th>
-                  <th style={{ background: 'rgba(192,57,43,0.08)' }}>WD Pre-tax</th>
-                  <th style={{ background: 'rgba(192,57,43,0.08)' }}>WD Roth</th>
-                  <th style={{ background: 'rgba(192,57,43,0.08)' }}>Total WD</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>RMD</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>Roth Conv</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>Ord Income</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>LTCG</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>Fed Tax</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>State Tax</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>IRMAA</th>
-                  <th style={{ background: 'rgba(59,94,138,0.1)' }}>Eff Rate</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)' }}>Beg Taxable</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)' }}>Beg Pre-tax</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)' }}>Beg Roth</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)' }}>End Taxable</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)' }}>End Pre-tax</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)' }}>End Roth</th>
-                  <th style={{ background: 'rgba(13,27,46,0.05)', fontWeight: 700 }}>End Total</th>
+                  {visibleColumns.map((c, i) => {
+                    const sticky = c.group === 'identity';
+                    const leftOffsets = [0, 60, 120, 180];
+                    return (
+                      <th
+                        key={c.key}
+                        style={sticky
+                          ? stickyTh(leftOffsets[i] ?? 0, c.bg, c.key === 'phase' ? 90 : 60)
+                          : { background: c.bg, fontWeight: c.key === 'endTotal' ? 700 : 600 }}
+                      >
+                        {c.label}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {proj.rows.map((r) => {
-                  const f = (n: number) => fmt(n, mode, r.inflationFactor);
+                  const leftOffsets = [0, 60, 120, 180];
                   return (
                     <tr key={r.year}>
-                      <td style={{ ...stickyTd(0), textAlign: 'center' }}>{r.year}</td>
-                      <td style={{ ...stickyTd(60), textAlign: 'center' }}>{r.ageA}</td>
-                      <td style={{ ...stickyTd(120), textAlign: 'center' }}>{r.ageB ?? '—'}</td>
-                      <td style={{ ...stickyTd(180), textAlign: 'center' }}>{r.phase}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.contribA)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.contribB)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.ssA)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.ssB)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.totalSS)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.otherIncome)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.netSpend)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.wdTax)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.wdTrd)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.wdRth)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.totalWD)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.rmd)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.rothConv)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.ordIncome)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.ltcg)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.fedTax)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.stateTaxAmt)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.irmaa)}</td>
-                      <td style={{ textAlign: 'right' }}>{(r.effRate * 100).toFixed(1)}%</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.begTaxable)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.begTraditional)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.begRoth)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.endTaxable)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.endTraditional)}</td>
-                      <td style={{ textAlign: 'right' }}>{f(r.endRoth)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{f(r.endTotal)}</td>
+                      {visibleColumns.map((c, i) => {
+                        const sticky = c.group === 'identity';
+                        const v = c.get(r);
+                        let display: string | number;
+                        if (typeof v === 'string') display = v;
+                        else if (c.fmt === 'money') display = fmt(v, mode, r.inflationFactor);
+                        else if (c.fmt === 'pct') display = `${v.toFixed(1)}%`;
+                        else display = v;
+                        const style: React.CSSProperties = sticky
+                          ? { ...stickyTd(leftOffsets[i] ?? 0), textAlign: 'center' }
+                          : { textAlign: 'right', fontWeight: c.key === 'endTotal' ? 700 : undefined };
+                        return <td key={c.key} style={style}>{display}</td>;
+                      })}
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+          <div style={{ padding: '10px 18px', fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border-light)' }}>
+            Showing {visibleColumns.length} of {COLUMNS.length} columns. CSV export includes all columns regardless of toggles.
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData, Plugin } from 'chart.js';
-import { palette, fmtCompact } from './setup';
+import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
 import { IRMAA_TIERS_MFJ_2025 } from '../../engine/taxConstants';
 import type { ProjectionResult } from '../../engine/projection';
 
@@ -64,12 +64,13 @@ export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props
   const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: indexInteraction,
     plugins: {
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
-          label: (item) => `MAGI: ${fmtCompact(item.parsed.y ?? 0)}`,
+          title: ageTooltipTitle,
+          label: (item) => `MAGI: ${fmtFull(item.parsed.y ?? 0)}`,
         },
       },
     },

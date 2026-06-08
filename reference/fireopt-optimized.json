@@ -6,7 +6,7 @@
     "personA": {
       "name": "Person A",
       "dob": "1974-05-03",
-      "retirementAge": 58,
+      "retirementAge": 59,
       "planToAge": 100,
       "passingAge": 90,
       "ssPIA": 45000,
@@ -15,7 +15,7 @@
     "personB": {
       "name": "Person B",
       "dob": "1977-08-26",
-      "retirementAge": 55,
+      "retirementAge": 56,
       "planToAge": 100,
       "passingAge": 92,
       "ssPIA": 28000,
@@ -104,7 +104,7 @@
       "startAge": 65,
       "endAge": 72,
       "autoAmount": 70000,
-      "bracketCeiling": 206700,
+      "bracketCeiling": 96950,
       "manualSchedule": {}
     },
     "state": "IL",
