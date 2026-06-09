@@ -118,6 +118,10 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           inflation: s.inflation,
           contribGrowth: s.contribGrowth,
           rmdStartAge: 75,
+          modelACA: false,
+          acaHouseholdSize: 2,
+          acaBenchmarkPremium: 0,
+          acaNoSubsidy: false,
         },
         portfolio: {
           personA: s.pfA,
