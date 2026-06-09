@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection } from './projection';
-import { defaultPlan } from '../schemas/plan';
+import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { Plan, IncomeStream } from '../schemas/plan';
 
 /** Sensitivity contract: every UI-editable field that the projection consumes

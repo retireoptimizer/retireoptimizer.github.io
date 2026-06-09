@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runProjection } from '../projection';
+import { runProjection, initialWithdrawalRate } from '../projection';
 import { runMonteCarlo } from '../monteCarlo';
 import { householdTotals, defaultPlan } from '../../schemas/plan';
 import { generateInsights } from './index';
@@ -40,7 +40,7 @@ const extractDollar = (s: string): number | null => {
 };
 
 describe('Insight bodies ↔ projection numerics', () => {
-  it('wrRule body % matches first-retirement netSpend / startBal', () => {
+  it('wrRule body % matches the shared initialWithdrawalRate helper', () => {
     const plan = planE_allRothCouple();
     const proj = runProjection(plan);
     const insights = generateInsights(plan, proj);
@@ -48,10 +48,7 @@ describe('Insight bodies ↔ projection numerics', () => {
     expect(wr).toBeDefined();
 
     const claimedPct = extractPct(wr!.body)!;
-    const totals = householdTotals(plan.portfolio);
-    const startBal = totals.taxable + totals.traditional + totals.roth;
-    const firstRet = proj.rows.find((r) => (r.phase === 'Retire' || r.phase === 'Survivor') && r.netSpend > 0)!;
-    const actualPct = (firstRet.netSpend / firstRet.inflationFactor / startBal) * 100;
+    const actualPct = initialWithdrawalRate(proj) * 100;
     expect(claimedPct).toBeCloseTo(actualPct, 1);
   });
 

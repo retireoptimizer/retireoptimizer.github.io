@@ -134,27 +134,10 @@ export default function Projections() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <div className="page-header-inner">
-          <div>
-            <div className="page-eyebrow">Projections</div>
-            <div className="page-title">Year-by-Year Projections</div>
-            <div className="page-subtitle">{proj.yearsCovered}-year detail · {mode === 'real' ? "Today's $" : 'Nominal $'} (set on Dashboard)</div>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={downloadCSV}>
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Download CSV
-            </button>
-          </div>
-        </div>
-      </div>
       <div className="page-body">
-        <WhatIfBar defaultExpanded />
+        <WhatIfBar />
 
-        <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Annual Cash Flows ({mode === 'real' ? "Today's $" : 'Nominal $'})</div>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Income above zero · Spending &amp; tax below zero · Portfolio total line on right axis</span>
@@ -169,7 +152,7 @@ export default function Projections() {
         <div className="panel">
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Year-by-Year Detail</div>
-            <div style={{ display: 'flex', gap: 6, fontSize: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
               {(Object.keys(GROUP_LABELS) as GroupKey[]).map((g) => (
                 <button
                   key={g}
@@ -189,6 +172,24 @@ export default function Projections() {
                   {expanded[g] ? '−' : '+'} {GROUP_LABELS[g]}
                 </button>
               ))}
+              <span style={{ width: 1, height: 18, background: 'var(--border-light)', margin: '0 2px' }} />
+              <button
+                onClick={downloadCSV}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  border: '1px solid var(--border-light)',
+                  background: 'rgba(201,168,76,0.12)',
+                  color: 'var(--navy)',
+                  fontSize: 11, fontWeight: 600,
+                  padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+                title="Download all columns as CSV (respects Today's $ / Nominal $ toggle)"
+              >
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Download CSV
+              </button>
             </div>
           </div>
           <div className="panel-body" style={{ padding: 0, overflowX: 'auto' }}>

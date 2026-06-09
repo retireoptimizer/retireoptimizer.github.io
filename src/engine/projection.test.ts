@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection } from './projection';
-import { defaultPlan } from '../schemas/plan';
+import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 import { optimizeStrategy } from './optimizer';
 import { assertProjectionInvariants, assertDeterministic } from './__invariants__/assertions';

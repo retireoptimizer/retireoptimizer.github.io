@@ -1,14 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
-import { fmtM, fmtK, fmtPct } from '../lib/format';
+import { fmtM } from '../lib/format';
 import GoalModal from '../components/GoalModal';
 import WhatIfBar from '../components/WhatIfBar';
 import ScenarioCompare from '../components/ScenarioCompare';
 import StrategyChooser from '../components/StrategyChooser';
 import type { Scenario } from '../engine/scenario';
 import { evaluateGoals } from '../engine/goals';
-import { depletionAge } from '../engine/projection';
+import { depletionAge, initialWithdrawalRate } from '../engine/projection';
 import PortfolioTrajectory from '../components/charts/PortfolioTrajectory';
 import BucketCompositionStacked from '../components/charts/BucketCompositionStacked';
 import IncomeSourcesArea from '../components/charts/IncomeSourcesArea';
@@ -36,33 +36,21 @@ export default function Dashboard() {
   const insights = useMemo(() => insightsForSurface(generateInsights(plan, proj), 'dashboard').slice(0, 3), [plan, proj]);
   const goalStatuses = useMemo(() => evaluateGoals(plan, proj), [plan, proj]);
   const A = plan.personA;
-  const startYear = new Date().getFullYear();
-  const ageA = startYear - parseInt(A.dob.slice(0, 4), 10);
 
   // Find the row at the planned retirement age
   const retireRow = proj.rows.find((r) => r.ageA === A.retirementAge);
   const finalRow = proj.rows[proj.rows.length - 1];
 
-  // Initial withdrawal rate — Year-1 WD ÷ portfolio at retirement (start-of-year).
-  // endTotal is end-of-year so we add totalWD back to approximate start-of-year balance.
-  // Same convention as LiveMetricsBar so the two cards always agree.
-  let safeWR = 0;
-  if (retireRow && (retireRow.endTotal + retireRow.totalWD) > 0) {
-    safeWR = retireRow.totalWD / (retireRow.endTotal + retireRow.totalWD);
-  }
+  // Initial withdrawal rate — single source of truth (engine helper, matches the top bar).
+  const wdRate = initialWithdrawalRate(proj);
 
   // Plan longevity: depletion age if the portfolio runs to zero, otherwise plan-to age.
   const depAge = depletionAge(proj);
   const longevityAge = depAge ?? A.planToAge;
   const planLasts = depAge === null;
 
-  // Roth conversion opportunity: first year's 12% bracket headroom
-  const yr1 = proj.rows[0];
-  const inflF = yr1?.inflationFactor ?? 1;
-  const bracket12Top = 96950 * inflF;
-  const stdD = yr1?.stdDeduction ?? 31500;
-  const baseInc = (yr1?.totalSS ?? 0) * 0.85 + (yr1?.otherIncome ?? 0) + (yr1?.rmd ?? 0);
-  const convHeadroom = Math.max(0, bracket12Top - stdD - baseInc);
+  // Roth conversions only "active" once they move a meaningful amount of Traditional → Roth.
+  const rothActive = proj.lifetimeConversion > 1000;
 
   // Cash-flow year (shared between donut and sankey). Default to the first retirement year
   // where SS is active so the donut doesn't render all-Withdrawals at retire age.
@@ -90,29 +78,77 @@ export default function Dashboard() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <div className="page-header-inner">
-          <div>
-            <div className="page-eyebrow">Retirement Plan</div>
-            <div className="page-title">{A.name}'s Retirement Overview</div>
-            <div className="page-subtitle">Age {ageA} · Target retirement: age {A.retirementAge} · Plan-to age: {A.planToAge}</div>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={() => navigate('/projections')}>
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2" strokeWidth="2"/>
-              </svg>
-              View Projections
-            </button>
-          </div>
-        </div>
-      </div>
       <div className="page-body">
 
-        <WhatIfBar defaultExpanded />
+        <WhatIfBar />
         <StrategyChooser />
 
-        <div className="panel" style={{ marginBottom: 20 }}>
+        {/* ── Plan Summary: one consolidated headline set (health + lifetime figures + Roth benefit) ── */}
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Plan Summary</div>
+            <span className={`badge ${health.band === 'excellent' || health.band === 'good' ? 'badge-success' : health.band === 'improve' ? 'badge-warning' : 'badge-danger'}`}>
+              {health.band === 'excellent' ? 'Excellent' : health.band === 'good' ? 'On Track' : health.band === 'improve' ? 'Improve' : 'At Risk'}
+            </span>
+          </div>
+          <div className="panel-body">
+            {/* Compact health strip: score + linear gauge + summary on one line */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, flex: '0 0 auto' }}>
+                <span style={{ fontFamily: "'Playfair Display',serif", fontSize: 34, fontWeight: 700, color: 'var(--navy)', lineHeight: 1 }}>{health.overall}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/100</span>
+              </div>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <div style={{ height: 7, borderRadius: 4, background: 'rgba(13,27,46,0.08)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${health.overall}%`, borderRadius: 4, background: 'linear-gradient(90deg, #c9a84c, #1a8a5a)' }} />
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 5 }}>{health.summary}</div>
+              </div>
+            </div>
+
+            {/* Headline figures */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+              <Stat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} color="var(--success)" sub={planLasts ? `age ${A.planToAge} · ${real ? "today's $" : 'nominal $'}` : `⚠ runs out age ${longevityAge}`} />
+              <Stat label="Initial WR" value={wdRate > 0 ? (wdRate * 100).toFixed(2) + '%' : '—'} sub="year-1 draw" />
+              <Stat label="Lifetime Fed Tax" value={fmtM(proj.lifetimeFedTax)} color="var(--danger)" sub="nominal · all years" />
+              <Stat label="Lifetime RMDs" value={fmtM(proj.lifetimeRMD)} color="var(--warning)" sub="forced draws" />
+              <Stat label="Roth Conversions" value={fmtM(proj.lifetimeConversion)} color="var(--gold)" sub="lifetime" />
+            </div>
+
+            {/* Health sub-scores */}
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              {health.subscores.map((s) => (
+                <div key={s.key} className="subscore-row" title={s.detail}>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: s.band === 'excellent' || s.band === 'good' ? 'var(--success)' : s.band === 'improve' ? 'var(--warning)' : 'var(--danger)' }}>{s.value}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>/ 100</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Roth conversion benefit — at a glance */}
+            <div style={{ marginTop: 16, padding: '11px 14px', borderRadius: 8, background: rothActive ? 'rgba(26,138,90,0.06)' : 'rgba(13,27,46,0.03)', border: '1px solid var(--border-light)' }}>
+              {rothActive ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--success)' }}>Roth Conversion Benefit</span>
+                  <Benefit label="End balance" delta={cmp.endBalanceDelta} goodWhen="positive" />
+                  <Benefit label="Lifetime tax" delta={cmp.lifetimeTaxDelta} goodWhen="negative" />
+                  <Benefit label="Lifetime RMDs" delta={cmp.lifetimeRMDDelta} goodWhen="negative" />
+                  <Benefit label="Roth legacy" delta={cmp.endRothDelta} goodWhen="positive" />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs. no conversions (today's $)</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  <strong style={{ color: 'var(--text-secondary)' }}>No Roth conversions active.</strong> Model <strong>Bracket Fill</strong> on the ⚙ Customize sheet (Strategy Chooser above) to see the lifetime tax, RMD, and tax-free-legacy trade-off.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Portfolio Trajectory ({real ? "Today's $" : 'Nominal $'})</div>
             <span className="badge badge-neutral">Stacked by bucket</span>
@@ -145,81 +181,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        <div className="two-col">
-          <div className="panel">
-            <div className="panel-header">
-              <div className="panel-title"><div className="panel-title-dot"></div>Lifetime Totals</div>
-            </div>
-            <div className="panel-body">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: '8px 0' }}>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>Lifetime Federal Tax</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: 'var(--danger)' }}>{fmtM(proj.lifetimeFedTax)}</div>
-                  {Math.abs(cmp.lifetimeTaxDelta) > 1000 && (
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                      {fmtCompactWithSign(cmp.lifetimeTaxDelta)} vs. no conversions
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>Lifetime RMDs</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: 'var(--warning)' }}>{fmtM(proj.lifetimeRMD)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>Lifetime Roth Conversions</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: 'var(--gold)' }}>{fmtM(proj.lifetimeConversion)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>End-of-Plan Balance</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: 'var(--success)' }}>{fmtM(real ? proj.endTotalReal : proj.endTotalNominal)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {real ? "Today's $" : 'Nominal $'}
-                    {Math.abs(cmp.endBalanceDelta) > 1000 && (
-                      <> · {fmtCompactWithSign(cmp.endBalanceDelta)} vs. no conv</>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div className="panel-title"><div className="panel-title-dot"></div>Plan Health</div>
-              <span className={`badge ${health.band === 'excellent' || health.band === 'good' ? 'badge-success' : health.band === 'improve' ? 'badge-warning' : 'badge-danger'}`}>
-                {health.band === 'excellent' ? 'Excellent' : health.band === 'good' ? 'On Track' : health.band === 'improve' ? 'Improve' : 'At Risk'}
-              </span>
-            </div>
-            <div className="panel-body" style={{ paddingTop: 12 }}>
-              <div className="health-gauge-wrap">
-                <svg className="gauge-arc" width="160" height="90" viewBox="0 0 160 90">
-                  <path d="M 15 85 A 65 65 0 0 1 145 85" fill="none" stroke="rgba(13,27,46,0.08)" strokeWidth="12" strokeLinecap="round"/>
-                  <path d="M 15 85 A 65 65 0 0 1 145 85" fill="none" stroke="url(#gaugeGrad)" strokeWidth="12" strokeLinecap="round" strokeDasharray="204" strokeDashoffset={Math.max(0, 204 - (health.overall / 100) * 204)}/>
-                  <defs>
-                    <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#c9a84c"/>
-                      <stop offset="60%" stopColor="#1a8a5a"/>
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="health-score">{health.overall}</div>
-                <div className="health-label">{health.summary}</div>
-              </div>
-              <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {health.subscores.map((s) => (
-                  <div key={s.key} className="subscore-row" title={s.detail}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: s.band === 'excellent' || s.band === 'good' ? 'var(--success)' : s.band === 'improve' ? 'var(--warning)' : 'var(--danger)' }}>{s.value}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>/ 100</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Priority Actions from health engine */}
         {health.actions.length > 0 && (
@@ -364,6 +325,28 @@ export default function Dashboard() {
 
       </div>
     </div>
+  );
+}
+
+/** Compact headline figure used in the Plan Summary hero. */
+function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: color ?? 'var(--text-primary)', lineHeight: 1.15 }}>{value}</div>
+      {sub && <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>}
+    </div>
+  );
+}
+
+/** A single Roth-conversion benefit delta, colored by whether the change helps. */
+function Benefit({ label, delta, goodWhen }: { label: string; delta: number; goodWhen: 'positive' | 'negative' }) {
+  const beneficial = goodWhen === 'positive' ? delta > 0 : delta < 0;
+  const color = Math.abs(delta) < 1000 ? 'var(--text-muted)' : beneficial ? 'var(--success)' : 'var(--danger)';
+  return (
+    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+      {label} <strong style={{ color, fontFamily: "'DM Mono', monospace" }}>{fmtCompactWithSign(delta)}</strong>
+    </span>
   );
 }
 

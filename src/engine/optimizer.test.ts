@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { runProjection } from './projection';
 import { optimizeStrategy } from './optimizer';
 import { runMonteCarlo } from './monteCarlo';
-import { defaultPlan } from '../schemas/plan';
+import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { Plan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 import { assertProjectionInvariants } from './__invariants__/assertions';

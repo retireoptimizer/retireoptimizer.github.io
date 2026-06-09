@@ -30,14 +30,50 @@ export const STANDARD_DEDUCTION_SINGLE = 15750;
 export const SENIOR_ADDON_MFJ = 1600; // per qualifying spouse 65+
 export const SENIOR_ADDON_SINGLE = 2000;
 
-// LTCG simplified — flat 15% (most retirees in the middle bracket).
+// LTCG simplified — flat 15% (legacy; replaced by stacked brackets in yearFederalTax).
 export const LTCG_RATE = 0.15;
+
+// 2025 LTCG / qualified-dividend rate brackets (taxable income = ordinary + LTCG stacked).
+// Inflation-indexed at usage time (multiplied by inflF).
+export const LTCG_BRACKETS_MFJ: ReadonlyArray<readonly [number, number]> = [
+  [94050,   0.00],
+  [583750,  0.15],
+  [Infinity, 0.20],
+];
+export const LTCG_BRACKETS_SINGLE: ReadonlyArray<readonly [number, number]> = [
+  [47025,   0.00],
+  [518900,  0.15],
+  [Infinity, 0.20],
+];
 
 // Taxable basis assumption for taxable-account withdrawals (50% basis / 50% gain).
 export const TAXABLE_BASIS_PCT = 0.5;
 
-// SS taxability — 85% of benefits taxable (high-income retirees).
+// SS taxability — 85% flat (legacy constant; used only for withdrawal-sizing in applyWithdrawalOrder).
+// Actual taxable fraction is computed per-year via taxableSocialSecurity() in tax.ts.
 export const SS_TAXABLE_PCT = 0.85;
+
+// SS provisional income thresholds (IRC §86) — NOT inflation-indexed.
+export const SS_PROVISIONAL_BASE_MFJ = 32000;
+export const SS_PROVISIONAL_UPPER_MFJ = 44000;
+export const SS_PROVISIONAL_BASE_SINGLE = 25000;
+export const SS_PROVISIONAL_UPPER_SINGLE = 34000;
+
+// ACA Federal Poverty Level 2025 (48 contiguous states + DC).
+export const FPL_BASE_2025 = 15060;     // 1-person household
+export const FPL_INCREMENT_2025 = 5380; // per additional person
+
+// ACA applicable percentage bands for 2025 (IRS Rev. Proc. 2024-35).
+// Each entry: [fplLow, fplHigh, pctLow, pctHigh] — linearly interpolated within each band.
+// Above 400% FPL: enhanced subsidies cap at 8.50% (ARP/IRA extension, no cliff).
+export const ACA_PCT_BANDS: ReadonlyArray<readonly [number, number, number, number]> = [
+  [1.00, 1.33, 0.0106, 0.0106],
+  [1.33, 1.50, 0.0106, 0.0200],
+  [1.50, 2.00, 0.0200, 0.0300],
+  [2.00, 2.50, 0.0300, 0.0400],
+  [2.50, 3.00, 0.0400, 0.0600],
+  [3.00, 4.00, 0.0600, 0.0850],
+];
 
 // IRS Uniform Lifetime Table (subset used by prototype).
 export const RMD_DIVISORS: Readonly<Record<number, number>> = {

@@ -11,13 +11,12 @@ export interface SetupStep {
   hint?: string;
 }
 
-/** Evaluates which onboarding steps remain. A step is considered "done" when its
- *  section differs from the default-plan starting state — i.e. the user has
- *  meaningfully customized it. The default plan ships with demo data, so deep
- *  equality vs defaults is how we detect a fresh, untouched plan. */
+/** Evaluates which onboarding steps remain. A step is "done" when its section
+ *  differs meaningfully from the blank starting state. */
 export function evaluateSetup(plan: Plan): SetupStep[] {
   const dp = defaultPlan();
 
+  // Personal: name filled in and DOB changed from placeholder
   const personSame =
     plan.personA.name === dp.personA.name &&
     plan.personA.dob === dp.personA.dob &&
@@ -26,13 +25,13 @@ export function evaluateSetup(plan: Plan): SetupStep[] {
     plan.personA.ssPIA === dp.personA.ssPIA;
 
   const totals = householdTotals(plan.portfolio);
-  const dpTotals = householdTotals(dp.portfolio);
+  // Portfolio done when any balance or contribution is non-zero
   const portfolioSame =
-    totals.taxable === dpTotals.taxable &&
-    totals.traditional === dpTotals.traditional &&
-    totals.roth === dpTotals.roth &&
-    totals.contribA === dpTotals.contribA &&
-    totals.contribB === dpTotals.contribB;
+    totals.taxable === 0 &&
+    totals.traditional === 0 &&
+    totals.roth === 0 &&
+    totals.contribA === 0 &&
+    totals.contribB === 0;
 
   const incomeSame =
     plan.incomeStreams.length === dp.incomeStreams.length &&

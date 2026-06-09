@@ -17,6 +17,16 @@ export const AssumptionsSchema = z.object({
   inflation: z.number(),
   contribGrowth: z.number(),
   rmdStartAge: z.number().int().default(75),
+  // ACA marketplace premium modeling (pre-Medicare gap years)
+  modelACA: z.boolean().default(false),
+  acaHouseholdSize: z.number().int().min(1).max(8).default(2),
+  /** Annual benchmark (SLCSP) premium for the household at plan-start in today's dollars.
+   *  Inflation-scaled each projection year. 0 = no ACA cost added.
+   *  When acaNoSubsidy=true, this is the full premium paid with no subsidy applied. */
+  acaBenchmarkPremium: z.number().nonnegative().default(0),
+  /** When true, skip APTC calculation and use acaBenchmarkPremium as the full cost paid.
+   *  Use for COBRA, employer retiree coverage, or income above subsidy range. */
+  acaNoSubsidy: z.boolean().default(false),
 });
 export type Assumptions = z.infer<typeof AssumptionsSchema>;
 
@@ -134,9 +144,58 @@ export const PlanSchema = z.object({
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
+/** Blank starting plan — shown to new users. All values are placeholders to be replaced. */
 export const defaultPlan = (): Plan => ({
   personA: {
-    name: 'Shailendra',
+    name: '',
+    dob: '1975-01-01',
+    retirementAge: 65,
+    planToAge: 90,
+    passingAge: 90,
+    ssPIA: 0,
+    ssClaimAge: 67,
+  },
+  personB: undefined,
+  assumptions: {
+    preRetReturn: 0.065,
+    postRetReturn: 0.05,
+    inflation: 0.025,
+    contribGrowth: 0,
+    rmdStartAge: 75,
+    modelACA: false,
+    acaHouseholdSize: 1,
+    acaBenchmarkPremium: 0,
+    acaNoSubsidy: false,
+  },
+  portfolio: {
+    personA: {
+      taxable: 0,
+      traditional: 0,
+      roth: 0,
+      annualContribution: 0,
+      contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
+    },
+    personB: undefined,
+  },
+  incomeStreams: [],
+  expenseStreams: [],
+  withdrawalStrategy: 'taxfirst',
+  conversion: {
+    mode: 'off',
+    startAge: 65,
+    endAge: 72,
+    autoAmount: 70000,
+    bracketCeiling: 96950,
+    manualSchedule: {},
+  },
+  state: 'IL',
+  goals: [],
+});
+
+/** Rich sample plan used by tests that need a fully-configured plan with realistic data. */
+export const samplePlan = (): Plan => ({
+  personA: {
+    name: 'Person A',
     dob: '1974-05-03',
     retirementAge: 59,
     planToAge: 98,
@@ -145,7 +204,7 @@ export const defaultPlan = (): Plan => ({
     ssClaimAge: 70,
   },
   personB: {
-    name: 'Sonal',
+    name: 'Person B',
     dob: '1977-08-26',
     retirementAge: 56,
     planToAge: 98,
@@ -159,6 +218,10 @@ export const defaultPlan = (): Plan => ({
     inflation: 0.025,
     contribGrowth: 0,
     rmdStartAge: 75,
+    modelACA: false,
+    acaHouseholdSize: 2,
+    acaBenchmarkPremium: 0,
+    acaNoSubsidy: false,
   },
   portfolio: {
     personA: {
@@ -177,9 +240,9 @@ export const defaultPlan = (): Plan => ({
     },
   },
   incomeStreams: [
-    { id: 'stream-ss-a', description: 'Shailendra SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1 },
-    { id: 'stream-ss-b-early', description: 'Sonal SS', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1 },
-    { id: 'stream-ss-b-late', description: 'Sonal SS', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: 0.025, taxablePct: 1 },
   ],
   expenseStreams: [
     { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: 0.025 },

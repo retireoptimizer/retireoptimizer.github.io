@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { evaluateAll } from '../engine/scenario';
+import { initialWithdrawalRate } from '../engine/projection';
 import { fmtM, fmtPct } from '../lib/format';
 
 interface MetricDef {
@@ -26,11 +27,7 @@ const METRICS: MetricDef[] = [
   { key: 'lifetimeRMD', label: 'Lifetime RMDs', format: fmtM, better: 'lower',
     pick: (proj) => proj.lifetimeRMD },
   { key: 'wdRate', label: 'Year-1 Withdrawal Rate', format: (v) => fmtPct(v, 2), better: 'lower',
-    pick: (proj, plan) => {
-      const r = proj.rows.find((x) => x.ageA === plan.personA.retirementAge);
-      return r && r.endTotal > 0 ? r.totalWD / r.endTotal : 0;
-    },
-  },
+    pick: (proj) => initialWithdrawalRate(proj) },
   { key: 'ranOut', label: 'Plan Runs Out?', format: (v) => v > 0 ? 'Yes' : 'No', better: 'lower',
     pick: (proj) => proj.ranOut ? 1 : 0 },
 ];

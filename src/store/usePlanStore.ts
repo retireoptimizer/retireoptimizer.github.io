@@ -34,6 +34,8 @@ interface PlanState {
   addExpenseStream: (s: ExpenseStream) => void;
   updateExpenseStream: (id: string, patch: Partial<ExpenseStream>) => void;
   removeExpenseStream: (id: string) => void;
+  addPersonB: () => void;
+  removePersonB: () => void;
   setWithdrawalStrategy: (s: Plan['withdrawalStrategy']) => void;
   setCustomPolicy: (policy: BlendPolicy) => void;
   /** Apply an entire next plan produced by applyResultToPlan (optimizer Apply).
@@ -63,6 +65,16 @@ export const usePlanStore = create<PlanState>()(
       resetScenarios: () => set({ scenarios: defaultScenarios() }),
       setPersonA: (patch) => set((s) => ({ plan: { ...s.plan, personA: { ...s.plan.personA, ...patch } } })),
       setPersonB: (patch) => set((s) => ({ plan: { ...s.plan, personB: s.plan.personB ? { ...s.plan.personB, ...patch } : undefined } })),
+      addPersonB: () => set((s) => ({
+        plan: {
+          ...s.plan,
+          personB: { name: '', dob: '1975-01-01', retirementAge: 65, planToAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
+          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, traditional: 0, roth: 0, annualContribution: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
+        },
+      })),
+      removePersonB: () => set((s) => ({
+        plan: { ...s.plan, personB: undefined, portfolio: { ...s.plan.portfolio, personB: undefined } },
+      })),
       setAssumptions: (patch) => set((s) => ({ plan: { ...s.plan, assumptions: { ...s.plan.assumptions, ...patch } } })),
       setPersonAPortfolio: (patch) => set((s) => ({
         plan: { ...s.plan, portfolio: { ...s.plan.portfolio, personA: { ...s.plan.portfolio.personA, ...patch } } },
@@ -97,10 +109,19 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        if (fromVersion < 4 && ps.plan && typeof ps.plan === 'object') {
+          const assumptions = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
+          if (assumptions) {
+            if (!('modelACA' in assumptions)) assumptions.modelACA = false;
+            if (!('acaHouseholdSize' in assumptions)) assumptions.acaHouseholdSize = 2;
+            if (!('acaBenchmarkPremium' in assumptions)) assumptions.acaBenchmarkPremium = 0;
+            if (!('acaNoSubsidy' in assumptions)) assumptions.acaNoSubsidy = false;
+          }
+        }
         if (fromVersion < 3 && ps.plan && typeof ps.plan === 'object' && !Array.isArray((ps.plan as Record<string, unknown>).goals)) {
           (ps.plan as Record<string, unknown>).goals = [];
         }

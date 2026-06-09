@@ -6,7 +6,7 @@ import { optimizeStrategy } from '../engine/optimizer';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { compareWithWithoutConversion } from '../engine/comparison';
 import { planF_allTradCouple, planA_simple } from '../engine/__golden/plans';
-import { defaultPlan } from '../schemas/plan';
+import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { IncomeStream } from '../schemas/plan';
 
 /**

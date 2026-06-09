@@ -1,27 +1,15 @@
 import type { Insight, InsightContext } from '../index';
-import { householdTotals } from '../../../schemas/plan';
+import { initialWithdrawalRate } from '../../projection';
 
-/** Initial Withdrawal Rate = first-year net spend / starting portfolio. Categorize
- *  against the 4% rule with conservative/aggressive bands. */
+/** Initial Withdrawal Rate = first retirement-year portfolio withdrawals ÷
+ *  portfolio value at the start of that year. Uses the shared engine helper so
+ *  this insight always agrees with the top-bar figure (and reacts to the
+ *  withdrawal strategy). Categorized against the 4% rule. */
 export function wrRule(ctx: InsightContext): Insight | null {
-  const { plan, proj } = ctx;
-  const totals = householdTotals(plan.portfolio);
-  const startBal = totals.taxable + totals.traditional + totals.roth;
-  if (startBal <= 0) return null;
+  const { proj } = ctx;
 
-  // Solo plans never enter 'Retire' phase because aliveB === false → 'Survivor'.
-  // Find the first year that's both retirement-phase AND has positive spending —
-  // pre-spending survivor years (e.g. FIRE before expenses start) skew WR to zero.
-  const firstRetire = proj.rows.find(
-    (r) => (r.phase === 'Retire' || r.phase === 'Survivor') && r.netSpend > 0,
-  );
-  if (!firstRetire) return null;
-
-  const spendReal = firstRetire.netSpend / firstRetire.inflationFactor;
-  if (spendReal <= 0) return null;
-
-  // Use real starting balance — startBal is already today's $.
-  const wr = spendReal / startBal;
+  const wr = initialWithdrawalRate(proj);
+  if (wr <= 0) return null;
   const pct = (wr * 100).toFixed(1);
 
   let severity: Insight['severity'];

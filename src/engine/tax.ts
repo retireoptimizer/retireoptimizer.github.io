@@ -2,7 +2,9 @@ import {
   FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE,
   STANDARD_DEDUCTION_MFJ, STANDARD_DEDUCTION_SINGLE,
   SENIOR_ADDON_MFJ, SENIOR_ADDON_SINGLE,
-  LTCG_RATE,
+  LTCG_BRACKETS_MFJ, LTCG_BRACKETS_SINGLE,
+  SS_PROVISIONAL_BASE_MFJ, SS_PROVISIONAL_UPPER_MFJ,
+  SS_PROVISIONAL_BASE_SINGLE, SS_PROVISIONAL_UPPER_SINGLE,
 } from './taxConstants';
 import type { FilingStatus } from './filingStatus';
 
@@ -47,6 +49,63 @@ export function standardDeduction(
   return (base + addon) * inflationFactor;
 }
 
+/**
+ * Taxable portion of Social Security benefits under IRC §86 provisional-income tiers.
+ * Thresholds are fixed by law (not inflation-indexed).
+ *
+ * @param provisionalIncome  Non-SS AGI + 0.5 × gross SS benefits
+ * @param grossSS            Total annual SS benefits received
+ * @param filingStatus
+ */
+export function taxableSocialSecurity(
+  provisionalIncome: number,
+  grossSS: number,
+  filingStatus: FilingStatus,
+): number {
+  if (grossSS <= 0) return 0;
+  const base  = filingStatus === 'MFJ' ? SS_PROVISIONAL_BASE_MFJ  : SS_PROVISIONAL_BASE_SINGLE;
+  const upper = filingStatus === 'MFJ' ? SS_PROVISIONAL_UPPER_MFJ : SS_PROVISIONAL_UPPER_SINGLE;
+
+  if (provisionalIncome <= base) return 0;
+
+  if (provisionalIncome <= upper) {
+    return Math.min(0.5 * (provisionalIncome - base), 0.5 * grossSS);
+  }
+
+  // Above upper threshold: tier-1 amount plus 85% of excess above upper, capped at 85% × SS.
+  const tier1 = Math.min(0.5 * (upper - base), 0.5 * grossSS);
+  const tier2 = 0.85 * (provisionalIncome - upper);
+  return Math.min(0.85 * grossSS, tier1 + tier2);
+}
+
+/**
+ * LTCG / qualified-dividend tax using stacked brackets (LTCG sits on top of ordinary income).
+ * Replaces the legacy flat-15% calculation.
+ */
+function stackedLtcgTax(
+  ltcgIncome: number,
+  taxableOrdinary: number,
+  filingStatus: FilingStatus,
+  inflationFactor: number,
+): number {
+  if (ltcgIncome <= 0) return 0;
+  const brackets = filingStatus === 'MFJ' ? LTCG_BRACKETS_MFJ : LTCG_BRACKETS_SINGLE;
+  let remaining = ltcgIncome;
+  let tax = 0;
+  let prevTop = 0;
+  for (const [top, rate] of brackets) {
+    const cap = top === Infinity ? Infinity : top * inflationFactor;
+    // LTCG fills from where ordinary income ends; the "floor" is taxableOrdinary.
+    const bracketRoom = Math.max(0, cap - Math.max(taxableOrdinary, prevTop));
+    const inBracket = Math.min(remaining, bracketRoom);
+    tax += inBracket * rate;
+    remaining -= inBracket;
+    if (remaining <= 0) break;
+    prevTop = cap;
+  }
+  return tax;
+}
+
 export interface YearTaxInputs {
   filingStatus: FilingStatus;
   inflationFactor: number;
@@ -65,7 +124,7 @@ export interface YearTaxOutputs {
 export function yearFederalTax(inp: YearTaxInputs): YearTaxOutputs {
   const taxableOrdinary = Math.max(0, inp.ordinaryIncome - inp.standardDeduction);
   const ordTax = federalOrdinaryTax(taxableOrdinary, inp.filingStatus, inp.inflationFactor);
-  const ltcgTax = Math.max(0, inp.ltcgIncome) * LTCG_RATE;
+  const ltcgTax = stackedLtcgTax(Math.max(0, inp.ltcgIncome), taxableOrdinary, inp.filingStatus, inp.inflationFactor);
   const fedTax = ordTax + ltcgTax;
   const totalIncome = inp.ordinaryIncome + inp.ltcgIncome;
   return {

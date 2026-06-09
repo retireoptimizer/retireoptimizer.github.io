@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { optimizeStrategy } from './optimizer';
 import { runProjection } from './projection';
 import { applyResultToPlan } from './applyOptimizerResult';
-import { defaultPlan } from '../schemas/plan';
+import { samplePlan as defaultPlan } from '../schemas/plan';
 import { planF_allTradCouple } from './__golden/plans';
 import type { UserGoal } from './recommender';
 

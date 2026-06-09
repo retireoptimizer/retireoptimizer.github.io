@@ -4,13 +4,14 @@ import { SS_TAXABLE_PCT, TAXABLE_BASIS_PCT } from './taxConstants';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor } from './rmd';
 import { householdSS } from './socialSecurity';
-import { yearFederalTax, standardDeduction } from './tax';
+import { yearFederalTax, standardDeduction, taxableSocialSecurity } from './tax';
 import { rothConversion } from './conversion';
 import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
 import { findWindow } from './blendPolicy';
 import { annualIRMAACost } from './irmaa';
 import { stateTax } from './stateTax';
+import { acaNetPremium } from './aca';
 
 export interface ProjectionRow {
   year: number;            // 1-indexed plan year
@@ -45,6 +46,8 @@ export interface ProjectionRow {
   irmaa: number;
   effRate: number;
   stdDeduction: number;
+  magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; used for IRMAA/ACA)
+  acaPremium: number;    // net ACA premium after APTC (0 when modelACA=false or post-Medicare)
   // Balances
   begTaxable: number;
   begTraditional: number;
@@ -145,6 +148,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const rows: ProjectionRow[] = [];
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
   let ranOut = false;
+  // Per-year final MAGI history for IRMAA 2-year lookback (year t's IRMAA uses magi[t-2]).
+  const magiHistory: number[] = [];
 
   const maxYears = Math.min(75, planToAge - startAgeA + 1);
 
@@ -206,7 +211,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // (the Pick-tab "mode") only when convAmt is undefined (e.g., a hand-edited custom blend
     // with a cleared cell). The optimizer always sets convAmt explicitly, so its trials never
     // hit the fallback — keeping the search independent of the Pick-tab settings.
-    const baseOrdIncForConv = ss.total * SS_TAXABLE_PCT + rmdAmt + other.taxableAmt;
+    // Approximate SS taxability for conv sizing (wdTrd=0; withdrawals unknown pre-loop).
+    const piForConv = other.taxableAmt + rmdAmt + 0.5 * ss.total;
+    const taxableSSForConv = taxableSocialSecurity(piForConv, ss.total, filingStatus);
+    const baseOrdIncForConv = taxableSSForConv + rmdAmt + other.taxableAmt;
     const policyWindow = activePolicy ? findWindow(activePolicy, ageA) : undefined;
     const policyConv = policyWindow?.convAmt;
     // True conversion cap: what's actually available in Trad AFTER growth + contrib
@@ -254,9 +262,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
     // are accounted for as resources. Conversion CREATES tax; loop sizes withdrawals to cover it.
-    let prevTax = 0, prevIRMAA = 0, prevStateAmt = 0;
+    let prevTax = 0, prevIRMAA = 0, prevStateAmt = 0, prevACA = 0;
     let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0;
-    let irmaa = 0;
+    let irmaa = 0, acaPremiumYear = 0;
     let gap = 0;
 
     const numAt65Plus = (aliveA && ageA >= 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= 65 ? 1 : 0);
@@ -265,7 +273,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
     for (let iter = 0; iter < 16; iter++) {
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
-      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA);
+      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA + prevACA);
       const w = activePolicy
         ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail })
         : applyWithdrawalOrder({
@@ -277,7 +285,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;
 
       const ltcg = wdTax * (1 - TAXABLE_BASIS_PCT);
-      const ordIncome = ss.total * SS_TAXABLE_PCT + other.taxableAmt + wdTrd + rmdAmt + conv;
+      // SS taxability via IRC §86 provisional-income tiers (replaces flat 0.85).
+      const provisionalIncome = other.taxableAmt + wdTrd + rmdAmt + conv + 0.5 * ss.total;
+      const taxableSS = taxableSocialSecurity(provisionalIncome, ss.total, filingStatus);
+      const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv;
       const t = yearFederalTax({
         filingStatus,
         inflationFactor,
@@ -288,7 +299,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       fedTax = t.fedTax; ordIncomeFinal = ordIncome; ltcgFinal = ltcg; effRate = t.effRate;
 
       const magi = ordIncomeFinal + ltcgFinal;
-      irmaa = numAt65Plus > 0 ? annualIRMAACost(magi, inflationFactor, numAt65Plus) : 0;
+      // IRMAA 2-year lookback: year i's surcharge is based on MAGI from year i-2.
+      // For the first two years, fall back to the current year's MAGI.
+      const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
+      irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus) : 0;
 
       // Refine state tax to include retirement distributions for states that tax them.
       // Include stateAmt in the convergence check — for CA/NY plans, state tax is a
@@ -296,14 +310,28 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
       stateAmt = stateTax(plan.state, other.nonExempt, wdTrd + rmdAmt + conv);
 
+      // ACA marketplace premium (pre-Medicare years when the user has opted in).
+      acaPremiumYear = 0;
+      if (plan.assumptions.modelACA && plan.assumptions.acaBenchmarkPremium > 0) {
+        const preMedicareCount = (aliveA && ageA < 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB < 65 ? 1 : 0);
+        if (preMedicareCount > 0) {
+          const scaledPremium = plan.assumptions.acaBenchmarkPremium * inflationFactor * preMedicareCount;
+          acaPremiumYear = plan.assumptions.acaNoSubsidy
+            ? scaledPremium  // full cost, no APTC applied
+            : acaNetPremium({ magi, householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium });
+        }
+      }
+
       if (
         Math.abs(fedTax - prevTax) < 1 &&
         Math.abs(irmaa - prevIRMAA) < 1 &&
-        Math.abs(stateAmt - prevStateAmt) < 1
+        Math.abs(stateAmt - prevStateAmt) < 1 &&
+        Math.abs(acaPremiumYear - prevACA) < 1
       ) break;
       prevTax = fedTax;
       prevIRMAA = irmaa;
       prevStateAmt = stateAmt;
+      prevACA = acaPremiumYear;
     }
 
     // Update balances. Withdrawals were sized to cover all cash needs.
@@ -333,6 +361,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     }
 
     lifetimeFedTax += fedTax;
+    magiHistory.push(ordIncomeFinal + ltcgFinal);
 
     rows.push({
       year: i + 1,
@@ -356,6 +385,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       irmaa,
       effRate,
       stdDeduction: stdD,
+      magi: ordIncomeFinal + ltcgFinal,
+      acaPremium: acaPremiumYear,
       begTaxable, begTraditional: begTrad, begRoth,
       endTaxable: taxable, endTraditional: trad, endRoth: roth,
       endTotal,
@@ -389,4 +420,24 @@ export function depletionAge(proj: ProjectionResult): number | null {
     }
   }
   return null;
+}
+
+/**
+ * Initial (year-1) withdrawal rate — the classic "4% rule" metric.
+ * Numerator: gross portfolio withdrawals in the first retirement year that
+ *   actually draws from accounts.
+ * Denominator: portfolio value at the START of that year (end-of-year balance
+ *   plus the withdrawals taken during it).
+ * The ratio is unit-invariant (both terms are same-year nominal dollars), so it
+ * reads identically in real and nominal mode. This is the single source of
+ * truth — the top bar, dashboard, scenario compare, and the WR insight all use
+ * it so the number is consistent everywhere.
+ */
+export function initialWithdrawalRate(proj: ProjectionResult): number {
+  const r =
+    proj.rows.find((row) => (row.phase === 'Retire' || row.phase === 'Survivor') && row.totalWD > 0) ??
+    proj.rows.find((row) => row.totalWD > 0);
+  if (!r) return 0;
+  const startOfYear = r.endTotal + r.totalWD;
+  return startOfYear > 0 ? r.totalWD / startOfYear : 0;
 }

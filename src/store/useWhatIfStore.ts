@@ -7,6 +7,7 @@ import type { Plan } from '../schemas/plan';
  *  is a shallow-copied projection input. */
 export interface WhatIfOverrides {
   retirementAgeA?: number;     // overrides plan.personA.retirementAge
+  retirementAgeB?: number;     // overrides plan.personB.retirementAge (ignored if no person B)
   preRetReturn?: number;       // overrides plan.assumptions.preRetReturn
   inflation?: number;          // overrides plan.assumptions.inflation
   spendingMultiplier?: number; // multiplies every expense stream's annualAmount
@@ -37,12 +38,15 @@ export const useWhatIfStore = create<WhatIfState>()((set) => ({
 export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
   if (!w.active) return plan;
   const o = w.overrides;
-  const hasAny = o.retirementAgeA !== undefined || o.preRetReturn !== undefined || o.inflation !== undefined || (o.spendingMultiplier !== undefined && o.spendingMultiplier !== 1);
+  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.preRetReturn !== undefined || o.inflation !== undefined || (o.spendingMultiplier !== undefined && o.spendingMultiplier !== 1);
   if (!hasAny) return plan;
 
   let next: Plan = plan;
   if (o.retirementAgeA !== undefined) {
     next = { ...next, personA: { ...next.personA, retirementAge: o.retirementAgeA } };
+  }
+  if (o.retirementAgeB !== undefined && next.personB) {
+    next = { ...next, personB: { ...next.personB, retirementAge: o.retirementAgeB } };
   }
   if (o.preRetReturn !== undefined || o.inflation !== undefined) {
     next = {
