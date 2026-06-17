@@ -43,10 +43,27 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
 
   let next: Plan = plan;
   if (o.retirementAgeA !== undefined) {
-    next = { ...next, personA: { ...next.personA, retirementAge: o.retirementAgeA } };
+    const oldAge = plan.personA.retirementAge;
+    const newAge = o.retirementAgeA;
+    next = {
+      ...next,
+      personA: { ...next.personA, retirementAge: newAge },
+      // Shift expense streams that are anchored to Person A's retirement date
+      expenseStreams: next.expenseStreams.map((s) =>
+        s.startAge === oldAge ? { ...s, startAge: newAge } : s
+      ),
+    };
   }
   if (o.retirementAgeB !== undefined && next.personB) {
-    next = { ...next, personB: { ...next.personB, retirementAge: o.retirementAgeB } };
+    const oldAge = plan.personB!.retirementAge;
+    const newAge = o.retirementAgeB;
+    next = {
+      ...next,
+      personB: { ...next.personB, retirementAge: newAge },
+      expenseStreams: next.expenseStreams.map((s) =>
+        s.startAge === oldAge ? { ...s, startAge: newAge } : s
+      ),
+    };
   }
   if (o.preRetReturn !== undefined || o.inflation !== undefined) {
     next = {

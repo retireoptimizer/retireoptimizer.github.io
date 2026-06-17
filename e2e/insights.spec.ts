@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Dashboard surfaces an Insights panel for an all-Trad plan', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/dashboard');
   // Insights panel header should be present.
   await expect(page.getByText(/^Insights$/).first()).toBeVisible();
 });

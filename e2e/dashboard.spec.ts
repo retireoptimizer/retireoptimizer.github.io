@@ -8,26 +8,26 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Dashboard loads with default plan and shows live metrics on the global ribbon', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/dashboard');
   // Sidebar nav present
   await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
   // Live metrics bar visible — the Dashboard KPI tiles were dropped (they
   // duplicated the global ribbon).
   await expect(page.getByText(/Portfolio @ Retirement/i)).toBeVisible();
-  await expect(page.getByText(/Plan Lasts To/i)).toBeVisible();
+  // The standalone "Plan Lasts To" card was folded into the End Balance cell, whose
+  // subtext now carries the longevity status.
   await expect(page.getByText(/End Balance/i).first()).toBeVisible();
   await expect(page.getByText('Initial Withdrawal Rate', { exact: true })).toBeVisible();
 });
 
-test('Personal Details page renders inputs and SS callout', async ({ page }) => {
+test('Personal Details page renders the client-profile inputs', async ({ page }) => {
   await page.goto('/personal');
-  // Labels include the person's actual name, not the literal "Person A".
-  await expect(page.getByText(/— Full Name$/).first()).toBeVisible();
-  await expect(page.getByText(/— Target Retirement Age$/).first()).toBeVisible();
-  // SS PIA / SS Claim Age inputs were removed (SS now comes from Income Streams).
-  // A callout points users to the new location.
-  await expect(page.getByText(/Social Security/).first()).toBeVisible();
-  await expect(page.getByText(/Income Streams/i).first()).toBeVisible();
+  // After the redesign, fields use sentence-case labels (no "— Full Name" row
+  // headers) and the SS PIA / SS Claim Age inputs + callout were removed (SS now
+  // comes from the Income & Expenses page).
+  await expect(page.getByText('Your Name', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Retirement Age', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Plan-To Age', { exact: true }).first()).toBeVisible();
   // State selector populated with at least 6 states
   const stateSelect = page.locator('select').first();
   const options = await stateSelect.locator('option').count();
@@ -43,7 +43,7 @@ test('Set Goals page exposes the optimizer goal selector; Dashboard hosts the pr
   await expect(page.getByText(/what outcome do you want/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pick', exact: true })).toHaveCount(0);
 
-  await page.goto('/');
+  await page.goto('/dashboard');
   // Dashboard's StrategyChooser exposes preset chips.
   await expect(page.getByRole('button', { name: 'Tax-first', exact: true })).toBeVisible();
   // Customize opens the side sheet with the Custom Blend Editor.
@@ -55,7 +55,7 @@ test('Add a scenario from the Dashboard template picker and see it appear in Pin
   // After the IA refactor, the standalone /scenarios route is gone. The
   // "+ Add From Template" affordance lives inline on the Dashboard's Pinned
   // Comparisons panel.
-  await page.goto('/');
+  await page.goto('/dashboard');
   await expect(page.getByRole('button', { name: '+ Add From Template' })).toBeVisible();
   await page.getByRole('button', { name: '+ Add From Template' }).click();
   await page.getByRole('button', { name: /Retire 3 Years Earlier/ }).first().click();

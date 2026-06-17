@@ -30,6 +30,7 @@ const personPortfolio = () =>
     traditional: fc.integer({ min: 0, max: 3_000_000 }),
     roth: fc.integer({ min: 0, max: 2_000_000 }),
     annualContribution: fc.integer({ min: 0, max: 75_000 }),
+    contribGrowth: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }),
     contribSplit: contribSplit(),
   });
 
@@ -73,7 +74,6 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
     preRetReturn: fc.double({ min: 0.02, max: 0.10, noNaN: true, noDefaultInfinity: true }),
     postRetReturn: fc.double({ min: 0.02, max: 0.08, noNaN: true, noDefaultInfinity: true }),
     inflation: fc.double({ min: 0.005, max: 0.05, noNaN: true, noDefaultInfinity: true }),
-    contribGrowth: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }),
     pfA: personPortfolio(),
     pfB: personPortfolio(),
     hasPersonB: fc.boolean(),
@@ -116,7 +116,6 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           preRetReturn: s.preRetReturn,
           postRetReturn: s.postRetReturn,
           inflation: s.inflation,
-          contribGrowth: s.contribGrowth,
           rmdStartAge: 75,
           modelACA: false,
           acaHouseholdSize: 2,

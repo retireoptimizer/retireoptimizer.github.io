@@ -71,14 +71,14 @@ export function evaluateSetup(plan: Plan): SetupStep[] {
     {
       key: 'income',
       label: 'Income streams',
-      route: '/income',
+      route: '/cash-flow',
       done: !incomeSame,
       hint: 'Pensions, wages, rental, annuities',
     },
     {
       key: 'expenses',
       label: 'Expenses',
-      route: '/expenses',
+      route: '/cash-flow',
       done: !expensesSame,
       hint: 'Core spending + healthcare',
     },

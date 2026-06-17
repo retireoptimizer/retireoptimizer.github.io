@@ -171,10 +171,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     else if (retired) phase = 'Retire';
     else phase = 'Accum.';
 
-    // Contributions during working years
-    const cgFactor = Math.pow(1 + plan.assumptions.contribGrowth, i);
-    const contribA = (!retiredA && aliveA) ? pfA.annualContribution * cgFactor : 0;
-    const contribB = (!retiredB && aliveB && plan.personB && pfB) ? pfB.annualContribution * cgFactor : 0;
+    // Contributions during working years — each person's contribution grows at their
+    // own rate (contribGrowth now lives on the per-person portfolio, not assumptions).
+    const cgFactorA = Math.pow(1 + (pfA.contribGrowth ?? 0), i);
+    const cgFactorB = pfB ? Math.pow(1 + (pfB.contribGrowth ?? 0), i) : 1;
+    const contribA = (!retiredA && aliveA) ? pfA.annualContribution * cgFactorA : 0;
+    const contribB = (!retiredB && aliveB && plan.personB && pfB) ? pfB.annualContribution * cgFactorB : 0;
 
     // Social Security. If the user has SS-typed income streams, they override
     // the PIA-based actuarial calc per person/year (so editing the stream's

@@ -10,11 +10,16 @@ test('Income changes update the LiveMetricsBar', async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.goto('/income');
 
-  await page.getByRole('button', { name: /Add Stream/i }).click();
-  await page.locator('button').filter({ hasText: 'Fully taxable, light COLA' }).click();
+  // The top-of-panel template picker was removed; add a blank row via the inline
+  // "+ Add income stream" button (it inserts an in-retirement, fully-taxable row).
+  await page.getByRole('button', { name: /Add income stream/i }).click();
 
-  const endBalCell = page.locator('div').filter({ hasText: /^End Balance$/ }).first().locator('..');
-  const before = await endBalCell.locator('div').nth(1).textContent();
+  // Probe the "Lifetime Fed Tax" cell: with the fresh-storage default plan the
+  // portfolio is empty, so End Balance reads "—" regardless of income and is a poor
+  // signal. Adding $120k of fully-taxable income deterministically moves lifetime
+  // fed tax, so it's the robust witness that the income→projection→bar path is live.
+  const taxCell = page.locator('div').filter({ hasText: /^Lifetime Fed Tax$/ }).first().locator('..');
+  const before = await taxCell.locator('div').nth(1).textContent();
 
   // Row inputs in DOM order: description, startAge, stopAge, annualAmount, growthPct.
   // (whose/type are <select> not <input>, so they don't count.) annualAmount is nth(3).
@@ -24,6 +29,6 @@ test('Income changes update the LiveMetricsBar', async ({ page }) => {
   await amtInput.blur();
   await page.waitForTimeout(300);
 
-  const after = await endBalCell.locator('div').nth(1).textContent();
+  const after = await taxCell.locator('div').nth(1).textContent();
   expect(after).not.toBe(before);
 });

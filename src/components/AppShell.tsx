@@ -8,12 +8,13 @@ export default function AppShell() {
   const plan = usePlanStore((s) => s.plan);
   const displayMode = usePlanStore((s) => s.displayMode);
   const setDisplayMode = usePlanStore((s) => s.setDisplayMode);
+  const resetPlan = usePlanStore((s) => s.resetPlan);
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const navigate = useNavigate();
 
   const onBuildPlan = () => {
-    navigate('/');
+    navigate('/dashboard');
     setToast({ kind: 'ok', text: 'Plan built — viewing dashboard' });
     setTimeout(() => setToast(null), 2500);
   };
@@ -25,6 +26,15 @@ export default function AppShell() {
   };
 
   const onImportClick = () => fileRef.current?.click();
+
+  const onResetPlan = () => {
+    // Plan-wide, destructive: clears every page's inputs. Confirm before wiping.
+    if (!window.confirm('Reset the entire plan to defaults? This clears every page’s inputs and can’t be undone.')) return;
+    resetPlan();
+    navigate('/personal');
+    setToast({ kind: 'ok', text: 'Plan reset to defaults' });
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -78,6 +88,7 @@ export default function AppShell() {
             <div className="client-name">My Retirement Plan</div>
           </div>
           <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={onFileChange} />
+          <button className="btn btn-ghost" onClick={onResetPlan} style={{ padding: '8px 14px', fontSize: 12 }}>Reset Plan</button>
           <button className="btn btn-ghost" onClick={onImportClick} style={{ padding: '8px 14px', fontSize: 12 }}>Import</button>
           <button className="save-btn" onClick={onExport}>Export Plan</button>
         </div>
@@ -104,17 +115,11 @@ export default function AppShell() {
             </svg>
             Personal Details
           </NavLink>
-          <NavLink to="/income" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <NavLink to="/cash-flow" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path d="M12 3v18M17 8H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
-            Income Streams
-          </NavLink>
-          <NavLink to="/expenses" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M3 10h18M7 15h.01M11 15h.01M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z" strokeWidth="1.8"/>
-            </svg>
-            Expenses
+            Income &amp; Expenses
           </NavLink>
           <NavLink to="/portfolio" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -138,7 +143,7 @@ export default function AppShell() {
           </button>
 
           <div className="sidebar-section-label">Results</div>
-          <NavLink to="/" end className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <NavLink to="/dashboard" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             <svg className="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/>
               <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/>

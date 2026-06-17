@@ -31,7 +31,7 @@ test('Dashboard KPIs match engine output for a fixture plan', async ({ page }) =
     { key: STORAGE_KEY, value: persisted },
   );
 
-  await page.goto('/');
+  await page.goto('/dashboard');
   await expect(page.getByText(/Portfolio @ Retirement/i)).toBeVisible();
 
   // Read the LiveMetricsBar values and compare to engine output.
@@ -49,10 +49,12 @@ test('Dashboard KPIs match engine output for a fixture plan', async ({ page }) =
   const displayedPortfolio = await portfolioCell.locator('..').locator('div').nth(1).textContent();
   expect(displayedPortfolio?.trim()).toBe(expectedPortfolioText);
 
-  // End Balance (real $) — direct from projection
+  // End Balance (real $) — direct from projection. The label now carries the
+  // plan-to age ("End Balance · Age <n>"), and the longevity status moved into its
+  // subtext (the standalone "Plan Lasts To" card was folded in).
   const expectedEndBalance = fmtM(expected.endTotalReal);
-  const endCell = page.locator('div', { hasText: /^End Balance$/i }).first();
-  const displayedEnd = await endCell.locator('..').locator('div').nth(1).textContent();
+  const endCell = page.locator('div', { hasText: /^End Balance · Age \d+$/i }).first().locator('..');
+  const displayedEnd = await endCell.locator('div').nth(1).textContent();
   expect(displayedEnd?.trim()).toBe(expectedEndBalance);
 
   // Lifetime Fed Tax (nominal, all years)
@@ -61,13 +63,15 @@ test('Dashboard KPIs match engine output for a fixture plan', async ({ page }) =
   const displayedTax = await taxCell.locator('..').locator('div').nth(1).textContent();
   expect(displayedTax?.trim()).toBe(expectedFedTax);
 
-  // Plan Lasts To: depletionAge or planToAge
+  // Longevity status lives in the End Balance subtext: "⚠ Runs out at age N" when
+  // funds deplete, else "✓ Funds full plan".
   const depAge = depletionAge(expected);
-  const fundsTo = depAge ?? plan.personA.planToAge;
-  const expectedLasts = `Age ${fundsTo}`;
-  const lastsCell = page.locator('div', { hasText: /^Plan Lasts To$/i }).first();
-  const displayedLasts = await lastsCell.locator('..').locator('div').nth(1).textContent();
-  expect(displayedLasts?.trim()).toBe(expectedLasts);
+  const displayedSub = (await endCell.locator('div').nth(2).textContent())?.trim() ?? '';
+  if (depAge !== null) {
+    expect(displayedSub).toContain(`Runs out at age ${depAge}`);
+  } else {
+    expect(displayedSub).toContain('Funds full plan');
+  }
 });
 
 test('Real/nominal toggle changes LiveMetricsBar End Balance', async ({ page }) => {
@@ -80,10 +84,10 @@ test('Real/nominal toggle changes LiveMetricsBar End Balance', async ({ page }) 
     { key: STORAGE_KEY, value: persisted },
   );
 
-  await page.goto('/');
+  await page.goto('/dashboard');
   await expect(page.getByText(/End Balance/i).first()).toBeVisible();
 
-  const endCell = page.locator('div', { hasText: /^End Balance$/i }).first();
+  const endCell = page.locator('div', { hasText: /^End Balance · Age \d+$/i }).first();
   const readEnd = async () => (await endCell.locator('..').locator('div').nth(1).textContent())?.trim();
 
   // Real value first (the seeded displayMode).
@@ -106,7 +110,7 @@ test('Plan export/import round-trip is byte-identical', async ({ page }) => {
     ({ key, value }) => { window.localStorage.setItem(key, value); },
     { key: STORAGE_KEY, value: persisted },
   );
-  await page.goto('/');
+  await page.goto('/dashboard');
 
   // Read what's now in localStorage.
   const stored = await page.evaluate((k) => window.localStorage.getItem(k), STORAGE_KEY);

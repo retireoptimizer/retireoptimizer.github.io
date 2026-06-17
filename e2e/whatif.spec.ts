@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('What-If bar is present and collapsible on Dashboard', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/dashboard');
   // The collapsed bar exposes a toggle/heading like "What-If" — find the trigger.
   const trigger = page.getByText(/What[-\s]?If/i).first();
   await expect(trigger).toBeVisible();

@@ -69,7 +69,7 @@ export const usePlanStore = create<PlanState>()(
         plan: {
           ...s.plan,
           personB: { name: '', dob: '1975-01-01', retirementAge: 65, planToAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
-          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, traditional: 0, roth: 0, annualContribution: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
+          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
         },
       })),
       removePersonB: () => set((s) => ({
@@ -109,10 +109,22 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 4,
+      version: 5,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v5: contribGrowth moved from assumptions (household-wide) to each person's
+        // portfolio. Copy the old single value onto both people so projections are
+        // unchanged; persisted plans without it would otherwise yield NaN factors.
+        if (fromVersion < 5 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const asm = planObj.assumptions as Record<string, unknown> | undefined;
+          const oldCg = asm && typeof asm.contribGrowth === 'number' ? asm.contribGrowth : 0;
+          const pf = planObj.portfolio as { personA?: Record<string, unknown>; personB?: Record<string, unknown> } | undefined;
+          if (pf?.personA && typeof pf.personA === 'object' && !('contribGrowth' in pf.personA)) pf.personA.contribGrowth = oldCg;
+          if (pf?.personB && typeof pf.personB === 'object' && !('contribGrowth' in pf.personB)) pf.personB.contribGrowth = oldCg;
+          if (asm && 'contribGrowth' in asm) delete asm.contribGrowth;
+        }
         if (fromVersion < 4 && ps.plan && typeof ps.plan === 'object') {
           const assumptions = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
           if (assumptions) {

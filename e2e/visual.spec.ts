@@ -27,7 +27,7 @@ test.describe('Visual regression', () => {
   });
 
   for (const [name, path] of [
-    ['dashboard', '/'],
+    ['dashboard', '/dashboard'],
     ['strategy', '/withdrawal'],
     ['projections', '/projections'],
     ['taxes', '/taxes'],

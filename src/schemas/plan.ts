@@ -15,7 +15,6 @@ export const AssumptionsSchema = z.object({
   preRetReturn: z.number(),
   postRetReturn: z.number(),
   inflation: z.number(),
-  contribGrowth: z.number(),
   rmdStartAge: z.number().int().default(75),
   // ACA marketplace premium modeling (pre-Medicare gap years)
   modelACA: z.boolean().default(false),
@@ -35,6 +34,9 @@ export const PersonPortfolioSchema = z.object({
   traditional: z.number().nonnegative(),
   roth: z.number().nonnegative(),
   annualContribution: z.number().nonnegative(),
+  // Annual % growth of this person's contribution while still working (e.g. 0.03 = +3%/yr).
+  // Defaulted so plans persisted before contribGrowth moved here keep parsing.
+  contribGrowth: z.number().default(0),
   // How each year's contribution splits across buckets for this person (must sum to ~1)
   contribSplit: z.object({
     taxable: z.number().min(0).max(1),
@@ -160,7 +162,6 @@ export const defaultPlan = (): Plan => ({
     preRetReturn: 0.065,
     postRetReturn: 0.05,
     inflation: 0.025,
-    contribGrowth: 0,
     rmdStartAge: 75,
     modelACA: false,
     acaHouseholdSize: 1,
@@ -173,6 +174,7 @@ export const defaultPlan = (): Plan => ({
       traditional: 0,
       roth: 0,
       annualContribution: 0,
+      contribGrowth: 0,
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
     personB: undefined,
@@ -216,7 +218,6 @@ export const samplePlan = (): Plan => ({
     preRetReturn: 0.065,
     postRetReturn: 0.05,
     inflation: 0.025,
-    contribGrowth: 0,
     rmdStartAge: 75,
     modelACA: false,
     acaHouseholdSize: 2,
@@ -229,6 +230,7 @@ export const samplePlan = (): Plan => ({
       traditional: 779000,
       roth: 441000,
       annualContribution: 60000,
+      contribGrowth: 0,
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
     personB: {
@@ -236,6 +238,7 @@ export const samplePlan = (): Plan => ({
       traditional: 106000,
       roth: 171000,
       annualContribution: 40000,
+      contribGrowth: 0,
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
   },

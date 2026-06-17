@@ -14,16 +14,22 @@ interface PersonPanelProps {
 function PersonPanel({ name, data, onChange }: PersonPanelProps) {
   const subtotal = data.taxable + data.traditional + data.roth;
   const split = data.contribSplit;
+  const splitPct = Math.round((split.taxable + split.traditional + split.roth) * 100);
 
-  // 2-input model: user controls Taxable % and Pre-tax %; Roth % is the auto-computed
-  // remainder. Clamp so the two free inputs never sum above 100.
-  const setSplit = (tax: number, trad: number) => {
-    const cleanTax = Math.max(0, Math.min(1, tax));
-    let cleanTrad = Math.max(0, Math.min(1 - cleanTax, trad));
-    const roth = Math.max(0, 1 - cleanTax - cleanTrad);
-    // Floating-point cleanup so the three values sum to exactly 1.
-    cleanTrad = 1 - cleanTax - roth;
-    onChange({ contribSplit: { taxable: cleanTax, traditional: cleanTrad, roth } });
+  // All three bucket %s are editable. Editing one rebalances the other two
+  // proportionally so the mix always sums to 100% — the engine multiplies each
+  // contribution by these fractions, so a sum ≠ 1 would silently under/over-invest.
+  const setBucket = (key: keyof typeof split, val: number) => {
+    const v = Math.max(0, Math.min(1, val));
+    const [o1, o2] = (['taxable', 'traditional', 'roth'] as const).filter((k) => k !== key);
+    const rem = 1 - v;
+    const osum = split[o1] + split[o2];
+    const n1 = osum > 0 ? rem * (split[o1] / osum) : rem / 2;
+    const next = { ...split };
+    next[key] = v;
+    next[o1] = n1;
+    next[o2] = rem - n1;
+    onChange({ contribSplit: next });
   };
 
   return (
@@ -34,62 +40,78 @@ function PersonPanel({ name, data, onChange }: PersonPanelProps) {
       </div>
       <div className="panel-body">
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginBottom: 8 }}>Bucket Balances</div>
-        <div className="form-grid">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           <div className="form-group">
-            <label>Taxable (Brokerage)</label>
+            <label>Taxable</label>
             <div className="input-prefix-wrap"><span className="input-prefix">$</span>
               <NumberInput value={data.taxable} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => onChange({ taxable: v })} />
             </div>
+            <div className="helper-text">Brokerage</div>
           </div>
           <div className="form-group">
-            <label>Pre-tax 401(k) / IRA</label>
+            <label>Pre-tax</label>
             <div className="input-prefix-wrap"><span className="input-prefix">$</span>
               <NumberInput value={data.traditional} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => onChange({ traditional: v })} />
             </div>
+            <div className="helper-text">401(k) / IRA</div>
           </div>
           <div className="form-group">
-            <label>Roth (IRA / Roth 401k)</label>
+            <label>Roth</label>
             <div className="input-prefix-wrap"><span className="input-prefix">$</span>
               <NumberInput value={data.roth} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => onChange({ roth: v })} />
             </div>
+            <div className="helper-text">IRA / Roth 401k</div>
           </div>
         </div>
 
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginTop: 18, marginBottom: 8 }}>Annual Contribution</div>
-        <div className="form-group">
-          <label>Total Contribution / yr</label>
-          <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-            <NumberInput value={data.annualContribution} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => onChange({ annualContribution: v })} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="form-group">
+            <label>Total Contribution / yr</label>
+            <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+              <NumberInput value={data.annualContribution} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => onChange({ annualContribution: v })} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Annual growth</label>
+            <div className="input-suffix-wrap">
+              <NumberInput value={data.contribGrowth} scale={100} digits={1} min={0} onCommit={(v) => onChange({ contribGrowth: v })} />
+              <span className="input-suffix">%</span>
+            </div>
+            <div className="helper-text">Raises while still working</div>
           </div>
         </div>
 
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', marginTop: 18, marginBottom: 8 }}>Contribution Mix</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div className="form-group">
-            <label>→ Taxable %</label>
-            <div className="input-suffix-wrap">
-              <NumberInput value={split.taxable} scale={100} digits={0} min={0} max={100} onCommit={(v) => setSplit(v, split.traditional)} />
-              <span className="input-suffix">%</span>
-            </div>
-          </div>
-          <div className="form-group">
-            <label>→ Pre-tax %</label>
-            <div className="input-suffix-wrap">
-              <NumberInput value={split.traditional} scale={100} digits={0} min={0} max={100} onCommit={(v) => setSplit(split.taxable, v)} />
-              <span className="input-suffix">%</span>
-            </div>
-          </div>
-        </div>
-        {/* Roth is the auto-computed remainder, shown as a non-editable bar so users can see what's left. */}
-        <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>→ Roth (auto)</span>
-          <div style={{ flex: 1, height: 6, background: 'rgba(13,27,46,0.06)', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.round(split.roth * 100)}%`, height: '100%', background: 'var(--gold)' }} />
-          </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)', fontFamily: "'DM Mono', monospace", minWidth: 44, textAlign: 'right' }}>
-            {Math.round(split.roth * 100)}%
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>Contribution Mix</div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: splitPct === 100 ? 'var(--success)' : 'var(--warning)' }}>
+            {splitPct === 100 ? '✓ 100%' : `⚠ ${splitPct}%`}
           </span>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div className="form-group">
+            <label>Taxable</label>
+            <div className="input-suffix-wrap">
+              <NumberInput value={split.taxable} scale={100} digits={0} min={0} max={100} onCommit={(v) => setBucket('taxable', v)} />
+              <span className="input-suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Pre-tax</label>
+            <div className="input-suffix-wrap">
+              <NumberInput value={split.traditional} scale={100} digits={0} min={0} max={100} onCommit={(v) => setBucket('traditional', v)} />
+              <span className="input-suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Roth</label>
+            <div className="input-suffix-wrap">
+              <NumberInput value={split.roth} scale={100} digits={0} min={0} max={100} onCommit={(v) => setBucket('roth', v)} />
+              <span className="input-suffix">%</span>
+            </div>
+          </div>
+        </div>
+        <div className="helper-text" style={{ marginTop: 6 }}>Editing one bucket rebalances the others to total 100%.</div>
       </div>
     </div>
   );
@@ -99,7 +121,6 @@ export default function Portfolio() {
   const plan = usePlanStore((s) => s.plan);
   const setPersonAPortfolio = usePlanStore((s) => s.setPersonAPortfolio);
   const setPersonBPortfolio = usePlanStore((s) => s.setPersonBPortfolio);
-  const resetPlan = usePlanStore((s) => s.resetPlan);
 
   const pf = plan.portfolio;
   const totals = householdTotals(pf);
@@ -111,18 +132,6 @@ export default function Portfolio() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <div className="page-header-inner">
-          <div>
-            <div className="page-eyebrow">Inputs</div>
-            <div className="page-title">Portfolio</div>
-            <div className="page-subtitle">Per-person balances, contributions &amp; mix — projections update live</div>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={resetPlan}>Reset Defaults</button>
-          </div>
-        </div>
-      </div>
       <div className="page-body">
         <div className="metrics-grid" style={{ marginBottom: '24px' }}>
           <div className="metric-card positive">

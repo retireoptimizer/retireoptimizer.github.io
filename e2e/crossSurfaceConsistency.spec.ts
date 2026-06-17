@@ -22,12 +22,14 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-/** Read the value of a sticky LiveMetricsBar cell by its uppercase label
- *  ("PORTFOLIO @ RETIREMENT", "PLAN LASTS TO", "END BALANCE", "LIFETIME FED TAX",
- *  "INITIAL WITHDRAWAL RATE"). The cell renders <div label/><div value/><div sub/>. */
+/** Read the value of a sticky LiveMetricsBar cell by its label
+ *  ("Portfolio @ Retirement", "End Balance", "Lifetime Fed Tax",
+ *  "Initial Withdrawal Rate"). The cell renders <div label/><div value/><div sub/>.
+ *  The "End Balance" label carries a dynamic " · Age <n>" suffix, so the optional
+ *  group below matches it while the trailing \d+$ keeps the match to the label div
+ *  (the enclosing cell's text runs on into the value, so it won't match). */
 async function readLMBValue(page: import('@playwright/test').Page, label: string): Promise<string> {
-  // The label div uses uppercase styling but inner text is title-case as authored.
-  const labelDiv = page.locator('div', { hasText: new RegExp(`^${label}$`, 'i') }).first();
+  const labelDiv = page.locator('div', { hasText: new RegExp(`^${label}( · Age \\d+)?$`, 'i') }).first();
   const cell = labelDiv.locator('..');
   const value = await cell.locator('div').nth(1).textContent();
   return (value ?? '').trim();
@@ -50,12 +52,14 @@ function normalizeNumeric(s: string): string {
 // (a different surface that still exists on Dashboard) against the LMB End Balance.
 
 test('After toggling to Nominal, Dashboard End-of-Plan Balance === LiveMetricsBar End Balance (nominal $)', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/dashboard');
   await page.getByRole('radio', { name: /Nominal \$/i }).click();
 
   const lmb = await readLMBValue(page, 'End Balance');
-  // Dashboard End-of-Plan Balance lives in the Lifetime Totals panel (not a
-  // .metric-label tile). Look it up by its inline label.
-  const dashEnd = await page.locator('div', { hasText: /^End-of-Plan Balance$/i }).first().locator('..').locator('div').nth(1).textContent();
+  // Dashboard End Balance lives in the headline Stat row of the Plan Summary panel.
+  // Match its label case-sensitively as exactly "End Balance" so we don't collide
+  // with the lowercase "End balance" Roth-benefit delta nor the LMB's
+  // "End Balance · Age <n>" label.
+  const dashEnd = await page.locator('div', { hasText: /^End Balance$/ }).first().locator('..').locator('div').nth(1).textContent();
   expect(normalizeNumeric(dashEnd ?? '')).toBe(normalizeNumeric(lmb));
 });
