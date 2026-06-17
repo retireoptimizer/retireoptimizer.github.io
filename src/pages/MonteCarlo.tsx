@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
-import type { MonteCarloResult } from '../engine/monteCarlo';
+import type { MonteCarloResult, ReturnModel } from '../engine/monteCarlo';
 import { getEngineWorker } from '../engine/workerClient';
 import MonteCarloFan from '../components/charts/MonteCarloFan';
 import { fmtM, fmtPct } from '../lib/format';
@@ -30,9 +30,13 @@ const bandColor = (t: RiskBand['tone']): string => {
 
 export default function MonteCarlo() {
   const plan = usePlanStore((s) => s.plan);
+  const displayMode = usePlanStore((s) => s.displayMode);
+  const real = displayMode === 'real';
   const proj = useProjection();
   const [trials, setTrials] = useState(500);
   const [stdDev, setStdDev] = useState(10);
+  const [model, setModel] = useState<ReturnModel>('historical');
+  const [equityPct, setEquityPct] = useState(Math.round((plan.assumptions.equityPct ?? 0.6) * 100));
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<MonteCarloResult | null>(null);
 
@@ -40,12 +44,14 @@ export default function MonteCarlo() {
     setRunning(true);
     try {
       const worker = getEngineWorker();
-      const mc = await worker.monteCarlo(plan, { trials, stdDev: stdDev / 100 });
+      const mc = await worker.monteCarlo(plan, { trials, model, equityPct: equityPct / 100, stdDev: stdDev / 100 });
       setResult(mc);
     } finally {
       setRunning(false);
     }
   };
+
+  const mixLabel = `${equityPct}/${100 - equityPct}`;
 
   const successColor = (rate: number) => rate >= 0.9 ? 'var(--success)' : rate >= 0.75 ? 'var(--warning)' : 'var(--danger)';
 
@@ -74,22 +80,22 @@ export default function MonteCarlo() {
             <div className="metric-value" style={{ color: result ? successColor(result.successRate) : undefined }}>
               {result ? fmtPct(result.successRate, 0) : '—'}
             </div>
-            <div className="metric-sub">{result ? `${result.trials} trials · ${stdDev}% σ` : 'Click Run Simulation'}</div>
+            <div className="metric-sub">{result ? `${result.trials} trials · ${result.model === 'historical' ? 'historical bootstrap' : 'parametric'} · ${Math.round(result.equityPct * 100)}/${100 - Math.round(result.equityPct * 100)}` : 'Click Run Simulation'}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Median Final Portfolio</div>
-            <div className="metric-value">{result ? fmtM(result.medianEndBalance) : '—'}</div>
-            <div className="metric-sub">Age {plan.personA.planToAge} · 50th percentile (real $)</div>
+            <div className="metric-value">{result ? fmtM(real ? result.medianEndBalance : result.medianEndBalanceNominal) : '—'}</div>
+            <div className="metric-sub">Age {plan.personA.planToAge} · 50th percentile ({real ? "today's $" : 'nominal $'})</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">10th Percentile Outcome</div>
-            <div className="metric-value">{result ? fmtM(result.p10EndBalance) : '—'}</div>
-            <div className="metric-sub">Adverse scenario (real $)</div>
+            <div className="metric-value">{result ? fmtM(real ? result.p10EndBalance : result.p10EndBalanceNominal) : '—'}</div>
+            <div className="metric-sub">Adverse scenario ({real ? "today's $" : 'nominal $'})</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">90th Percentile Outcome</div>
-            <div className="metric-value">{result ? fmtM(result.p90EndBalance) : '—'}</div>
-            <div className="metric-sub">Favorable scenario (real $)</div>
+            <div className="metric-value">{result ? fmtM(real ? result.p90EndBalance : result.p90EndBalanceNominal) : '—'}</div>
+            <div className="metric-sub">Favorable scenario ({real ? "today's $" : 'nominal $'})</div>
           </div>
         </div>
 
@@ -106,7 +112,11 @@ export default function MonteCarlo() {
               </div>
             )}
             {result ? (
-              <MonteCarloFan mc={result} height={320} />
+              <MonteCarloFan mc={real ? result : {
+                ...result,
+                p10: result.p10Nominal, p25: result.p25Nominal, p50: result.p50Nominal,
+                p75: result.p75Nominal, p90: result.p90Nominal,
+              }} height={320} />
             ) : (
               <div style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(13,27,46,0.03)', borderRadius: 8 }}>
                 Run a simulation to see the percentile fan chart
@@ -125,7 +135,7 @@ export default function MonteCarlo() {
             <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Stress Scenarios</div></div>
             <div className="panel-body" style={{ padding: '0' }}>
               <table className="data-table">
-                <thead><tr><th>Scenario</th><th style={{ textAlign: 'right' }}>Success</th><th style={{ textAlign: 'right' }}>Median End</th></tr></thead>
+                <thead><tr><th>Scenario</th><th style={{ textAlign: 'right' }}>Success</th><th style={{ textAlign: 'right' }}>End Balance</th></tr></thead>
                 <tbody>
                   {result ? (
                     result.stressScenarios.map((s) => (
@@ -135,7 +145,7 @@ export default function MonteCarlo() {
                           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.description}</div>
                         </td>
                         <td className="td-mono" style={{ textAlign: 'right', color: successColor(s.successRate), fontWeight: 600 }}>{fmtPct(s.successRate, 0)}</td>
-                        <td className="td-mono" style={{ textAlign: 'right' }}>{fmtM(s.medianEnd)}</td>
+                        <td className="td-mono" style={{ textAlign: 'right' }}>{fmtM(real ? s.medianEnd : s.medianEndNominal)}</td>
                       </tr>
                     ))
                   ) : (
@@ -150,25 +160,41 @@ export default function MonteCarlo() {
             <div className="panel-body">
               <div className="form-grid">
                 <div className="form-group">
+                  <label>Return Model</label>
+                  <select value={model} onChange={(e) => setModel(e.target.value as ReturnModel)}>
+                    <option value="historical">Historical bootstrap</option>
+                    <option value="parametric">Parametric normal</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Equity Allocation %</label>
+                  <input type="number" value={equityPct} min={0} max={100} step={5} onChange={(e) => setEquityPct(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)))} />
+                </div>
+                <div className="form-group">
                   <label>Number of Trials</label>
                   <input type="number" value={trials} min={50} max={2000} step={50} onChange={(e) => setTrials(parseInt(e.target.value, 10) || 500)} />
                 </div>
-                <div className="form-group">
-                  <label>Return Std Dev %</label>
-                  <input type="number" value={stdDev} min={1} max={30} step={0.5} onChange={(e) => setStdDev(parseFloat(e.target.value) || 10)} />
-                </div>
-                <div className="form-group">
-                  <label>Mean Return (from plan)</label>
-                  <input type="text" value={`${(plan.assumptions.postRetReturn * 100).toFixed(1)}%`} readOnly />
-                </div>
+                {model === 'parametric' ? (
+                  <div className="form-group">
+                    <label>Return Std Dev %</label>
+                    <input type="number" value={stdDev} min={1} max={30} step={0.5} onChange={(e) => setStdDev(parseFloat(e.target.value) || 10)} />
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label>Bond Allocation %</label>
+                    <input type="text" value={`${100 - equityPct}%`} readOnly />
+                  </div>
+                )}
                 <div className="form-group">
                   <label>Plan Horizon (Age A)</label>
                   <input type="text" value={plan.personA.planToAge} readOnly />
                 </div>
               </div>
               <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Each trial samples a random annual return from a normal distribution (mean from your plan, std dev configurable).
-                Success = plan funds all spending through plan-to age. 500 trials runs in ~1–2 seconds in browser.
+                {model === 'historical'
+                  ? `Each trial stitches together random multi-year blocks of real S&P 500 + Treasury returns (1928–2023), blended ${mixLabel} stock/bond. Contiguous blocks preserve mean reversion and sequence-of-returns risk — closer to how real markets behave.`
+                  : `Each trial samples independent annual returns from a normal distribution (arithmetic mean ${(plan.assumptions.postRetReturn * 100).toFixed(1)}% from your plan, std dev configurable). Independent draws ignore mean reversion and tend to be pessimistic.`}
+                {' '}Success = plan funds all spending through plan-to age. 500 trials runs in ~1–2 seconds.
               </div>
             </div>
           </div>

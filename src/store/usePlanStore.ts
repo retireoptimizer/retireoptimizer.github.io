@@ -109,10 +109,15 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 5,
+      version: 6,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v6: equityPct (stock/bond split) added to assumptions for Monte Carlo.
+        if (fromVersion < 6 && ps.plan && typeof ps.plan === 'object') {
+          const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
+          if (asm && !('equityPct' in asm)) asm.equityPct = 0.6;
+        }
         // v5: contribGrowth moved from assumptions (household-wide) to each person's
         // portfolio. Copy the old single value onto both people so projections are
         // unchanged; persisted plans without it would otherwise yield NaN factors.

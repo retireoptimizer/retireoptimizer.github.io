@@ -106,12 +106,24 @@ const sumExpenseStreams = (
   ageA: number,
   ageB: number | undefined,
   yearIndex: number,
+  planInflation: number,
+  cumulativeInflationFactor?: number,
 ): number => {
   let total = 0;
   for (const e of streams) {
     const personAge = e.whose === 'A' ? ageA : e.whose === 'B' ? (ageB ?? -1) : ageA;
     if (personAge < e.startAge || personAge > e.stopAge) continue;
-    total += e.annualAmount * Math.pow(1 + e.inflationPct, yearIndex);
+    // When actual per-year CPI overrides are active, streams whose inflationPct matches the
+    // plan's baseline inflation are treated as CPI-indexed (lifestyle spending). Substitute
+    // the actual cumulative inflation factor so these streams track historical CPI rather
+    // than the fixed planning rate. All other rates (0%, healthcare premium, etc.) compound
+    // at their own specified rate as before.
+    const isCpiIndexed = cumulativeInflationFactor !== undefined
+      && Math.abs(e.inflationPct - planInflation) < 1e-9;
+    const growthFactor = isCpiIndexed
+      ? cumulativeInflationFactor
+      : Math.pow(1 + e.inflationPct, yearIndex);
+    total += e.annualAmount * growthFactor;
   }
   return total;
 };
@@ -125,6 +137,16 @@ export interface ProjectionOptions {
   policy?: BlendPolicy;
   /** Per-year nominal return overrides (length matches projection years). Used by Monte Carlo. */
   returnOverrides?: number[];
+  /**
+   * Per-year CPI inflation rate overrides (same length as returnOverrides). When provided:
+   * - The inflation factor (deflator) compounds these rates rather than plan.assumptions.inflation.
+   * - Expense streams whose inflationPct equals plan.assumptions.inflation (CPI-indexed lifestyle
+   *   spending) track actual CPI instead of the fixed planning rate.
+   * - All other scalars that use inflationFactor (SS, std deduction, IRMAA, ACA, conversions)
+   *   automatically follow the stochastic path via the updated inflationFactor.
+   * Omit for deterministic projections and the parametric MC model.
+   */
+  inflationOverrides?: number[];
 }
 
 export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionResult {
@@ -152,11 +174,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const magiHistory: number[] = [];
 
   const maxYears = Math.min(75, planToAge - startAgeA + 1);
+  // Running inflation factor — compounded from per-year CPI overrides when provided,
+  // otherwise from the plan's fixed inflation rate. Year 0 is always 1 (base year).
+  let runningInflationFactor = 1;
 
   for (let i = 0; i < maxYears; i++) {
     const ageA = startAgeA + i;
     const ageB = startAgeB !== undefined ? startAgeB + i : undefined;
-    const inflationFactor = Math.pow(1 + plan.assumptions.inflation, i);
+    const inflationFactor = runningInflationFactor;
     const aliveA = ageA <= passingA;
     const aliveB = startAgeB !== undefined && passingB !== undefined ? ageB! <= passingB : false;
     const retiredA = ageA >= retireAgeA;
@@ -197,7 +222,11 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const other = sumIncomeStreams(plan.incomeStreams, ageA, ageB, aliveA, aliveB, i);
 
     // Expenses (only after retirement; pre-retirement we assume wages cover expenses)
-    const netSpend = retired ? sumExpenseStreams(plan.expenseStreams, ageA, ageB, i) : 0;
+    const netSpend = retired ? sumExpenseStreams(
+      plan.expenseStreams, ageA, ageB, i,
+      plan.assumptions.inflation,
+      opts?.inflationOverrides ? inflationFactor : undefined,
+    ) : 0;
 
     // RMD on traditional balance (only if owner alive)
     const rmd = aliveA ? Math.max(0, trad) / rmdDivisor(ageA) : 0;
@@ -364,6 +393,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
     lifetimeFedTax += fedTax;
     magiHistory.push(ordIncomeFinal + ltcgFinal);
+
+    // Advance the running inflation factor for the next year.
+    runningInflationFactor *= (1 + (opts?.inflationOverrides?.[i] ?? plan.assumptions.inflation));
 
     rows.push({
       year: i + 1,
