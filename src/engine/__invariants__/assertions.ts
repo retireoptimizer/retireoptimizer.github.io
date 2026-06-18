@@ -11,14 +11,13 @@ import { runProjection } from '../projection';
 function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendingCoverage?: boolean } = {}): string[] {
   const out: string[] = [];
 
-  // Derive growth rate the same way projection.ts does (line 159): retired iff personA
-  // is past their retireAge AND (personB is past theirs OR personB does not exist).
-  // Do NOT derive from `phase` — phase='Survivor' is also used for single-person plans
-  // before retirement (because aliveB=false when personB is undefined).
+  // Derive retirement flags the same way projection.ts does.
+  // Single-person: retiredB mirrors retiredA (no second earner) — matches projection.ts.
   const retiredA = r.ageA >= plan.personA.retirementAge;
   const retiredB = r.ageB !== undefined && plan.personB
     ? r.ageB >= plan.personB.retirementAge
-    : true;
+    : retiredA;
+  const semiRetired = retiredA || retiredB;
   const retired = retiredA && retiredB;
   const gRate = retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn;
 
@@ -85,13 +84,10 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
     out.push(`RMD before rmdStartAge (${plan.assumptions.rmdStartAge}): ageA=${r.ageA}, rmd=${r.rmd}`);
   }
 
-  // 7. SPENDING COVERAGE (only when retired and not depleted). Cash sources must cover
-  //    cash uses. Allow $25 rounding slack: the gross-up loop converges to ~$1 per term
-  //    across fedTax + stateTax + irmaa, and the row records each term's final value
-  //    against the final wdTrd — so the cash-flow balance can drift up to a few dollars
-  //    per loop pass. The PRECISE phantom-cash guard is the per-bucket no-overdraw check
-  //    above; this is a secondary high-level sanity check.
-  if (retired && r.endTotal > 1 && !opts.skipSpendingCoverage) {
+  // 7. SPENDING COVERAGE (when either person is retired and portfolio not depleted).
+  //    In SemiRetire, working person's contributions offset expense draws, so the coverage
+  //    check still holds. Allow 5% slack for gross-up convergence drift.
+  if (semiRetired && r.endTotal > 1 && !opts.skipSpendingCoverage) {
     const cashIn = r.wdTax + r.wdTrd + r.wdRth + r.totalSS + r.otherIncome + r.rmd;
     const cashOut = r.netSpend + r.fedTax + r.stateTaxAmt + r.irmaa;
     // 5% slack: pathological first-retirement-year scenarios (high marginal-bracket
@@ -105,10 +101,9 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
     }
   }
 
-  // 8. PHASE / FILING STATUS consistency. Use the derived `retired` flag, not the row's
-  //    `phase` field — phase='Survivor' is sometimes used for single-person plans before
-  //    retirement (since aliveB=false when personB is undefined).
-  if (!retired && (r.netSpend > tol || r.totalWD > tol || r.rothConv > tol)) {
+  // 8. Accum.-phase guard: when neither person is retired, no spend/withdrawals/conversions.
+  //    SemiRetire (one retired) legitimately has netSpend, so gate on semiRetired.
+  if (!semiRetired && (r.netSpend > tol || r.totalWD > tol || r.rothConv > tol)) {
     out.push(`Pre-retirement year has withdrawals/spend/conv: netSpend=${r.netSpend}, totalWD=${r.totalWD}, conv=${r.rothConv}`);
   }
 

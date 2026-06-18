@@ -17,7 +17,7 @@ export interface ProjectionRow {
   year: number;            // 1-indexed plan year
   ageA: number;
   ageB?: number;
-  phase: 'Accum.' | 'Retire' | 'Survivor' | 'Past Plan';
+  phase: 'Accum.' | 'SemiRetire' | 'Retire' | 'Survivor' | 'Past Plan';
   filingStatus: FilingStatus;
   inflationFactor: number;
   // Contributions
@@ -108,9 +108,15 @@ const sumExpenseStreams = (
   yearIndex: number,
   planInflation: number,
   cumulativeInflationFactor?: number,
+  retiredA = true,
+  retiredB = true,
 ): number => {
   let total = 0;
   for (const e of streams) {
+    // Gate by whose retirement: A-tagged flows when A retires, B-tagged when B retires,
+    // Household when EITHER retires (working person's contributions offset the draw).
+    const eligible = e.whose === 'A' ? retiredA : e.whose === 'B' ? retiredB : (retiredA || retiredB);
+    if (!eligible) continue;
     const personAge = e.whose === 'A' ? ageA : e.whose === 'B' ? (ageB ?? -1) : ageA;
     if (personAge < e.startAge || personAge > e.stopAge) continue;
     // When actual per-year CPI overrides are active, streams whose inflationPct matches the
@@ -185,7 +191,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const aliveA = ageA <= passingA;
     const aliveB = startAgeB !== undefined && passingB !== undefined ? ageB! <= passingB : false;
     const retiredA = ageA >= retireAgeA;
-    const retiredB = ageB !== undefined ? ageB >= retireAgeB : true;
+    // Single-person: mirror retiredA so the OR-gate in sumExpenseStreams doesn't fire early.
+    const retiredB = ageB !== undefined ? ageB >= retireAgeB : retiredA;
     const retired = retiredA && retiredB;
 
     const filingStatus = filingStatusForYear(i, startAgeA, passingA, startAgeB, passingB);
@@ -194,6 +201,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     if (!aliveA && !aliveB) phase = 'Past Plan';
     else if (!aliveA || !aliveB) phase = 'Survivor';
     else if (retired) phase = 'Retire';
+    else if (retiredA || retiredB) phase = 'SemiRetire';
     else phase = 'Accum.';
 
     // Contributions during working years — each person's contribution grows at their
@@ -221,11 +229,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Other income streams
     const other = sumIncomeStreams(plan.incomeStreams, ageA, ageB, aliveA, aliveB, i);
 
-    // Expenses (only after retirement; pre-retirement we assume wages cover expenses)
-    const netSpend = retired ? sumExpenseStreams(
+    // Expenses start when either person retires (semi-retirement or full retirement).
+    // Per-whose gate inside sumExpenseStreams: A-tagged on retiredA, B-tagged on retiredB,
+    // Household on retiredA||retiredB. Working person's contributions offset the portfolio draw.
+    const netSpend = (retiredA || retiredB) ? sumExpenseStreams(
       plan.expenseStreams, ageA, ageB, i,
       plan.assumptions.inflation,
       opts?.inflationOverrides ? inflationFactor : undefined,
+      retiredA, retiredB,
     ) : 0;
 
     // RMD on traditional balance (only if owner alive)

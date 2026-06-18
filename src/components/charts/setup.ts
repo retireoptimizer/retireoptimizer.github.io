@@ -38,6 +38,11 @@ ChartJS.defaults.plugins.tooltip.bodyColor = '#ffffff';
 ChartJS.defaults.plugins.tooltip.padding = 10;
 ChartJS.defaults.plugins.tooltip.cornerRadius = 6;
 ChartJS.defaults.plugins.tooltip.titleFont = { weight: 600, size: 12 };
+// Give the right edge of every chart enough canvas room for the tooltip box to
+// flip left before it would clip. Chart.js auto-sets xAlign='right' (tooltip
+// extends leftward from the caret) only when the caret passes the midpoint, so
+// without padding the last ~10 data points can still clip at the canvas edge.
+ChartJS.defaults.layout.padding = { right: 20 };
 
 export const palette = {
   navy: '#0d1b2e',

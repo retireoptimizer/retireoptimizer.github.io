@@ -45,24 +45,54 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
   if (o.retirementAgeA !== undefined) {
     const oldAge = plan.personA.retirementAge;
     const newAge = o.retirementAgeA;
-    next = {
-      ...next,
-      personA: { ...next.personA, retirementAge: newAge },
-      // Shift expense streams that are anchored to Person A's retirement date
-      expenseStreams: next.expenseStreams.map((s) =>
-        s.startAge === oldAge ? { ...s, startAge: newAge } : s
-      ),
-    };
+    if (next.personB) {
+      // Two-person: shift 'A'-tagged expenses to A's new age; shift 'Household' expenses
+      // to the new first-retirement point (min of A's and B's retirement in A's age space).
+      const birthYearA = parseInt(next.personA.dob.slice(0, 4));
+      const birthYearB = parseInt(next.personB.dob.slice(0, 4));
+      const ageDiff = birthYearB - birthYearA;  // +ve when B is younger
+      const ageA_when_B_retires = next.personB.retirementAge + ageDiff;
+      const oldFirstRetireA = Math.min(oldAge, ageA_when_B_retires);
+      const newFirstRetireA = Math.min(newAge, ageA_when_B_retires);
+      next = {
+        ...next,
+        personA: { ...next.personA, retirementAge: newAge },
+        expenseStreams: next.expenseStreams.map((s) => {
+          if (s.whose === 'A' && s.startAge === oldAge) return { ...s, startAge: newAge };
+          if (s.whose === 'Household' && s.startAge === oldFirstRetireA) return { ...s, startAge: newFirstRetireA };
+          return s;
+        }),
+      };
+    } else {
+      // Single-person: shift all streams anchored to the old retirement age.
+      next = {
+        ...next,
+        personA: { ...next.personA, retirementAge: newAge },
+        expenseStreams: next.expenseStreams.map((s) =>
+          s.startAge === oldAge ? { ...s, startAge: newAge } : s
+        ),
+      };
+    }
   }
   if (o.retirementAgeB !== undefined && next.personB) {
     const oldAge = plan.personB!.retirementAge;
     const newAge = o.retirementAgeB;
+    const birthYearA = parseInt(next.personA.dob.slice(0, 4));
+    const birthYearB = parseInt(next.personB.dob.slice(0, 4));
+    const ageDiff = birthYearB - birthYearA;
+    const ageA_when_oldB_retires = oldAge + ageDiff;
+    const ageA_when_newB_retires = newAge + ageDiff;
+    const ageA_retires = next.personA.retirementAge;
+    const oldFirstRetireA = Math.min(ageA_retires, ageA_when_oldB_retires);
+    const newFirstRetireA = Math.min(ageA_retires, ageA_when_newB_retires);
     next = {
       ...next,
       personB: { ...next.personB, retirementAge: newAge },
-      expenseStreams: next.expenseStreams.map((s) =>
-        s.startAge === oldAge ? { ...s, startAge: newAge } : s
-      ),
+      expenseStreams: next.expenseStreams.map((s) => {
+        if (s.whose === 'B' && s.startAge === oldAge) return { ...s, startAge: newAge };
+        if (s.whose === 'Household' && s.startAge === oldFirstRetireA) return { ...s, startAge: newFirstRetireA };
+        return s;
+      }),
     };
   }
   if (o.preRetReturn !== undefined || o.inflation !== undefined) {
