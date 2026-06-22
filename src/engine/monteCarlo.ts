@@ -48,6 +48,22 @@ export interface MonteCarloResult {
     successRate: number;
     medianEnd: number;
     medianEndNominal: number;
+    /** Year-by-year real-$ portfolio trajectory (NaN beyond historical data coverage). */
+    portfolioByAge: number[];
+    /** Year-by-year nominal-$ portfolio trajectory (NaN beyond historical data coverage). */
+    portfolioByAgeNominal: number[];
+    /** Age at which historical data runs out (undefined = full plan coverage). */
+    coverageEndAge?: number;
+    /** Per-year breakdown over the historically-covered drawdown window (excludes the
+     *  flat pre-retirement years). Drives the scenario detail pop-up. */
+    detail: Array<{
+      calendarYear: number;     // historical cohort year: 2000, 2001, …
+      age: number;              // user's ageA at that point
+      ret: number;              // blended NOMINAL return that year (e.g. -0.091)
+      cpi: number;              // CPI inflation that year
+      portfolioReal: number;    // real-$ portfolio at year end
+      portfolioNominal: number; // nominal-$ portfolio at year end
+    }>;
   }>;
 }
 
@@ -144,8 +160,12 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
   const sortedEnd = [...endTotals].sort((a, b) => a - b);
   const sortedEndNominal = [...endTotalsNominal].sort((a, b) => a - b);
 
-  // Stress scenarios: real worst-case retirement cohorts. Each runs the full historical
-  // return + CPI sequence from that year, preserving stagflation correlation.
+  // Stress scenarios: real worst-case retirement cohorts. The historical sequence starts
+  // at the first retirement year — sequence-of-returns risk is a withdrawal-phase phenomenon.
+  // Pre-retirement years use the plan's normal preRetReturn so accumulation is undistorted.
+  const retireYearIdx = Math.max(0, baseline.rows.findIndex((r) => r.phase !== 'Accum.' && r.phase !== 'Past Plan'));
+  const nStressYears = nYears - retireYearIdx;
+
   const cohorts = [
     { name: 'Retire into 1966', description: 'Stagflation decade — real returns near zero', year: 1966 },
     { name: 'Retire into 1973', description: 'Oil shock + 1973–74 bear market', year: 1973 },
@@ -154,16 +174,73 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
   ];
   const stressScenarios = cohorts.map((c) => {
     const startIdx = indexOfYear(c.year);
-    const { returns, inflations } = startIdx >= 0
-      ? historicalSequence(equityPct, nYears, startIdx)
-      : { returns: parametricNormal(mulberry32(seed + 1), meanReturn, stdDev, nYears), inflations: undefined };
+    const postRet = plan.assumptions.postRetReturn;
+    const preRet = plan.assumptions.preRetReturn;
+    const preRetInf = plan.assumptions.inflation;
+
+    let stressYearsAvail = nStressYears;
+    let stressReturns: number[];
+    let stressInflations: number[] | undefined;
+    // Per-year returns/CPI over the covered window, for the detail pop-up.
+    let windowReturns: number[];
+    let windowInflations: number[];
+
+    if (startIdx >= 0) {
+      const seq = historicalSequence(equityPct, nStressYears, startIdx);
+      stressYearsAvail = seq.yearsAvailable;
+      windowReturns = seq.returns;
+      windowInflations = seq.inflations;
+      // Pad beyond historical coverage with plan's postRetReturn so projection runs to end.
+      stressReturns = [...seq.returns, ...Array(nStressYears - stressYearsAvail).fill(postRet)];
+      stressInflations = [...seq.inflations, ...Array(nStressYears - stressYearsAvail).fill(preRetInf)];
+    } else {
+      stressReturns = parametricNormal(mulberry32(seed + 1), meanReturn, stdDev, nStressYears);
+      stressInflations = undefined;
+      windowReturns = stressReturns;
+      windowInflations = Array(nStressYears).fill(preRetInf);
+    }
+
+    const returns = [...Array(retireYearIdx).fill(preRet), ...stressReturns];
+    const inflations = stressInflations
+      ? [...Array(retireYearIdx).fill(preRetInf), ...stressInflations]
+      : undefined;
+
     const out = projectWithReturns(plan, returns, inflations);
+
+    // NaN-terminate trajectory arrays beyond historical coverage so chart lines end.
+    const truncateAt = retireYearIdx + stressYearsAvail;
+    const portfolioByAge = out.endByAge.map((v, i) => i < truncateAt ? v : NaN);
+    const portfolioByAgeNominal = out.endByAgeNominal.map((v, i) => i < truncateAt ? v : NaN);
+    const coverageEndAge = stressYearsAvail < nStressYears ? ages[truncateAt - 1] : undefined;
+
+    // End balance = portfolio at last historically-covered year, not plan-to age.
+    const lastCoveredIdx = truncateAt - 1;
+    const medianEnd = out.endByAge[lastCoveredIdx] ?? out.endRealTotal;
+    const medianEndNominal = out.endByAgeNominal[lastCoveredIdx] ?? out.endNominalTotal;
+
+    // Per-year detail over the covered historical window (k=0 is the first retirement year).
+    const detail = Array.from({ length: stressYearsAvail }, (_, k) => {
+      const planIdx = retireYearIdx + k;
+      return {
+        calendarYear: c.year + k,
+        age: ages[planIdx],
+        ret: windowReturns[k],
+        cpi: windowInflations[k],
+        portfolioReal: out.endByAge[planIdx],
+        portfolioNominal: out.endByAgeNominal[planIdx],
+      };
+    });
+
     return {
       name: c.name,
       description: c.description,
       successRate: out.ranOut ? 0 : 1,
-      medianEnd: out.endRealTotal,
-      medianEndNominal: out.endNominalTotal,
+      medianEnd,
+      medianEndNominal,
+      portfolioByAge,
+      portfolioByAgeNominal,
+      coverageEndAge,
+      detail,
     };
   });
 

@@ -100,20 +100,23 @@ export function historicalBootstrap(
  * Deterministic historical sequence from a fixed start index — used for worst-case
  * retirement-cohort stress tests. Returns both the nominal returns and the actual CPI.
  */
+/** Returns only as many years as the dataset covers from startIdx — no wrap-around.
+ *  Callers that need a full-length array must pad beyond yearsAvailable themselves. */
 export function historicalSequence(
   equityPct: number,
   nYears: number,
   startIdx: number,
-): ReturnSeries {
+): ReturnSeries & { yearsAvailable: number } {
   const e = Math.max(0, Math.min(1, equityPct));
   const returns: number[] = [];
   const inflations: number[] = [];
-  for (let i = 0; i < nYears; i++) {
-    const idx = (startIdx + i) % N_YEARS;
+  const yearsAvailable = Math.min(nYears, N_YEARS - startIdx);
+  for (let i = 0; i < yearsAvailable; i++) {
+    const idx = startIdx + i;
     const blendedReal = e * STOCK_REAL[idx] + (1 - e) * BOND_REAL[idx];
     const cpi = CPI_INFLATION[idx];
     returns.push((1 + blendedReal) * (1 + cpi) - 1);
     inflations.push(cpi);
   }
-  return { returns, inflations };
+  return { returns, inflations, yearsAvailable };
 }

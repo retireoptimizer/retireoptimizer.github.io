@@ -35,9 +35,11 @@ const depleteRibbonPlugin: Plugin<'line'> = {
 interface Props {
   mc: MonteCarloResult;
   height?: number;
+  /** Optional single-trajectory overlay (e.g. a stress scenario line). */
+  overlay?: { label: string; data: number[]; color: string };
 }
 
-export default function MonteCarloFan({ mc, height = 300 }: Props) {
+export default function MonteCarloFan({ mc, height = 300, overlay }: Props) {
   const data: ChartData<'line'> = {
     labels: mc.ages,
     datasets: [
@@ -88,6 +90,18 @@ export default function MonteCarloFan({ mc, height = 300 }: Props) {
         tension: 0.2,
         fill: false,
       },
+      // Optional stress scenario trajectory
+      ...(overlay ? [{
+        label: overlay.label,
+        data: overlay.data,
+        borderColor: overlay.color,
+        backgroundColor: overlay.color,
+        borderWidth: 2.5,
+        borderDash: [5, 3],
+        pointRadius: 0,
+        tension: 0.2,
+        fill: false,
+      }] : []),
     ],
   };
 
@@ -98,14 +112,14 @@ export default function MonteCarloFan({ mc, height = 300 }: Props) {
     plugins: {
       legend: {
         position: 'bottom',
-        labels: { filter: (item) => item.text === 'Median Outcome' || item.text === '25th–75th Percentile' },
+        labels: { filter: (item) => item.text === 'Median Outcome' || item.text === '25th–75th Percentile' || (overlay !== undefined && item.text === overlay.label) },
       },
       tooltip: {
-        filter: (item) => item.dataset.label === 'Median Outcome' || item.dataset.label === '25th–75th Percentile' || item.dataset.label === 'p10' || item.dataset.label === 'p10-p25' || item.dataset.label === 'p75-p90',
+        filter: (item) => item.dataset.label === 'Median Outcome' || item.dataset.label === '25th–75th Percentile' || item.dataset.label === 'p10' || item.dataset.label === 'p10-p25' || item.dataset.label === 'p75-p90' || (overlay !== undefined && item.dataset.label === overlay.label),
         callbacks: {
           title: ageTooltipTitle,
           label: (item) => {
-            const lbl = item.dataset.label === 'p10' ? '10th pct' : item.dataset.label === 'p10-p25' ? '25th pct' : item.dataset.label === 'p75-p90' ? '90th pct' : item.dataset.label === '25th–75th Percentile' ? '75th pct' : 'Median';
+            const lbl = item.dataset.label === 'p10' ? '10th pct' : item.dataset.label === 'p10-p25' ? '25th pct' : item.dataset.label === 'p75-p90' ? '90th pct' : item.dataset.label === '25th–75th Percentile' ? '75th pct' : item.dataset.label ?? 'Median';
             return `${lbl}: ${fmtFull(item.parsed.y ?? 0)}`;
           },
         },

@@ -3,6 +3,7 @@ import { usePlanStore, useProjection } from '../store/usePlanStore';
 import type { MonteCarloResult, ReturnModel } from '../engine/monteCarlo';
 import { getEngineWorker } from '../engine/workerClient';
 import MonteCarloFan from '../components/charts/MonteCarloFan';
+import StressScenarioModal from '../components/StressScenarioModal';
 import { fmtM, fmtPct } from '../lib/format';
 import { generateInsights, insightsForSurface } from '../engine/explain';
 import InsightCard from '../components/InsightCard';
@@ -39,6 +40,8 @@ export default function MonteCarlo() {
   const [equityPct, setEquityPct] = useState(Math.round((plan.assumptions.equityPct ?? 0.6) * 100));
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<MonteCarloResult | null>(null);
+  const [selectedScenario, setSelectedScenario] = useState<number | null>(null);
+  const [detailScenario, setDetailScenario] = useState<number | null>(null);
 
   const run = async () => {
     setRunning(true);
@@ -116,7 +119,13 @@ export default function MonteCarlo() {
                 ...result,
                 p10: result.p10Nominal, p25: result.p25Nominal, p50: result.p50Nominal,
                 p75: result.p75Nominal, p90: result.p90Nominal,
-              }} height={320} />
+              }} height={320} overlay={selectedScenario !== null ? {
+                label: result.stressScenarios[selectedScenario].name,
+                data: real
+                  ? result.stressScenarios[selectedScenario].portfolioByAge
+                  : result.stressScenarios[selectedScenario].portfolioByAgeNominal,
+                color: result.stressScenarios[selectedScenario].successRate === 0 ? '#c0392b' : '#e67e22',
+              } : undefined} />
             ) : (
               <div style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(13,27,46,0.03)', borderRadius: 8 }}>
                 Run a simulation to see the percentile fan chart
@@ -132,22 +141,59 @@ export default function MonteCarlo() {
 
         <div className="three-col" style={{ marginTop: '20px' }}>
           <div className="panel">
-            <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Stress Scenarios</div></div>
+            <div className="panel-header">
+              <div className="panel-title"><div className="panel-title-dot"></div>Stress Scenarios</div>
+              {selectedScenario !== null && result && (
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Click scenario again to deselect</span>
+              )}
+            </div>
             <div className="panel-body" style={{ padding: '0' }}>
               <table className="data-table">
                 <thead><tr><th>Scenario</th><th style={{ textAlign: 'right' }}>Success</th><th style={{ textAlign: 'right' }}>End Balance</th></tr></thead>
                 <tbody>
                   {result ? (
-                    result.stressScenarios.map((s) => (
-                      <tr key={s.name}>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{s.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.description}</div>
-                        </td>
-                        <td className="td-mono" style={{ textAlign: 'right', color: successColor(s.successRate), fontWeight: 600 }}>{fmtPct(s.successRate, 0)}</td>
-                        <td className="td-mono" style={{ textAlign: 'right' }}>{fmtM(real ? s.medianEnd : s.medianEndNominal)}</td>
-                      </tr>
-                    ))
+                    result.stressScenarios.map((s, idx) => {
+                      const isSelected = selectedScenario === idx;
+                      return (
+                        <tr
+                          key={s.name}
+                          onClick={() => setSelectedScenario(isSelected ? null : idx)}
+                          style={{
+                            cursor: 'pointer',
+                            background: isSelected ? 'rgba(13,27,46,0.07)' : undefined,
+                            borderLeft: isSelected
+                              ? `3px solid ${s.successRate === 0 ? '#c0392b' : '#e67e22'}`
+                              : '3px solid transparent',
+                            transition: 'background 0.15s',
+                          }}
+                        >
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                              <div style={{ fontWeight: 600 }}>{s.name}</div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDetailScenario(idx); }}
+                                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, fontSize: 10, padding: '2px 7px', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                              >
+                                Details
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              {s.description}
+                              {s.coverageEndAge !== undefined && (
+                                <span style={{ color: 'var(--warning)', marginLeft: 4 }}>· data ends age {s.coverageEndAge}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="td-mono" style={{ textAlign: 'right', color: successColor(s.successRate), fontWeight: 600 }}>{fmtPct(s.successRate, 0)}</td>
+                          <td className="td-mono" style={{ textAlign: 'right' }}>
+                            {fmtM(real ? s.medianEnd : s.medianEndNominal)}
+                            {s.coverageEndAge !== undefined && (
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>age {s.coverageEndAge}</div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>Run simulation to populate</td></tr>
                   )}
@@ -200,6 +246,14 @@ export default function MonteCarlo() {
           </div>
         </div>
       </div>
+
+      {detailScenario !== null && result && (
+        <StressScenarioModal
+          s={result.stressScenarios[detailScenario]}
+          real={real}
+          onClose={() => setDetailScenario(null)}
+        />
+      )}
     </div>
   );
 }
