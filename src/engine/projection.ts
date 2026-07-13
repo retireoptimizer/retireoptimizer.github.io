@@ -82,8 +82,8 @@ const sumIncomeStreams = (
   aliveA: boolean,
   aliveB: boolean,
   yearIndex: number,
-): { taxableAmt: number; nonExempt: number } => {
-  let taxableAmt = 0, nonExempt = 0;
+): { taxableAmt: number; nonExempt: number; pensionAmt: number } => {
+  let taxableAmt = 0, nonExempt = 0, pensionAmt = 0;
   for (const s of streams) {
     if (s.type === 'SS') continue; // SS handled separately via PIA
     const personAge = s.whose === 'A' ? ageA : s.whose === 'B' ? (ageB ?? -1) : ageA;
@@ -93,12 +93,16 @@ const sumIncomeStreams = (
     const amount = s.annualAmount * Math.pow(1 + s.growthPct, yearIndex);
     const taxablePortion = amount * s.taxablePct;
     taxableAmt += taxablePortion;
-    // IL-exemption: 401(k)/IRA/Roth/SS/pension exempt; Wages, Rental, Other = non-exempt
     if (s.type === 'Wages' || s.type === 'Rental' || s.type === 'Other') {
+      // IL and all states: ordinary non-retirement income is always taxable
       nonExempt += taxablePortion;
+    } else if (s.type === 'Pension' || s.type === 'Annuity') {
+      // IL exempts pension/annuity; CA/NY do not — tracked separately so stateTax()
+      // can apply per-state retirementExempt logic alongside IRA/401(k) distributions.
+      pensionAmt += taxablePortion;
     }
   }
-  return { taxableAmt, nonExempt };
+  return { taxableAmt, nonExempt, pensionAmt };
 };
 
 const sumExpenseStreams = (
@@ -282,12 +286,6 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     }
     lifetimeConversion += conv;
 
-    // State tax — depends on state profile.
-    // For IL/TX/FL/WA: only non-retirement non-exempt income is taxable.
-    // For CA/NY: retirement withdrawals + conversions are also taxable.
-    // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
-    let stateAmt = stateTax(plan.state, other.nonExempt, 0); // initial pass; refined below
-
     // Per-bucket "available to withdraw" caps. All three buckets are debited by the
     // end-of-year update `bucket = max(0, bucket*(1+g) + contrib +/- credits - withdrawal)`,
     // so the withdrawal must respect what that update would actually leave non-negative —
@@ -310,6 +308,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     let gap = 0;
 
     const numAt65Plus = (aliveA && ageA >= 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= 65 ? 1 : 0);
+    // State tax — depends on state profile.
+    // For IL/TX/FL/WA: only non-retirement non-exempt income is taxable.
+    // For CA/NY: retirement withdrawals + conversions are also taxable.
+    // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
+    const numPersons = (aliveA ? 1 : 0) + (aliveB ? 1 : 0);
+    let stateAmt = stateTax(plan.state, other.nonExempt, other.pensionAmt, numPersons, inflationFactor, numAt65Plus); // initial pass; ltcg unknown until loop iter 1
 
     // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
@@ -350,7 +354,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // Include stateAmt in the convergence check — for CA/NY plans, state tax is a
       // material gross-up term and ignoring its delta caused ~$15 spending shortfalls
       // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
-      stateAmt = stateTax(plan.state, other.nonExempt, wdTrd + rmdAmt + conv);
+      // ltcg goes into nonExemptOrdinaryIncome so IL (retirementExempt:true) still taxes it —
+      // IL exempts retirement distributions but NOT capital gains.
+      stateAmt = stateTax(plan.state, other.nonExempt + ltcg, wdTrd + rmdAmt + conv + other.pensionAmt, numPersons, inflationFactor, numAt65Plus);
 
       // ACA marketplace premium (pre-Medicare years when the user has opted in).
       acaPremiumYear = 0;
