@@ -201,7 +201,7 @@ export default function MonteCarlo() {
               </table>
             </div>
           </div>
-          <div className="panel" style={{ gridColumn: '2/4' }}>
+          <div className="panel simulation-inputs-panel" style={{ gridColumn: '2/4' }}>
             <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Simulation Inputs</div></div>
             <div className="panel-body">
               <div className="form-grid">

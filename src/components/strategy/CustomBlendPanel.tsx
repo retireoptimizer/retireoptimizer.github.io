@@ -62,6 +62,7 @@ export default function CustomBlendPanel() {
           Define age windows with custom withdrawal percentages (must sum to 100%) and an optional yearly Roth conversion (today's $).
           When a window has a conversion amount &gt; 0, it overrides the Roth Conversion Mode setting above.
         </div>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <table className="data-table" style={{ width: '100%', fontSize: 12 }}>
           <thead>
             <tr>
@@ -101,6 +102,7 @@ export default function CustomBlendPanel() {
             })}
           </tbody>
         </table>
+        </div>
         {!isValid && (
           <div style={{ marginTop: 12, padding: 10, background: 'var(--warning-light)', color: 'var(--warning)', borderRadius: 8, fontSize: 12 }}>
             ⚠ One or more windows do not sum to 100%. Click <strong>Normalize</strong> to auto-fix.

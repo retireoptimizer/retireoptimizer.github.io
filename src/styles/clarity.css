@@ -1132,3 +1132,143 @@ input[type="range"]::-webkit-slider-thumb:hover {
 /* ─── SCROLLBAR IN SIDEBAR ───────────────── */
 .sidebar::-webkit-scrollbar { width: 4px; }
 
+/* ═══════════════════════════════════════════════════════
+   RESPONSIVE — all mobile/tablet overrides live here.
+   Desktop (>768px) is never touched by these rules.
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Bottom tab bar + overflow btn: hidden on desktop (default) ─ */
+.bottom-tab-bar { display: none; }
+.topbar-overflow-btn { display: none; }
+
+/* ── New CSS variables ─────────────────────────── */
+:root {
+  --bottom-bar-h: 64px;
+  --topbar-h-mobile: 52px;
+}
+
+/* ── @1024px: tablet tweaks (non-breaking) ─────── */
+@media (max-width: 1024px) {
+  .page-body { padding: 16px 20px; }
+}
+
+/* ── @768px: tablet / mobile layout ────────────── */
+@media (max-width: 768px) {
+
+  /* Layout shell */
+  .sidebar { display: none; }
+  .app-shell { height: calc(100vh - var(--topbar-h-mobile)); }
+  .topbar { height: var(--topbar-h-mobile); padding: 0 16px; }
+  .topbar-right > *:not(.topbar-overflow-btn) { display: none; }
+  .topbar-overflow-btn { display: flex !important; }
+  .page-body {
+    padding: 12px 14px;
+    padding-bottom: calc(var(--bottom-bar-h) + 16px);
+  }
+
+  /* LiveMetricsBar hidden on mobile — metrics are on Dashboard; top nav must stay compact */
+  .live-metrics-bar { display: none; }
+
+  /* Grid collapses */
+  .two-col   { grid-template-columns: 1fr !important; }
+  .three-col { grid-template-columns: 1fr !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .form-grid-3,
+  .form-grid-4,
+  .form-grid-5 { grid-template-columns: 1fr 1fr !important; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .strategy-grid { grid-template-columns: 1fr !important; }
+
+  /* PersonalDetails inline grids */
+  .person-profile-grid { grid-template-columns: 1fr 1fr !important; }
+  .section-columns-grid { grid-template-columns: 1fr !important; }
+  .section-divider { display: none !important; }
+  .returns-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* Dashboard inline grids */
+  .plan-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .health-subscores-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .template-picker-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Portfolio inline grids */
+  .bucket-grid { grid-template-columns: 1fr 1fr !important; }
+  .portfolio-persons-grid { grid-template-columns: 1fr !important; }
+
+  /* MonteCarlo */
+  .simulation-inputs-panel { grid-column: auto !important; }
+
+  /* Projections toolbar */
+  .projections-toolbar { flex-wrap: wrap; gap: 4px; }
+
+  /* CashFlow stream rows — horizontal scroll container */
+  .stream-rows-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .stream-row.income-row { min-width: 640px; }
+  .stream-row.expense-row { min-width: 540px; }
+
+  /* CashFlowTable — make outer wrapper scroll horizontally */
+  .cashflow-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .cashflow-table-wrap .data-table th:first-child,
+  .cashflow-table-wrap .data-table td:first-child {
+    position: sticky; left: 0; z-index: 3;
+    background: var(--cream);
+  }
+
+  /* ScenarioCompare horizontal scroll */
+  .scenario-compare-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Touch targets — global mobile floor */
+  button, input, select, [role="button"] { min-height: 44px; }
+  .remove-btn { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  input[type="range"]::-webkit-slider-thumb { width: 28px; height: 28px; }
+
+  /* Toast — lift above bottom tab bar */
+  .toast { bottom: calc(var(--bottom-bar-h) + 12px) !important; right: 12px; top: auto; }
+
+  /* Bottom tab bar — shown on mobile, scrollable for 8 tabs */
+  .bottom-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: var(--bottom-bar-h);
+    background: var(--navy);
+    border-top: 1px solid rgba(201,168,76,0.2);
+    z-index: 150;
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .bottom-tab-bar::-webkit-scrollbar { display: none; }
+  .bottom-tab-item {
+    flex: 0 0 auto;
+    min-width: 72px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 3px;
+    color: rgba(255,255,255,0.45);
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.3px; text-transform: uppercase;
+    text-decoration: none; min-height: 44px;
+    padding: 0 8px;
+    transition: color 0.15s;
+  }
+  .bottom-tab-item.active { color: var(--gold); }
+  .bottom-tab-item svg { width: 20px; height: 20px; }
+}
+
+/* ── @480px: phone-only ─────────────────────────── */
+@media (max-width: 480px) {
+  .form-grid-3,
+  .form-grid-4,
+  .form-grid-5 { grid-template-columns: 1fr !important; }
+  .person-profile-grid { grid-template-columns: 1fr !important; }
+  .plan-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .template-picker-grid { grid-template-columns: 1fr !important; }
+
+  /* Prevent iOS auto-zoom on input focus */
+  input, select { font-size: 16px !important; }
+
+  /* Compact tab toggle buttons */
+  .toggle-opt { padding: 8px !important; font-size: 12px !important; }
+}
+

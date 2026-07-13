@@ -85,7 +85,7 @@ export default function ScenarioCompare({ limit, metricKeys, allowRemove = true 
   }
 
   return (
-    <div style={{ overflow: 'auto', maxHeight: limit ? 360 : '78vh' }}>
+    <div className="scenario-compare-wrap" style={{ overflow: 'auto', maxHeight: limit ? 360 : '78vh' }}>
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 800, fontSize: 13 }}>
         <thead>
           <tr>

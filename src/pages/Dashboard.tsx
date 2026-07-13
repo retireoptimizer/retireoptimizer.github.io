@@ -107,7 +107,7 @@ export default function Dashboard() {
             </div>
 
             {/* Headline figures */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+            <div className="plan-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
               <Stat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} color="var(--success)" sub={planLasts ? `age ${A.planToAge} · ${real ? "today's $" : 'nominal $'}` : `⚠ runs out age ${longevityAge}`} />
               <Stat label="Initial WR" value={wdRate > 0 ? (wdRate * 100).toFixed(2) + '%' : '—'} sub="year-1 draw" />
               <Stat label="Lifetime Fed Tax" value={fmtM(proj.lifetimeFedTax)} color="var(--danger)" sub="nominal · all years" />
@@ -116,7 +116,7 @@ export default function Dashboard() {
             </div>
 
             {/* Health sub-scores */}
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            <div className="health-subscores-grid" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
               {health.subscores.map((s) => (
                 <div key={s.key} className="subscore-row" title={s.detail}>
                   <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
@@ -285,7 +285,7 @@ export default function Dashboard() {
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
                 Pre-built what-ifs. For free-form exploration, use the What-if bar above (or on Projections).
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              <div className="template-picker-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {scenarioTemplates(plan).map((t) => (
                   <button
                     key={t.id}

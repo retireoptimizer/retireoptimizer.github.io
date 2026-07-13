@@ -152,7 +152,7 @@ export default function Projections() {
         <div className="panel">
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Year-by-Year Detail</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <div className="projections-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
               {(Object.keys(GROUP_LABELS) as GroupKey[]).map((g) => (
                 <button
                   key={g}
@@ -192,7 +192,7 @@ export default function Projections() {
               </button>
             </div>
           </div>
-          <div className="panel-body" style={{ padding: 0, overflowX: 'auto' }}>
+          <div className="panel-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             <table className="data-table" style={{ fontSize: 12 }}>
               <thead>
                 <tr>

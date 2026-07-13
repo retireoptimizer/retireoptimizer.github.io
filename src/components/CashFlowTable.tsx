@@ -15,11 +15,11 @@ export default function CashFlowTable({ rows, title = 'Cash Flow Plan (Today\'s 
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
         {title} · {rows.length} retirement years · Sources stack into Uses each year.
       </div>
-      <div style={{ maxHeight, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+      <div className="cashflow-table-wrap" style={{ maxHeight, overflowY: 'auto', overflowX: 'auto', border: '1px solid var(--border-light)', borderRadius: 8 }}>
         <table className="data-table" style={{ margin: 0 }}>
           <thead style={{ position: 'sticky', top: 0, background: 'var(--cream)', zIndex: 2 }}>
             <tr>
-              <th>Age</th>
+              <th style={{ position: 'sticky', left: 0, zIndex: 3, background: 'var(--cream)' }}>Age</th>
               <th>Phase</th>
               <th style={{ textAlign: 'right' }}>SS</th>
               <th style={{ textAlign: 'right' }}>Other</th>
@@ -45,7 +45,7 @@ export default function CashFlowTable({ rows, title = 'Cash Flow Plan (Today\'s 
                     onClick={() => setExpanded(isOpen ? null : r.year)}
                     style={{ cursor: 'pointer', background: isOpen ? 'rgba(201,168,76,0.05)' : undefined }}
                   >
-                    <td><strong>{r.ageA}</strong>{r.ageB ? ` / ${r.ageB}` : ''}</td>
+                    <td style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}><strong>{r.ageA}</strong>{r.ageB ? ` / ${r.ageB}` : ''}</td>
                     <td><span className="badge badge-neutral">{r.phase}</span></td>
                     <td className="td-mono" style={{ textAlign: 'right' }}>{fmtUSD(r.sources.socialSecurity)}</td>
                     <td className="td-mono" style={{ textAlign: 'right' }}>{fmtUSD(r.sources.otherIncome)}</td>

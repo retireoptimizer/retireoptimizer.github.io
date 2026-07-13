@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import LiveMetricsBar from './LiveMetricsBar';
+import BottomTabBar from './BottomTabBar';
 import { usePlanStore } from '../store/usePlanStore';
 import { downloadPlan, importPlanFromJSON, readFileAsText } from '../storage/exportImport';
 
@@ -11,6 +12,7 @@ export default function AppShell() {
   const resetPlan = usePlanStore((s) => s.resetPlan);
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const navigate = useNavigate();
 
   const onBuildPlan = () => {
@@ -66,7 +68,7 @@ export default function AppShell() {
             <div className="logo-sub">Retirement Planning</div>
           </div>
         </div>
-        <div className="topbar-right">
+        <div className="topbar-right topbar-actions">
           <div className="toggle-group" role="radiogroup" aria-label="Dollar display mode" style={{ marginRight: 8 }}>
             <button
               className={`toggle-opt ${displayMode === 'real' ? 'active' : ''}`}
@@ -91,6 +93,12 @@ export default function AppShell() {
           <button className="btn btn-ghost" onClick={onResetPlan} style={{ padding: '8px 14px', fontSize: 12 }}>Reset Plan</button>
           <button className="btn btn-ghost" onClick={onImportClick} style={{ padding: '8px 14px', fontSize: 12 }}>Import</button>
           <button className="save-btn" onClick={onExport}>Export Plan</button>
+          <button
+            className="topbar-overflow-btn btn btn-ghost"
+            onClick={() => setOverflowOpen((o) => !o)}
+            aria-label="More options"
+            style={{ padding: '8px 12px', fontSize: 18, lineHeight: 1 }}
+          >⋮</button>
         </div>
       </div>
       {toast && (
@@ -102,6 +110,45 @@ export default function AppShell() {
           boxShadow: 'var(--shadow-lg)',
         }}>
           {toast.text}
+        </div>
+      )}
+
+      {overflowOpen && (
+        <div
+          style={{
+            position: 'fixed', top: 'var(--topbar-h-mobile, 52px)', right: 12,
+            background: '#fff', border: '1px solid var(--border-light)',
+            borderRadius: 10, boxShadow: 'var(--shadow-lg)',
+            zIndex: 200, padding: '8px 0', minWidth: 160,
+          }}
+          onClick={() => setOverflowOpen(false)}
+        >
+          <div
+            className="toggle-group"
+            style={{ margin: '8px 14px', display: 'flex' }}
+            role="radiogroup"
+          >
+            <button
+              className={`toggle-opt ${displayMode === 'real' ? 'active' : ''}`}
+              onClick={() => setDisplayMode('real')}
+            >Today's $</button>
+            <button
+              className={`toggle-opt ${displayMode === 'nominal' ? 'active' : ''}`}
+              onClick={() => setDisplayMode('nominal')}
+            >Nominal $</button>
+          </div>
+          <button className="btn btn-ghost" onClick={onExport}
+            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13 }}>
+            Export Plan
+          </button>
+          <button className="btn btn-ghost" onClick={onImportClick}
+            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13 }}>
+            Import
+          </button>
+          <button className="btn btn-ghost" onClick={onResetPlan}
+            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)' }}>
+            Reset Plan
+          </button>
         </div>
       )}
 
@@ -183,6 +230,7 @@ export default function AppShell() {
           <Outlet />
         </div>
       </div>
+      <BottomTabBar />
     </>
   );
 }

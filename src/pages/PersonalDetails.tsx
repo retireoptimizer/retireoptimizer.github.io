@@ -5,6 +5,7 @@ import InlineEcho from '../components/InlineEcho';
 import { listStates } from '../engine/stateTax';
 import { runProjection, depletionAge } from '../engine/projection';
 import { fmtM } from '../lib/format';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const ageFromDob = (iso: string): number => {
   if (!iso || iso.length < 4) return 0;
@@ -26,6 +27,7 @@ export default function PersonalDetails() {
 
   // Lightweight derived facts to echo under the inputs. Memoized so we don't
   // re-run the engine on every keystroke into an unrelated field.
+  const isMobile = useIsMobile();
   const proj = useMemo(() => runProjection(plan), [plan]);
   const currentAgeA = ageFromDob(A.dob);
   const yearsToRetire = Math.max(0, A.retirementAge - currentAgeA);
@@ -55,7 +57,7 @@ export default function PersonalDetails() {
                   </button>
                 )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr', gap: 10 }}>
+              <div className="person-profile-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label>Your Name</label>
                   <input type="text" value={A.name} placeholder="Your name" onChange={(e) => setPersonA({ name: e.target.value })} />
@@ -120,12 +122,12 @@ export default function PersonalDetails() {
             <hr className="divider" />
 
             <div className="form-section">
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1px 1fr 1px 2fr', gap: '0 16px' }}>
+              <div className="section-columns-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1px 1fr 1px 2fr', gap: '0 16px' }}>
 
                 {/* Returns & Inflation */}
                 <div>
                   <div className="form-section-title"><div className="section-number">2</div>Returns &amp; Inflation</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <div className="returns-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                     {[
                       { label: 'Pre-retirement return', value: asm.preRetReturn, key: 'preRetReturn' as const, hint: 'nominal, annual' },
                       { label: 'Post-retirement return', value: asm.postRetReturn, key: 'postRetReturn' as const, hint: 'nominal, annual' },
@@ -143,7 +145,7 @@ export default function PersonalDetails() {
                   </div>
                 </div>
 
-                <div style={{ background: 'rgba(13,27,46,0.12)' }} />
+                <div className="section-divider" style={{ background: 'rgba(13,27,46,0.12)' }} />
 
                 {/* State */}
                 <div>
@@ -159,7 +161,7 @@ export default function PersonalDetails() {
                   </div>
                 </div>
 
-                <div style={{ background: 'rgba(13,27,46,0.12)' }} />
+                <div className="section-divider" style={{ background: 'rgba(13,27,46,0.12)' }} />
 
                 {/* ACA Healthcare */}
                 <div>
@@ -171,7 +173,7 @@ export default function PersonalDetails() {
                     </label>
                   </div>
                   {asm.modelACA ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : (asm.acaNoSubsidy ? '1fr 1fr' : '1fr 1fr 1fr'), gap: 10 }}>
                       <div className="form-group">
                         <label>Annual Premium</label>
                         <div className="input-suffix-wrap">

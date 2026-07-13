@@ -1,10 +1,12 @@
 import { useProjection, usePlanStore } from '../store/usePlanStore';
 import { depletionAge, initialWithdrawalRate } from '../engine/projection';
 import { fmtM, fmtK } from '../lib/format';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function LiveMetricsBar() {
   const proj = useProjection();
   const plan = usePlanStore((s) => s.plan);
+  const isMobile = useIsMobile();
   const displayMode = usePlanStore((s) => s.displayMode);
   const real = displayMode === 'real';
   const retAge = plan.personA.retirementAge;
@@ -41,9 +43,10 @@ export default function LiveMetricsBar() {
 
   return (
     <div
+      className="live-metrics-bar"
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${cells.length}, 1fr)`,
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${cells.length}, 1fr)`,
         gap: '1px',
         background: 'rgba(201,168,76,0.18)',
         position: 'sticky',
