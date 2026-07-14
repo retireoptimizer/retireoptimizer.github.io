@@ -9,6 +9,7 @@ export interface WhatIfOverrides {
   retirementAgeA?: number;     // overrides plan.personA.retirementAge
   retirementAgeB?: number;     // overrides plan.personB.retirementAge (ignored if no person B)
   preRetReturn?: number;       // overrides plan.assumptions.preRetReturn
+  postRetReturn?: number;      // overrides plan.assumptions.postRetReturn
   inflation?: number;          // overrides plan.assumptions.inflation
   spendingMultiplier?: number; // multiplies every expense stream's annualAmount
 }
@@ -38,7 +39,7 @@ export const useWhatIfStore = create<WhatIfState>()((set) => ({
 export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
   if (!w.active) return plan;
   const o = w.overrides;
-  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.preRetReturn !== undefined || o.inflation !== undefined || (o.spendingMultiplier !== undefined && o.spendingMultiplier !== 1);
+  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.preRetReturn !== undefined || o.postRetReturn !== undefined || o.inflation !== undefined || (o.spendingMultiplier !== undefined && o.spendingMultiplier !== 1);
   if (!hasAny) return plan;
 
   let next: Plan = plan;
@@ -95,12 +96,13 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
       }),
     };
   }
-  if (o.preRetReturn !== undefined || o.inflation !== undefined) {
+  if (o.preRetReturn !== undefined || o.postRetReturn !== undefined || o.inflation !== undefined) {
     next = {
       ...next,
       assumptions: {
         ...next.assumptions,
         preRetReturn: o.preRetReturn ?? next.assumptions.preRetReturn,
+        postRetReturn: o.postRetReturn ?? next.assumptions.postRetReturn,
         inflation: o.inflation ?? next.assumptions.inflation,
       },
     };

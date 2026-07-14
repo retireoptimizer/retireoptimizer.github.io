@@ -311,6 +311,59 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
     }
   }
 
+  // Withdrawal-split smoothing: flatten year-to-year taxable/Roth oscillations that arise
+  // from coordinate-descent local optima on a near-flat objective landscape. pctTraditional
+  // is kept fixed — it's sized for bracket/RMD interaction and has direct tax consequences.
+  // We only swap between taxable and Roth within each year's remaining free budget (1 - trad).
+  // Accepts reallocations within the same tight tolerance used for conversion smoothing.
+  {
+    const splitTol = Math.max(1000, Math.abs(bestScore) * 0.001);
+
+    const trySplitWindows = (newWindows: BlendWindow[]): boolean => {
+      const trialPolicy: BlendPolicy = { windows: newWindows, source: 'optimizer' };
+      const proj = runProjection(plan, { policy: trialPolicy });
+      evalCounter.n++;
+      if (proj.ranOut) return false;
+      const trialScore = spec.score(proj);
+      if (trialScore >= bestScore - splitTol) {
+        bestWindows = newWindows;
+        bestPolicy = trialPolicy;
+        bestProj = proj;
+        bestScore = trialScore;
+        return true;
+      }
+      return false;
+    };
+
+    for (let pass = 0; pass < 4; pass++) {
+      let changed = false;
+
+      // Pairwise leveling: average the taxable fraction of the non-trad budget between
+      // adjacent years. Keeps pctTraditional unchanged; pctRoth absorbs the remainder.
+      for (let i = 0; i < bestWindows.length - 1; i++) {
+        const w0 = bestWindows[i];
+        const w1 = bestWindows[i + 1];
+        const free0 = 1 - w0.pctTraditional;
+        const free1 = 1 - w1.pctTraditional;
+        if (free0 < 0.01 || free1 < 0.01) continue;
+
+        const taxFrac0 = free0 > 0 ? w0.pctTaxable / free0 : 0;
+        const taxFrac1 = free1 > 0 ? w1.pctTaxable / free1 : 0;
+        if (Math.abs(taxFrac0 - taxFrac1) < 0.05) continue; // already similar, skip
+
+        const avgFrac = (taxFrac0 + taxFrac1) / 2;
+        const trial = bestWindows.map((w, idx) => {
+          if (idx !== i && idx !== i + 1) return w;
+          const free = idx === i ? free0 : free1;
+          return { ...w, pctTaxable: avgFrac * free, pctRoth: (1 - avgFrac) * free };
+        });
+        if (trySplitWindows(trial)) { changed = true; }
+      }
+
+      if (!changed) break;
+    }
+  }
+
   if (opts.useNelderMead) {
     for (let yi = 0; yi < bestWindows.length; yi++) {
       const cur = bestWindows[yi];

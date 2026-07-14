@@ -1,48 +1,48 @@
-// 2025 federal tax constants. Values match prototype's solveYearTax.
+// 2026 federal tax constants (Rev Proc 2025-32; OBBBA-permanent rate structure).
 // All dollar thresholds are inflation-indexed at usage time (multiplied by inflF).
 
-export const TAX_YEAR = 2025;
+export const TAX_YEAR = 2026;
 
-// 2025 Federal MFJ brackets — (upper bound, rate). Top bracket is open-ended.
+// 2026 Federal MFJ brackets — (upper bound, rate). Top bracket is open-ended.
 export const FED_BRACKETS_MFJ: ReadonlyArray<readonly [number, number]> = [
-  [23850, 0.10],
-  [96950, 0.12],
-  [206700, 0.22],
-  [394600, 0.24],
-  [501050, 0.32],
-  [751600, 0.35],
+  [24800,  0.10],
+  [100800, 0.12],
+  [211400, 0.22],
+  [403550, 0.24],
+  [512450, 0.32],
+  [768700, 0.35],
   [Infinity, 0.37],
 ];
 
-// 2025 Single brackets (surviving spouse after MFJ years)
+// 2026 Single brackets (surviving spouse after MFJ years)
 export const FED_BRACKETS_SINGLE: ReadonlyArray<readonly [number, number]> = [
-  [11925, 0.10],
-  [48475, 0.12],
-  [103350, 0.22],
-  [197300, 0.24],
-  [250525, 0.32],
-  [626350, 0.35],
+  [12400,  0.10],
+  [50400,  0.12],
+  [105700, 0.22],
+  [201775, 0.24],
+  [256225, 0.32],
+  [640600, 0.35],
   [Infinity, 0.37],
 ];
 
-export const STANDARD_DEDUCTION_MFJ = 31500;
-export const STANDARD_DEDUCTION_SINGLE = 15750;
-export const SENIOR_ADDON_MFJ = 1600; // per qualifying spouse 65+
-export const SENIOR_ADDON_SINGLE = 2000;
+export const STANDARD_DEDUCTION_MFJ = 32200;
+export const STANDARD_DEDUCTION_SINGLE = 16100;
+export const SENIOR_ADDON_MFJ = 1650; // per qualifying spouse 65+ (2026, inflation-adjusted)
+export const SENIOR_ADDON_SINGLE = 2050;
 
 // LTCG simplified — flat 15% (legacy; replaced by stacked brackets in yearFederalTax).
 export const LTCG_RATE = 0.15;
 
-// 2025 LTCG / qualified-dividend rate brackets (taxable income = ordinary + LTCG stacked).
+// 2026 LTCG / qualified-dividend rate brackets (taxable income = ordinary + LTCG stacked).
 // Inflation-indexed at usage time (multiplied by inflF).
 export const LTCG_BRACKETS_MFJ: ReadonlyArray<readonly [number, number]> = [
-  [94050,   0.00],
-  [583750,  0.15],
+  [98900,   0.00],
+  [613700,  0.15],
   [Infinity, 0.20],
 ];
 export const LTCG_BRACKETS_SINGLE: ReadonlyArray<readonly [number, number]> = [
-  [47025,   0.00],
-  [518900,  0.15],
+  [49450,   0.00],
+  [545500,  0.15],
   [Infinity, 0.20],
 ];
 
@@ -53,26 +53,26 @@ export const TAXABLE_BASIS_PCT = 0.5;
 // Actual taxable fraction is computed per-year via taxableSocialSecurity() in tax.ts.
 export const SS_TAXABLE_PCT = 0.85;
 
-// SS provisional income thresholds (IRC §86) — NOT inflation-indexed.
+// SS provisional income thresholds (IRC §86) — NOT inflation-indexed (frozen since 1983).
 export const SS_PROVISIONAL_BASE_MFJ = 32000;
 export const SS_PROVISIONAL_UPPER_MFJ = 44000;
 export const SS_PROVISIONAL_BASE_SINGLE = 25000;
 export const SS_PROVISIONAL_UPPER_SINGLE = 34000;
 
-// ACA Federal Poverty Level 2025 (48 contiguous states + DC).
-export const FPL_BASE_2025 = 15060;     // 1-person household
-export const FPL_INCREMENT_2025 = 5380; // per additional person
+// ACA Federal Poverty Level 2026 (48 contiguous states + DC; HHS, effective Jan 14 2026).
+export const FPL_BASE = 15960;     // 1-person household
+export const FPL_INCREMENT = 5680; // per additional person
 
-// ACA applicable percentage bands for 2025 (IRS Rev. Proc. 2024-35).
+// ACA applicable percentage bands for 2026 (IRS Rev. Proc. 2025-25).
 // Each entry: [fplLow, fplHigh, pctLow, pctHigh] — linearly interpolated within each band.
-// Above 400% FPL: enhanced subsidies cap at 8.50% (ARP/IRA extension, no cliff).
+// Above 400% FPL: ARP/IRA enhanced subsidies expired Dec 31 2025 — cliff is restored, no APTC.
 export const ACA_PCT_BANDS: ReadonlyArray<readonly [number, number, number, number]> = [
-  [1.00, 1.33, 0.0106, 0.0106],
-  [1.33, 1.50, 0.0106, 0.0200],
-  [1.50, 2.00, 0.0200, 0.0300],
-  [2.00, 2.50, 0.0300, 0.0400],
-  [2.50, 3.00, 0.0400, 0.0600],
-  [3.00, 4.00, 0.0600, 0.0850],
+  [1.00, 1.33, 0.0210, 0.0210],
+  [1.33, 1.50, 0.0314, 0.0419],
+  [1.50, 2.00, 0.0419, 0.0660],
+  [2.00, 2.50, 0.0660, 0.0844],
+  [2.50, 3.00, 0.0844, 0.0996],
+  [3.00, 4.00, 0.0996, 0.0996],
 ];
 
 // IRS Uniform Lifetime Table (subset used by prototype).
@@ -87,15 +87,24 @@ export const RMD_DIVISORS: Readonly<Record<number, number>> = {
   105: 4.6,
 };
 
-// IRMAA 2025 MFJ MAGI thresholds → per-person monthly Part B surcharge
-// (per-spouse annual when both 65+, so the per-spouse multiplier handles it).
-export const IRMAA_TIERS_MFJ_2025: ReadonlyArray<{ magiTop: number; monthlyPerPerson: number }> = [
-  { magiTop: 212000, monthlyPerPerson: 0 },
-  { magiTop: 266000, monthlyPerPerson: 74.0 },
-  { magiTop: 334000, monthlyPerPerson: 185.0 },
-  { magiTop: 400000, monthlyPerPerson: 295.9 },
-  { magiTop: 750000, monthlyPerPerson: 406.9 },
-  { magiTop: Infinity, monthlyPerPerson: 443.9 },
+// IRMAA 2026 MAGI thresholds → per-person monthly Part B surcharge (CMS 2026).
+// Thresholds inflation-indexed at usage time; surcharge dollar amounts are CMS-set annually (not inflation-formulas).
+// Single-filer thresholds are roughly half of MFJ at each tier boundary.
+export const IRMAA_TIERS_MFJ: ReadonlyArray<{ magiTop: number; monthlyPerPerson: number }> = [
+  { magiTop: 218000, monthlyPerPerson:   0.00 },
+  { magiTop: 274000, monthlyPerPerson:  81.20 },
+  { magiTop: 342000, monthlyPerPerson: 202.90 },
+  { magiTop: 410000, monthlyPerPerson: 324.60 },
+  { magiTop: 750000, monthlyPerPerson: 446.30 },
+  { magiTop: Infinity, monthlyPerPerson: 487.00 },
+];
+export const IRMAA_TIERS_SINGLE: ReadonlyArray<{ magiTop: number; monthlyPerPerson: number }> = [
+  { magiTop: 109000, monthlyPerPerson:   0.00 },
+  { magiTop: 137000, monthlyPerPerson:  81.20 },
+  { magiTop: 171000, monthlyPerPerson: 202.90 },
+  { magiTop: 205000, monthlyPerPerson: 324.60 },
+  { magiTop: 500000, monthlyPerPerson: 446.30 },
+  { magiTop: Infinity, monthlyPerPerson: 487.00 },
 ];
 
 // Illinois flat income-tax rate (4.95%). Retirement income (401k/IRA/Roth/SS/pension) is exempt.

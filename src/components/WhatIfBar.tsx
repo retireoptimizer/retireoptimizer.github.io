@@ -19,6 +19,7 @@ export default function WhatIfBar() {
   const retireA = overrides.retirementAgeA ?? plan.personA.retirementAge;
   const retireB = overrides.retirementAgeB ?? plan.personB?.retirementAge ?? 0;
   const preRet = overrides.preRetReturn ?? plan.assumptions.preRetReturn;
+  const postRet = overrides.postRetReturn ?? plan.assumptions.postRetReturn;
   const inflation = overrides.inflation ?? plan.assumptions.inflation;
   const spendMult = overrides.spendingMultiplier ?? 1;
 
@@ -26,6 +27,7 @@ export default function WhatIfBar() {
     overrides.retirementAgeA !== undefined ||
     overrides.retirementAgeB !== undefined ||
     overrides.preRetReturn !== undefined ||
+    overrides.postRetReturn !== undefined ||
     overrides.inflation !== undefined ||
     (overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1)
   );
@@ -39,9 +41,10 @@ export default function WhatIfBar() {
     if (overrides.retirementAgeB !== undefined && plan.personB) {
       planOverrides.personB = { retirementAge: overrides.retirementAgeB };
     }
-    if (overrides.preRetReturn !== undefined || overrides.inflation !== undefined) {
+    if (overrides.preRetReturn !== undefined || overrides.postRetReturn !== undefined || overrides.inflation !== undefined) {
       planOverrides.assumptions = {
         ...(overrides.preRetReturn !== undefined ? { preRetReturn: overrides.preRetReturn } : {}),
+        ...(overrides.postRetReturn !== undefined ? { postRetReturn: overrides.postRetReturn } : {}),
         ...(overrides.inflation !== undefined ? { inflation: overrides.inflation } : {}),
       };
     }
@@ -56,7 +59,8 @@ export default function WhatIfBar() {
     const labelParts: string[] = [];
     if (overrides.retirementAgeA !== undefined) labelParts.push(`${plan.personA.name} retire @${overrides.retirementAgeA}`);
     if (overrides.retirementAgeB !== undefined && plan.personB) labelParts.push(`${plan.personB.name} retire @${overrides.retirementAgeB}`);
-    if (overrides.preRetReturn !== undefined) labelParts.push(`${(overrides.preRetReturn * 100).toFixed(1)}% return`);
+    if (overrides.preRetReturn !== undefined) labelParts.push(`${(overrides.preRetReturn * 100).toFixed(1)}% pre-ret`);
+    if (overrides.postRetReturn !== undefined) labelParts.push(`${(overrides.postRetReturn * 100).toFixed(1)}% post-ret`);
     if (overrides.inflation !== undefined) labelParts.push(`${(overrides.inflation * 100).toFixed(1)}% infl`);
     if (overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1) labelParts.push(`spend ${Math.round(overrides.spendingMultiplier * 100)}%`);
     addScenario({
@@ -137,6 +141,16 @@ export default function WhatIfBar() {
           format={(v) => `${v.toFixed(1)}%`}
           onChange={(v) => setOverride('preRetReturn', v / 100)}
           isOverridden={overrides.preRetReturn !== undefined}
+        />
+        <Slider
+          label="Post-ret return"
+          value={postRet * 100}
+          min={0}
+          max={12}
+          step={0.1}
+          format={(v) => `${v.toFixed(1)}%`}
+          onChange={(v) => setOverride('postRetReturn', v / 100)}
+          isOverridden={overrides.postRetReturn !== undefined}
         />
         <Slider
           label="Inflation"

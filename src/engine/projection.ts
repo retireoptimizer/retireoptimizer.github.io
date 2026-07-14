@@ -348,7 +348,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // IRMAA 2-year lookback: year i's surcharge is based on MAGI from year i-2.
       // For the first two years, fall back to the current year's MAGI.
       const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
-      irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus) : 0;
+      irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus, filingStatus) : 0;
 
       // Refine state tax to include retirement distributions for states that tax them.
       // Include stateAmt in the convergence check — for CA/NY plans, state tax is a

@@ -1,7 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData, Plugin } from 'chart.js';
 import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
-import { IRMAA_TIERS_MFJ_2025 } from '../../engine/taxConstants';
+import { IRMAA_TIERS_MFJ } from '../../engine/taxConstants';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -18,7 +18,7 @@ const tierBandsPlugin: Plugin<'line'> = {
     if (!chartArea || !scales.y) return;
     const yScale = scales.y;
     // Render the first 3 tier ceilings as horizontal threshold lines (in today's $)
-    const tiers = IRMAA_TIERS_MFJ_2025.slice(0, 3);
+    const tiers = IRMAA_TIERS_MFJ.slice(0, 3);
     const colors = [palette.warning, palette.danger, '#7a1d12'];
     ctx.save();
     ctx.lineWidth = 1;

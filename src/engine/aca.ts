@@ -1,8 +1,8 @@
-import { FPL_BASE_2025, FPL_INCREMENT_2025, ACA_PCT_BANDS } from './taxConstants';
+import { FPL_BASE, FPL_INCREMENT, ACA_PCT_BANDS } from './taxConstants';
 
-/** Annual federal poverty level for a given household size (2025, 48 contiguous states + DC). */
+/** Annual federal poverty level for a given household size (2026, 48 contiguous states + DC). */
 export function federalPovertyLevel(householdSize: number): number {
-  return FPL_BASE_2025 + Math.max(0, householdSize - 1) * FPL_INCREMENT_2025;
+  return FPL_BASE + Math.max(0, householdSize - 1) * FPL_INCREMENT;
 }
 
 /**
@@ -16,8 +16,7 @@ function applicablePercentage(fplRatio: number): number {
       return pctLow + t * (pctHigh - pctLow);
     }
   }
-  // ≥ 400% FPL: enhanced subsidies cap at 8.5% (no income cliff under ARP/IRA extension).
-  return 0.0850;
+  return Infinity; // ≥400% FPL: ARP/IRA subsidies expired Dec 2025; cliff restored — no APTC
 }
 
 /**
@@ -52,7 +51,7 @@ export function acaNetPremium(params: {
   if (fplRatio < 1.33) return 0;                      // Medicaid-eligible: no marketplace premium
 
   const appPct = applicablePercentage(fplRatio);
+  if (!isFinite(appPct)) return annualBenchmarkPremium; // above 400% FPL cliff: no APTC
   const maxContribution = appPct * magi;
-  // Net premium = what remains after APTC removes the subsidy portion.
   return Math.min(annualBenchmarkPremium, Math.max(0, maxContribution));
 }
