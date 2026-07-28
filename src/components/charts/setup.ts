@@ -92,14 +92,6 @@ export const fmtFull = (n: number): string => {
   return sign + '$' + Math.round(Math.abs(n)).toLocaleString();
 };
 
-/** Shared multi-line tooltip body. Renders each dataset with `<label>: <value>`,
- *  using `fmtFull` so the precise dollar amount is visible on hover. Pass to a
- *  chart options object as `plugins.tooltip.callbacks.label`. */
-export const tooltipLabelFull = (item: { dataset: { label?: string }; parsed: { y: number | null } }): string => {
-  const v = item.parsed.y ?? 0;
-  return `${item.dataset.label ?? ''}: ${fmtFull(Math.abs(v))}`;
-};
-
 /** Common interaction config: hover anywhere in the chart highlights all datasets
  *  at that x-position. Used by line/bar charts where multiple datasets share a year. */
 export const indexInteraction = { mode: 'index' as const, intersect: false };

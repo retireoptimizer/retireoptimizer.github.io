@@ -1,5 +1,4 @@
-import type { Plan } from '../schemas/plan';
-import { runProjection, type ProjectionResult } from './projection';
+import type { ProjectionResult } from './projection';
 
 export type RecGoal = 'min-tax' | 'max-end' | 'min-rmd' | 'max-roth' | 'max-longevity';
 
@@ -12,7 +11,6 @@ export interface RecGoalSpec {
   format: (m: number) => string;
 }
 
-const fmtUSD = (n: number) => '$' + Math.round(n).toLocaleString();
 const fmtK = (n: number) => '$' + Math.round(n / 1000).toLocaleString() + 'K';
 
 export const REC_GOALS: Record<RecGoal, RecGoalSpec> = {
@@ -64,67 +62,6 @@ export const REC_GOALS: Record<RecGoal, RecGoalSpec> = {
     format: (m) => `Age ${Math.floor(m / 1_000_000)}`,
   },
 };
-
-const STRATEGIES: Plan['withdrawalStrategy'][] = [
-  'taxfirst',
-  'rothfirst',
-  'tradfirst',
-  'proportional',
-  'bracketfill',
-];
-
-const STRAT_LABEL: Record<Plan['withdrawalStrategy'], string> = {
-  taxfirst: 'Taxable → Traditional → Roth',
-  rothfirst: 'Roth → Traditional → Taxable',
-  tradfirst: 'Traditional → Taxable → Roth',
-  proportional: 'Proportional',
-  bracketfill: 'Bracket-Fill',
-};
-
-export interface RecResult {
-  strategy: Plan['withdrawalStrategy'];
-  label: string;
-  metric: number;
-  metricFormatted: string;
-  ranOut: boolean;
-}
-
-export interface Recommendation {
-  goal: RecGoal;
-  goalLabel: string;
-  winner: RecResult;
-  ranked: RecResult[];
-}
-
-export function recommendStrategy(plan: Plan, goal: RecGoal): Recommendation {
-  const spec = REC_GOALS[goal];
-  const results: RecResult[] = STRATEGIES.map((strategy) => {
-    const p = { ...plan, withdrawalStrategy: strategy };
-    const proj = runProjection(p);
-    const metric = spec.score(proj);
-    return {
-      strategy,
-      label: STRAT_LABEL[strategy],
-      metric,
-      metricFormatted: spec.format(metric),
-      ranOut: proj.ranOut,
-    };
-  });
-
-  results.sort((a, b) => {
-    if (a.ranOut !== b.ranOut) return a.ranOut ? 1 : -1;
-    return spec.direction === 'min' ? a.metric - b.metric : b.metric - a.metric;
-  });
-
-  return {
-    goal,
-    goalLabel: spec.label,
-    winner: results[0],
-    ranked: results,
-  };
-}
-
-export { fmtUSD };
 
 // ─── User-facing optimizer goals (linopt-style plain English) ──────────────────
 // These wrap the inner optimizer. The inner search always uses the 'max-end' spec
