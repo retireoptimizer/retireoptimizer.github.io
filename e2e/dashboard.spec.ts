@@ -7,17 +7,14 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('Dashboard loads with default plan and shows live metrics on the global ribbon', async ({ page }) => {
+test('Dashboard loads with default plan and shows Plan Summary banner', async ({ page }) => {
   await page.goto('/dashboard');
   // Sidebar nav present
   await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
-  // Live metrics bar visible — the Dashboard KPI tiles were dropped (they
-  // duplicated the global ribbon).
-  await expect(page.getByText(/Portfolio @ Retirement/i)).toBeVisible();
-  // The standalone "Plan Lasts To" card was folded into the End Balance cell, whose
-  // subtext now carries the longevity status.
+  // Plan Summary banner KPI stats are visible.
   await expect(page.getByText(/End Balance/i).first()).toBeVisible();
-  await expect(page.getByText('Initial Withdrawal Rate', { exact: true })).toBeVisible();
+  await expect(page.getByText('Initial WR', { exact: true })).toBeVisible();
+  await expect(page.getByText('Years Funded', { exact: true })).toBeVisible();
 });
 
 test('Personal Details page renders the client-profile inputs', async ({ page }) => {
@@ -34,21 +31,21 @@ test('Personal Details page renders the client-profile inputs', async ({ page })
   expect(options).toBeGreaterThanOrEqual(6);
 });
 
-test('Set Goals page exposes the optimizer goal selector; Dashboard hosts the preset chips + Customize sheet', async ({ page }) => {
-  // After the Set Goals refactor, the /strategy page is now the focused goal-picker
-  // (3 optimizer goals only). Withdrawal-preset selection moved to Dashboard's
-  // StrategyChooser, and the rich Conversion + Custom Blend UI moved into a
-  // Customize side sheet triggered from Dashboard.
-  await page.goto('/strategy');
-  await expect(page.getByText(/what outcome do you want/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Pick', exact: true })).toHaveCount(0);
+test('Inputs page exposes the optimizer goal selector; Dashboard hosts the preset chips + Customize sheet', async ({ page }) => {
+  // /strategy now redirects to /inputs. Goal selector lives in GoalSelectPanel
+  // on the Inputs page. Withdrawal-preset chips and Customize sheet live on Dashboard.
+  await page.goto('/inputs');
+  await expect(page.getByText(/what outcome do you want to optimize for/i)).toBeVisible();
+  // Radios for each UserGoal are rendered.
+  const radios = page.locator('input[type="radio"][name="opt-goal"]');
+  expect(await radios.count()).toBeGreaterThanOrEqual(3);
 
   await page.goto('/dashboard');
   // Dashboard's StrategyChooser exposes preset chips.
   await expect(page.getByRole('button', { name: 'Tax-first', exact: true })).toBeVisible();
-  // Customize opens the side sheet with the Custom Blend Editor.
-  await page.getByRole('button', { name: /Customize/ }).click();
-  await expect(page.getByText('Custom Blend Editor')).toBeVisible();
+  // "Custom" chip opens the Custom Blend Editor side sheet.
+  await page.getByRole('button', { name: 'Custom', exact: true }).click();
+  await expect(page.getByText('Custom Blend Editor').first()).toBeVisible();
 });
 
 test('Add a scenario from the Dashboard template picker and see it appear in Pinned Comparisons', async ({ page }) => {

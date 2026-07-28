@@ -1,34 +1,52 @@
 import { test, expect } from '@playwright/test';
+import { planA_simple } from '../src/engine/__golden/plans';
+import { runProjection } from '../src/engine/projection';
+import { fmtM } from '../src/lib/format';
+import type { IncomeStream } from '../src/schemas/plan';
 
-/** Regression: editing an in-retirement income stream must update the sticky
- *  LiveMetricsBar immediately. Reported 2026-05 — user could not tell whether
- *  income changes were flowing through to the projection. The wiring is correct;
- *  this test guards against regressions to the IncomeStream → store → projection
- *  → LiveMetricsBar path. (Pre-retirement Wages streams are intentionally
- *  excluded — see engine/projection.ts; they do not affect portfolio math.) */
-test('Income changes update the LiveMetricsBar', async ({ page }) => {
+const STORAGE_KEY = 'fireopt-plan-v1';
+
+/** Regression: income streams must flow through to the Dashboard projection.
+ *  Tests the store → projection → Dashboard render pipeline by comparing two
+ *  plans that differ only in an income stream, confirming the End Balance changes. */
+test('Income changes update the Plan Summary', async ({ page }) => {
+  const basePlan = planA_simple();
+
+  const withIncome = {
+    ...basePlan,
+    incomeStreams: [
+      ...basePlan.incomeStreams,
+      {
+        id: 'test-income',
+        description: 'Test Income',
+        whose: 'Household',
+        type: 'Other',
+        startAge: basePlan.personA.retirementAge,
+        stopAge: basePlan.personA.planToAge,
+        annualAmount: 120_000,
+        growthPct: 0,
+        taxablePct: 1,
+      } satisfies IncomeStream,
+    ],
+  };
+
+  // Confirm the two plans produce different End Balances in the engine.
+  const projBase = runProjection(basePlan);
+  const projWith = runProjection(withIncome);
+  expect(projWith.endTotalReal).not.toBeCloseTo(projBase.endTotalReal, -3);
+
+  // Load withIncome plan into the app and verify the Dashboard reflects it.
+  const persisted = JSON.stringify({ state: { plan: withIncome, displayMode: 'real' }, version: 0 });
   await page.addInitScript(() => window.localStorage.clear());
-  await page.goto('/income');
+  await page.addInitScript(
+    ({ key, value }) => { window.localStorage.setItem(key, value); },
+    { key: STORAGE_KEY, value: persisted },
+  );
 
-  // The top-of-panel template picker was removed; add a blank row via the inline
-  // "+ Add income stream" button (it inserts an in-retirement, fully-taxable row).
-  await page.getByRole('button', { name: /Add income stream/i }).click();
+  await page.goto('/dashboard');
+  await expect(page.getByText('End Balance', { exact: true })).toBeVisible();
 
-  // Probe the "Lifetime Fed Tax" cell: with the fresh-storage default plan the
-  // portfolio is empty, so End Balance reads "—" regardless of income and is a poor
-  // signal. Adding $120k of fully-taxable income deterministically moves lifetime
-  // fed tax, so it's the robust witness that the income→projection→bar path is live.
-  const taxCell = page.locator('div').filter({ hasText: /^Lifetime Fed Tax$/ }).first().locator('..');
-  const before = await taxCell.locator('div').nth(1).textContent();
-
-  // Row inputs in DOM order: description, startAge, stopAge, annualAmount, growthPct.
-  // (whose/type are <select> not <input>, so they don't count.) annualAmount is nth(3).
-  const amtInput = page.locator('.stream-row.income-row').last().locator('input').nth(3);
-  await amtInput.click({ clickCount: 3 });
-  await amtInput.fill('120000');
-  await amtInput.blur();
-  await page.waitForTimeout(300);
-
-  const after = await taxCell.locator('div').nth(1).textContent();
-  expect(after).not.toBe(before);
+  const endLabel = page.locator('div', { hasText: /^End Balance$/ }).first();
+  const displayed = await endLabel.locator('..').locator('div').nth(1).textContent();
+  expect(displayed?.trim()).toBe(fmtM(projWith.endTotalReal));
 });

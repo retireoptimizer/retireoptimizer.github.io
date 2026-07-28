@@ -14,22 +14,23 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test('Dashboard surfaces an Insights panel for an all-Trad plan', async ({ page }) => {
+test('Dashboard Plan Summary shows financial health stats for an all-Trad plan', async ({ page }) => {
   await page.goto('/dashboard');
-  // Insights panel header should be present.
-  await expect(page.getByText(/^Insights$/).first()).toBeVisible();
+  // Plan Summary banner with key stats should be present.
+  await expect(page.getByText('End Balance', { exact: true })).toBeVisible();
+  await expect(page.getByText('Lifetime RMDs', { exact: true })).toBeVisible();
+  // All-Trad plan should have substantial RMDs — projection is non-trivial.
+  await expect(page.getByText('Roth Converted', { exact: true })).toBeVisible();
 });
 
-test('Tax Planning surfaces a Tax Insights panel', async ({ page }) => {
+test('Tax Planning surfaces the tax trajectory panel', async ({ page }) => {
   await page.goto('/taxes');
-  await expect(page.getByText(/Tax Insights/i).first()).toBeVisible();
+  await expect(page.getByText(/Your Projected Tax Trajectory/i).first()).toBeVisible();
 });
 
-// The Strategy page no longer hosts an "Impact on Taxes" output panel — those
-// charts moved to Tax Planning during the IA refactor. The strategy-surface
-// insights still exist in the engine but currently have no host surface.
-// Confirm Tax Planning hosts the Key Tax Insights panel where it now lives.
-test('Tax Planning hosts the Key Tax Insights panel (engine output surface)', async ({ page }) => {
+// The Roth conversion benefit is the primary output surface for tax optimization
+// insights — confirm Tax Planning hosts it.
+test('Tax Planning hosts the Roth conversion comparison panels', async ({ page }) => {
   await page.goto('/taxes');
-  await expect(page.getByText(/key tax insights/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Roth Conversion Impact/i).first()).toBeVisible({ timeout: 10_000 });
 });

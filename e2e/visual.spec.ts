@@ -28,10 +28,10 @@ test.describe('Visual regression', () => {
 
   for (const [name, path] of [
     ['dashboard', '/dashboard'],
-    ['strategy', '/withdrawal'],
+    ['inputs', '/inputs'],
     ['projections', '/projections'],
     ['taxes', '/taxes'],
-    ['portfolio', '/portfolio'],
+    ['montecarlo', '/montecarlo'],
   ] as const) {
     test(`${name} page baseline`, async ({ page }) => {
       await page.goto(path);

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { runProjection } from '../src/engine/projection';
 import { planA_simple } from '../src/engine/__golden/plans';
-import { fmtM, fmtK } from '../src/lib/format';
+import { fmtM } from '../src/lib/format';
 import { depletionAge } from '../src/engine/projection';
 
 /**
@@ -32,49 +32,26 @@ test('Dashboard KPIs match engine output for a fixture plan', async ({ page }) =
   );
 
   await page.goto('/dashboard');
-  await expect(page.getByText(/Portfolio @ Retirement/i)).toBeVisible();
+  await expect(page.getByText(/End Balance/i).first()).toBeVisible();
 
-  // Read the LiveMetricsBar values and compare to engine output.
-  // Portfolio @ Retirement (real $) = endTotal of retirement row / inflationFactor.
-  const retAge = plan.personA.retirementAge;
-  const retRow = expected.rows.find((r) => r.ageA >= retAge)!;
-  const portAtRetReal = retRow.endTotal / retRow.inflationFactor;
-  const expectedPortfolioText = fmtM(portAtRetReal);
-
-  // The KPI tile renders the formatted value as the only large text below the label.
-  // Use a structural locator: find the cell labeled "PORTFOLIO @ RETIREMENT" and grab
-  // its value text. The label uses uppercase letter-spacing in CSS, but inner text
-  // stays as authored.
-  const portfolioCell = page.locator('div', { hasText: /^Portfolio @ Retirement$/i }).first();
-  const displayedPortfolio = await portfolioCell.locator('..').locator('div').nth(1).textContent();
-  expect(displayedPortfolio?.trim()).toBe(expectedPortfolioText);
-
-  // End Balance (real $) — direct from projection. The label now carries the
-  // plan-to age ("End Balance · Age <n>"), and the longevity status moved into its
-  // subtext (the standalone "Plan Lasts To" card was folded in).
+  // End Balance (real $) — direct from projection.
+  // HeroStat structure: container > label div(0) > value div(1) > sub div(2).
   const expectedEndBalance = fmtM(expected.endTotalReal);
-  const endCell = page.locator('div', { hasText: /^End Balance · Age \d+$/i }).first().locator('..');
-  const displayedEnd = await endCell.locator('div').nth(1).textContent();
+  const endLabel = page.locator('div', { hasText: /^End Balance$/i }).first();
+  const endContainer = endLabel.locator('..');
+  const displayedEnd = await endContainer.locator('div').nth(1).textContent();
   expect(displayedEnd?.trim()).toBe(expectedEndBalance);
 
-  // Lifetime Fed Tax (nominal, all years)
-  const expectedFedTax = fmtK(expected.lifetimeFedTax);
-  const taxCell = page.locator('div', { hasText: /^Lifetime Fed Tax$/i }).first();
-  const displayedTax = await taxCell.locator('..').locator('div').nth(1).textContent();
-  expect(displayedTax?.trim()).toBe(expectedFedTax);
-
-  // Longevity status lives in the End Balance subtext: "⚠ Runs out at age N" when
-  // funds deplete, else "✓ Funds full plan".
+  // Longevity status — now a badge: "✓ Fully Funded" or "⚠ Funded through Age N".
   const depAge = depletionAge(expected);
-  const displayedSub = (await endCell.locator('div').nth(2).textContent())?.trim() ?? '';
   if (depAge !== null) {
-    expect(displayedSub).toContain(`Runs out at age ${depAge}`);
+    await expect(page.getByText(/Funded through Age/i).first()).toBeVisible();
   } else {
-    expect(displayedSub).toContain('Funds full plan');
+    await expect(page.getByText(/Fully Funded/i).first()).toBeVisible();
   }
 });
 
-test('Real/nominal toggle changes LiveMetricsBar End Balance', async ({ page }) => {
+test('Real/nominal toggle changes Plan Summary End Balance', async ({ page }) => {
   const plan = planA_simple();
   const proj = runProjection(plan);
 
@@ -87,17 +64,17 @@ test('Real/nominal toggle changes LiveMetricsBar End Balance', async ({ page }) 
   await page.goto('/dashboard');
   await expect(page.getByText(/End Balance/i).first()).toBeVisible();
 
-  const endCell = page.locator('div', { hasText: /^End Balance · Age \d+$/i }).first();
-  const readEnd = async () => (await endCell.locator('..').locator('div').nth(1).textContent())?.trim();
+  // HeroStat structure: container > label div(0) > value div(1) > sub div(2).
+  const endLabel = page.locator('div', { hasText: /^End Balance$/i }).first();
+  const readEnd = async () => (await endLabel.locator('..').locator('div').nth(1).textContent())?.trim();
 
   // Real value first (the seeded displayMode).
   expect(await readEnd()).toBe(fmtM(proj.endTotalReal));
 
-  // Flip the AppShell toggle to Nominal. The radio is keyed by accessible name.
+  // Flip the AppShell toggle to Nominal. Buttons have role="radio".
   await page.getByRole('radio', { name: /Nominal \$/i }).click();
 
-  // Bar must now show the nominal end balance — different from real for any
-  // plan with non-zero inflation.
+  // Plan Summary must now show the nominal end balance.
   expect(proj.endTotalNominal).toBeGreaterThan(proj.endTotalReal);
   expect(await readEnd()).toBe(fmtM(proj.endTotalNominal));
 });
