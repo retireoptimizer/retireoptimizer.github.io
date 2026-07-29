@@ -1,5 +1,8 @@
 import * as Comlink from 'comlink';
 import type { EngineWorkerAPI } from './worker';
+// ?worker&inline embeds the worker as a base64 blob URL — no HTTP request to
+// GitHub Pages, which incorrectly serves some chunks as application/octet-stream.
+import InlineWorker from './worker.ts?worker&inline';
 
 let workerInstance: Worker | null = null;
 let proxy: Comlink.Remote<EngineWorkerAPI> | null = null;
@@ -7,7 +10,7 @@ let proxy: Comlink.Remote<EngineWorkerAPI> | null = null;
 /** Lazy-init the singleton engine worker + Comlink proxy. */
 export function getEngineWorker(): Comlink.Remote<EngineWorkerAPI> {
   if (!proxy) {
-    workerInstance = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    workerInstance = new InlineWorker();
     proxy = Comlink.wrap<EngineWorkerAPI>(workerInstance);
   }
   return proxy;
