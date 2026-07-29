@@ -1,40 +1,14 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+
+const RESULT_ROUTES = ['/dashboard', '/projections', '/taxes', '/montecarlo'];
 
 const TABS = [
   {
-    to: '/personal',
-    label: 'Plan',
+    to: '/inputs',
+    label: 'Inputs',
     icon: (
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <circle cx="12" cy="8" r="4" strokeWidth="1.8"/>
-        <path d="M4 20c0-4 3.58-7 8-7s8 3 8 7" strokeWidth="1.8"/>
-      </svg>
-    ),
-  },
-  {
-    to: '/cash-flow',
-    label: 'Cash',
-    icon: (
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path d="M12 3v18M17 8H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
-  {
-    to: '/portfolio',
-    label: 'Portfolio',
-    icon: (
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path d="M21 21H3V3M21 9l-5 5-4-4-5 5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
-  },
-  {
-    to: '/strategy',
-    label: 'Goals',
-    icon: (
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" strokeWidth="1.8"/>
+        <path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
   },
@@ -81,13 +55,20 @@ const TABS = [
 ];
 
 export default function BottomTabBar() {
+  const location = useLocation();
+  const onResultsTab = RESULT_ROUTES.some((r) => location.pathname.startsWith(r));
+
   return (
     <nav className="bottom-tab-bar" aria-label="Main navigation">
       {TABS.map((t) => (
         <NavLink
           key={t.to}
           to={t.to}
-          className={({ isActive }) => isActive ? 'bottom-tab-item active' : 'bottom-tab-item'}
+          className={({ isActive }) => {
+            // "Inputs" tab is active when NOT on a results route
+            if (t.to === '/inputs') return (!onResultsTab || isActive) ? 'bottom-tab-item active' : 'bottom-tab-item';
+            return isActive ? 'bottom-tab-item active' : 'bottom-tab-item';
+          }}
         >
           {t.icon}
           <span>{t.label}</span>

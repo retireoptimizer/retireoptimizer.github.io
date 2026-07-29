@@ -1,28 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { federalOrdinaryTax, standardDeduction, yearFederalTax, taxableSocialSecurity } from './tax';
 
-describe('federalOrdinaryTax MFJ 2025', () => {
+describe('federalOrdinaryTax MFJ 2026', () => {
   it('zero on zero income', () => {
     expect(federalOrdinaryTax(0, 'MFJ', 1)).toBe(0);
   });
 
-  it('full 10% bracket at $23,850', () => {
-    // 10% of 23,850 = 2,385
+  it('full 10% bracket at $23,850 (below $24,800 ceiling)', () => {
+    // 10% of 23,850 = 2,385 (still within 10% bracket which ends at $24,800)
     expect(federalOrdinaryTax(23850, 'MFJ', 1)).toBeCloseTo(2385, 0);
   });
 
-  it('through 12% bracket at $96,950', () => {
-    // 10%*23,850 + 12%*(96,950-23,850) = 2,385 + 8,772 = 11,157
-    expect(federalOrdinaryTax(96950, 'MFJ', 1)).toBeCloseTo(11157, 0);
+  it('through 12% bracket at $100,800', () => {
+    // 10%*24,800 + 12%*(100,800-24,800) = 2,480 + 9,120 = 11,600
+    expect(federalOrdinaryTax(100800, 'MFJ', 1)).toBeCloseTo(11600, 0);
   });
 
-  it('through 22% bracket at $206,700', () => {
-    // 11,157 + 22% * (206,700-96,950) = 11,157 + 24,145 = 35,302
-    expect(federalOrdinaryTax(206700, 'MFJ', 1)).toBeCloseTo(35302, 0);
+  it('through 22% bracket at $211,400', () => {
+    // 11,600 + 22% * (211,400-100,800) = 11,600 + 24,332 = 35,932
+    expect(federalOrdinaryTax(211400, 'MFJ', 1)).toBeCloseTo(35932, 0);
   });
 
   it('inflation indexes brackets', () => {
-    // At inflF=2, $20k is still well within 10% bracket (which now extends to $47,700)
+    // At inflF=2, $20k is still well within 10% bracket (which now extends to $49,600)
     expect(federalOrdinaryTax(20000, 'MFJ', 2)).toBeCloseTo(2000, 0);
   });
 });
@@ -40,24 +40,24 @@ describe('federalOrdinaryTax Single 2025', () => {
 });
 
 describe('standardDeduction', () => {
-  it('MFJ base = $31,500', () => {
-    expect(standardDeduction('MFJ', 50, 50, 1)).toBeCloseTo(31500, 0);
+  it('MFJ base = $32,200', () => {
+    expect(standardDeduction('MFJ', 50, 50, 1)).toBeCloseTo(32200, 0);
   });
 
-  it('MFJ both 65+ adds $3,200', () => {
-    expect(standardDeduction('MFJ', 70, 68, 1)).toBeCloseTo(31500 + 3200, 0);
+  it('MFJ both 65+ adds $3,300 (2 × $1,650)', () => {
+    expect(standardDeduction('MFJ', 70, 68, 1)).toBeCloseTo(32200 + 3300, 0);
   });
 
-  it('MFJ only one 65+ adds $1,600', () => {
-    expect(standardDeduction('MFJ', 70, 60, 1)).toBeCloseTo(33100, 0);
+  it('MFJ only one 65+ adds $1,650', () => {
+    expect(standardDeduction('MFJ', 70, 60, 1)).toBeCloseTo(33850, 0);
   });
 
-  it('Single 65+ = $15,750 + $2,000', () => {
-    expect(standardDeduction('Single', 70, undefined, 1)).toBeCloseTo(17750, 0);
+  it('Single 65+ = $16,100 + $2,050', () => {
+    expect(standardDeduction('Single', 70, undefined, 1)).toBeCloseTo(18150, 0);
   });
 
   it('scales by inflation factor', () => {
-    expect(standardDeduction('MFJ', 50, 50, 1.5)).toBeCloseTo(31500 * 1.5, 0);
+    expect(standardDeduction('MFJ', 50, 50, 1.5)).toBeCloseTo(32200 * 1.5, 0);
   });
 });
 
@@ -72,16 +72,16 @@ describe('yearFederalTax — LTCG stacked brackets', () => {
   });
 
   it('LTCG spills into 15% bracket when stacked income exceeds 0% threshold', () => {
-    // taxableOrdinary = max(0, 90000 - 31500) = 58500
-    // 0% LTCG room = max(0, 94050 - 58500) = 35550
-    // LTCG in 0%: 35550; LTCG in 15%: 40000 - 35550 = 4450
-    // ordTax = 10%*23850 + 12%*(58500-23850) = 2385 + 4158 = 6543
-    // ltcgTax = 4450 * 0.15 = 667.50
+    // taxableOrdinary = max(0, 100000 - 31500) = 68500
+    // 0% LTCG room = max(0, 98900 - 68500) = 30400 (2026 MFJ LTCG threshold)
+    // LTCG in 0%: 30400; LTCG in 15%: 40000 - 30400 = 9600
+    // ordTax = 10%*24800 + 12%*(68500-24800) = 2480 + 5244 = 7724
+    // ltcgTax = 9600 * 0.15 = 1440
     const out = yearFederalTax({
       filingStatus: 'MFJ', inflationFactor: 1,
-      ordinaryIncome: 90000, ltcgIncome: 40000, standardDeduction: 31500,
+      ordinaryIncome: 100000, ltcgIncome: 40000, standardDeduction: 31500,
     });
-    expect(out.fedTax).toBeCloseTo(6543 + 667.5, 0);
+    expect(out.fedTax).toBeCloseTo(7724 + 1440, 0);
   });
 
   it('ordinary income below std deduction → no ordinary tax', () => {

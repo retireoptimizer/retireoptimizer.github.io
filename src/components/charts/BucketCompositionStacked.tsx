@@ -2,6 +2,7 @@ import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
 import { bucketColors, palette } from './setup';
 import type { ProjectionResult } from '../../engine/projection';
+import { fmtM } from '../../lib/format';
 
 interface Props {
   proj: ProjectionResult;
@@ -14,12 +15,21 @@ export default function BucketCompositionStacked({ proj, height = 220 }: Props) 
   const labels = rows.map((r) => r.ageA);
   const pct = (n: number, total: number) => (total > 0 ? (n / total) * 100 : 0);
 
+  const dollars = {
+    taxable: rows.map((r) => r.endTaxable),
+    traditional: rows.map((r) => r.endTraditional),
+    roth: rows.map((r) => r.endRoth),
+    total: rows.map((r) => r.endTotal),
+  };
+
   const data: ChartData<'line'> = {
     labels,
     datasets: [
       {
         label: 'Taxable',
         data: rows.map((r) => +pct(r.endTaxable, r.endTotal).toFixed(2)),
+        // @ts-expect-error custom property for tooltip
+        rawDollars: dollars.taxable,
         backgroundColor: bucketColors.taxable + 'cc',
         borderColor: bucketColors.taxable,
         borderWidth: 1,
@@ -30,6 +40,8 @@ export default function BucketCompositionStacked({ proj, height = 220 }: Props) 
       {
         label: 'Pre-tax 401(k)/IRA',
         data: rows.map((r) => +pct(r.endTraditional, r.endTotal).toFixed(2)),
+        // @ts-expect-error custom property for tooltip
+        rawDollars: dollars.traditional,
         backgroundColor: palette.warning + 'cc',
         borderColor: palette.warning,
         borderWidth: 1,
@@ -40,6 +52,8 @@ export default function BucketCompositionStacked({ proj, height = 220 }: Props) 
       {
         label: 'Roth',
         data: rows.map((r) => +pct(r.endRoth, r.endTotal).toFixed(2)),
+        // @ts-expect-error custom property for tooltip
+        rawDollars: dollars.roth,
         backgroundColor: bucketColors.roth + 'cc',
         borderColor: bucketColors.roth,
         borderWidth: 1,
@@ -58,8 +72,16 @@ export default function BucketCompositionStacked({ proj, height = 220 }: Props) 
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: (items) => `Age ${items[0].label}`,
-          label: (item) => `${item.dataset.label}: ${(item.parsed.y ?? 0).toFixed(1)}%`,
+          title: (items) => {
+            const i = items[0].dataIndex;
+            const total = dollars.total[i] ?? 0;
+            return `Age ${items[0].label}  ·  Total ${fmtM(total)}`;
+          },
+          label: (item) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const raw = (item.dataset as any).rawDollars?.[item.dataIndex] ?? 0;
+            return `${item.dataset.label}: ${(item.parsed.y ?? 0).toFixed(1)}%  (${fmtM(raw)})`;
+          },
         },
       },
     },

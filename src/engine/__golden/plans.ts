@@ -23,8 +23,9 @@ function goldenBase(): Plan {
       ssClaimAge: 67,
     },
     assumptions: {
-      preRetReturn: 0.065,
-      postRetReturn: 0.05,
+      taxableReturn: 0.065,
+      tradReturn: 0.065,
+      rothReturn: 0.065,
       inflation: 0.025,
       rmdStartAge: 75,
     },
@@ -133,7 +134,7 @@ export function planD_singleFIRE(): Plan {
     ...p,
     personA: { ...p.personA, name: 'FIRE Solo', dob: '1985-01-01', retirementAge: 45, planToAge: 95, passingAge: 92, ssPIA: 32000, ssClaimAge: 70 },
     personB: undefined,
-    assumptions: { ...p.assumptions, preRetReturn: 0.07, postRetReturn: 0.05 },
+    assumptions: { ...p.assumptions, taxableReturn: 0.07, tradReturn: 0.07, rothReturn: 0.07 },
     portfolio: {
       personA: {
         taxable: 800000,
@@ -250,7 +251,7 @@ export function planI_multiStreamIncome(): Plan {
       { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 32000, growthPct: 0.025, taxablePct: 1 },
       { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 22000, growthPct: 0.025, taxablePct: 1 },
       { id: 'pension', description: 'A Pension', whose: 'A', type: 'Pension', startAge: 65, stopAge: 95, annualAmount: 18000, growthPct: 0.01, taxablePct: 1 },
-      { id: 'rental', description: 'Rental Net', whose: 'Household', type: 'Rental', startAge: 65, stopAge: 80, annualAmount: 12000, growthPct: 0.02, taxablePct: 1 },
+      { id: 'rental', description: 'Rental Net', whose: 'Household', type: 'Other', startAge: 65, stopAge: 80, annualAmount: 12000, growthPct: 0.02, taxablePct: 1 },
     ],
     withdrawalStrategy: 'taxfirst',
     state: 'IL',
@@ -264,7 +265,7 @@ export function planJ_personBZeroBalance(): Plan {
     ...p,
     personA: { ...p.personA, dob: '1974-05-03', retirementAge: 58, planToAge: 100, passingAge: 90, ssPIA: 45000, ssClaimAge: 70 },
     personB: { ...p.personB!, dob: '1977-08-26', retirementAge: 55, planToAge: 100, passingAge: 92, ssPIA: 28000, ssClaimAge: 62 },
-    assumptions: { ...p.assumptions, preRetReturn: 0.08, postRetReturn: 0.05, inflation: 0.025 },
+    assumptions: { ...p.assumptions, taxableReturn: 0.08, tradReturn: 0.08, rothReturn: 0.08, inflation: 0.025 },
     portfolio: {
       personA: { taxable: 585000, traditional: 885000, roth: 615000, annualContribution: 60000, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 0, traditional: 0, roth: 0, annualContribution: 40000, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },

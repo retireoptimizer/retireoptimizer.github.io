@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { usePlanStore, useProjection } from '../store/usePlanStore';
+import { usePlanStore } from '../store/usePlanStore';
 import { evaluateAll } from '../engine/scenario';
-import { initialWithdrawalRate } from '../engine/projection';
+import { runProjection, initialWithdrawalRate } from '../engine/projection';
 import { fmtM, fmtPct } from '../lib/format';
 
 interface MetricDef {
@@ -9,7 +9,7 @@ interface MetricDef {
   label: string;
   format: (v: number) => string;
   better: 'higher' | 'lower';
-  pick: (proj: ReturnType<typeof useProjection>, plan: ReturnType<typeof usePlanStore.getState>['plan']) => number;
+  pick: (proj: ReturnType<typeof runProjection>, plan: ReturnType<typeof usePlanStore.getState>['plan']) => number;
 }
 
 const METRICS: MetricDef[] = [
@@ -46,7 +46,7 @@ interface Props {
  *  panel on the Dashboard (with limit=3 and a "see all" link). */
 export default function ScenarioCompare({ limit, metricKeys, allowRemove = true }: Props) {
   const plan = usePlanStore((s) => s.plan);
-  const proj = useProjection();
+  const proj = useMemo(() => runProjection(plan), [plan]);
   const allScenarios = usePlanStore((s) => s.scenarios);
   const removeScenario = usePlanStore((s) => s.removeScenario);
 

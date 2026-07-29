@@ -75,17 +75,22 @@ function cashFlowTooltip(ctx: { chart: Chart; tooltip: TooltipModel<'bar'> }) {
     html += expense.map((d) => row(bg(d), d.dataset.label ?? '', Math.abs(d.parsed.y ?? 0))).join('');
     html += subtotal('Total out', expenseTotal);
   }
-  html += subtotal(net >= 0 ? 'Net build' : 'Net draw', net, net >= 0 ? '#a8d8be' : '#f0c089');
+  html += subtotal('Net', net, net >= 0 ? '#a8d8be' : '#f0c089');
   if (lineDp) {
     html += `<div style="margin-top:6px;font-size:11px;color:#7a96b0;">${lineDp.dataset.label ?? 'Portfolio'}: ${fmtFull(lineDp.parsed.y ?? 0)}</div>`;
   }
   el.innerHTML = html;
 
   el.style.opacity = '1';
-  el.style.left = `${chart.canvas.offsetLeft + tooltip.caretX}px`;
-  el.style.top = `${chart.canvas.offsetTop + tooltip.caretY}px`;
-  // Nudge right of the caret and vertically centered; keep clear of the cursor.
-  el.style.transform = 'translate(14px, -50%)';
+  const caretX = chart.canvas.offsetLeft + tooltip.caretX;
+  const caretY = chart.canvas.offsetTop + tooltip.caretY;
+  el.style.left = `${caretX}px`;
+  el.style.top = `${caretY}px`;
+  // Flip to the left when there isn't enough room to the right.
+  const spaceRight = parent.clientWidth - caretX;
+  el.style.transform = spaceRight < el.offsetWidth + 14
+    ? 'translate(calc(-100% - 14px), -50%)'
+    : 'translate(14px, -50%)';
 }
 
 /**

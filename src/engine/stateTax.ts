@@ -30,6 +30,9 @@ export interface StateTaxProfile {
 }
 
 export const STATE_PROFILES: Record<string, StateTaxProfile> = {
+  NONE: { code: 'NONE', name: 'Exclude State Tax', effectiveRate: 0, retirementExempt: true, ssExempt: true,
+    personalExemptionPerPerson: 0, over65ExemptionPerPerson: 0,
+    note: 'State income tax excluded from all calculations' },
   IL: { code: 'IL', name: 'Illinois', effectiveRate: 0.0495, retirementExempt: true, ssExempt: true,
     personalExemptionPerPerson: 2925,   // 2026 IL personal exemption
     over65ExemptionPerPerson: 1000,     // 2026 IL additional exemption for age 65+
@@ -79,5 +82,6 @@ export function stateTax(
 }
 
 export function listStates(): StateTaxProfile[] {
-  return Object.values(STATE_PROFILES).sort((a, b) => a.name.localeCompare(b.name));
+  const [none, ...rest] = [STATE_PROFILES.NONE, ...Object.values(STATE_PROFILES).filter((s) => s.code !== 'NONE').sort((a, b) => a.name.localeCompare(b.name))];
+  return [none, ...rest];
 }

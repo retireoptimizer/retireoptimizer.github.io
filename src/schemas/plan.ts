@@ -12,8 +12,10 @@ export const PersonSchema = z.object({
 export type Person = z.infer<typeof PersonSchema>;
 
 export const AssumptionsSchema = z.object({
-  preRetReturn: z.number(),
-  postRetReturn: z.number(),
+  /** Per-bucket expected annual growth rates. Replaces the old single preRetReturn/postRetReturn. */
+  taxableReturn: z.number().default(0.05),
+  tradReturn: z.number().default(0.055),
+  rothReturn: z.number().default(0.06),
   inflation: z.number(),
   /** Equity (stock) share of the portfolio, 0..1. Drives Monte Carlo stock/bond blend. */
   equityPct: z.number().min(0).max(1).default(0.6),
@@ -71,7 +73,7 @@ export const IncomeStreamSchema = z.object({
   id: z.string(),
   description: z.string(),
   whose: z.enum(['A', 'B', 'Household']),
-  type: z.enum(['SS', 'Pension', 'Wages', 'Rental', 'Annuity', 'Other']),
+  type: z.enum(['SS', 'Pension', 'Annuity', 'Other']),
   startAge: z.number().int().min(0).max(110),
   stopAge: z.number().int().min(0).max(115),
   annualAmount: z.number().nonnegative(),
@@ -142,6 +144,17 @@ export const PlanSchema = z.object({
   withdrawalStrategy: z.enum(['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill']),
   customPolicy: BlendPolicySchema.optional(),
   optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
+  /** Snapshot of expenseStreams before any max-sustainable-spending scaling. Used by the
+   *  Dashboard re-optimizer to run max-end-balance / min-retirement-age on the original
+   *  expense level so they produce meaningfully different results from max-sustainable-spending. */
+  baseExpenseStreams: z.array(ExpenseStreamSchema).optional(),
+  /** Snapshot of personA/personB before any min-retirement-age change. Used by the
+   *  Dashboard re-optimizer to restore original configured ages when switching goals. */
+  basePersonA: PersonSchema.optional(),
+  basePersonB: PersonSchema.optional(),
+  /** The multiplier solved by the last max-sustainable-spending run (e.g. 1.33 = 133%).
+   *  Drives the What-If Bar spending slider default so it reflects the optimized level. */
+  solvedSpendingMultiplier: z.number().optional(),
   conversion: ConversionParamsSchema,
   state: z.string().default('IL'),
   goals: z.array(GoalSchema).default([]),
@@ -161,8 +174,9 @@ export const defaultPlan = (): Plan => ({
   },
   personB: undefined,
   assumptions: {
-    preRetReturn: 0.065,
-    postRetReturn: 0.05,
+    taxableReturn: 0.05,
+    tradReturn: 0.055,
+    rothReturn: 0.06,
     inflation: 0.025,
     equityPct: 0.6,
     rmdStartAge: 75,
@@ -218,8 +232,9 @@ export const samplePlan = (): Plan => ({
     ssClaimAge: 62,
   },
   assumptions: {
-    preRetReturn: 0.065,
-    postRetReturn: 0.05,
+    taxableReturn: 0.05,
+    tradReturn: 0.055,
+    rothReturn: 0.06,
     inflation: 0.025,
     equityPct: 0.6,
     rmdStartAge: 75,

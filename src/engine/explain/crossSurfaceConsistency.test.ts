@@ -101,7 +101,7 @@ describe('Insight bodies ↔ projection numerics', () => {
 
   it('sequenceRiskRule body % matches MC failure rate', () => {
     // Use a tight plan to actually trigger the rule.
-    const plan = { ...planF_allTradCouple(), assumptions: { ...planF_allTradCouple().assumptions, postRetReturn: 0.03 } };
+    const plan = { ...planF_allTradCouple(), assumptions: { ...planF_allTradCouple().assumptions, taxableReturn: 0.03, tradReturn: 0.03, rothReturn: 0.03 } };
     const proj = runProjection(plan);
     const mc = runMonteCarlo(plan, { trials: 200, stdDev: 0.18, seed: 17 });
     const insights = generateInsights(plan, proj, mc);

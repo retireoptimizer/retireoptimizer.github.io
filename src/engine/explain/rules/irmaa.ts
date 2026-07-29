@@ -8,7 +8,7 @@ export function irmaaRule(ctx: InsightContext): Insight | null {
   const { proj } = ctx;
 
   let maxTier = 0;
-  let firstAgeAtTier: Record<number, number> = {};
+  const firstAgeAtTier: Record<number, number> = {};
 
   for (const r of proj.rows) {
     if (r.irmaa <= 0) continue;

@@ -63,39 +63,39 @@ export default function CustomBlendPanel() {
           When a window has a conversion amount &gt; 0, it overrides the Roth Conversion Mode setting above.
         </div>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ width: '100%', fontSize: 12 }}>
+        <table className="data-table" style={{ width: '100%' }}>
           <thead>
             <tr>
-              <th style={{ width: 80 }}>From Age</th>
-              <th style={{ width: 80 }}>To Age</th>
-              <th style={{ textAlign: 'right' }}>% Taxable</th>
-              <th style={{ textAlign: 'right' }}>% Pre-tax</th>
-              <th style={{ textAlign: 'right' }}>% Roth</th>
-              <th style={{ textAlign: 'right', width: 70 }}>Sum</th>
-              <th style={{ width: 110 }}>Trad Cap ($)</th>
+              <th style={{ width: 88 }}>From Age</th>
+              <th style={{ width: 88 }}>To Age</th>
+              <th style={{ minWidth: 95 }}>% Taxable</th>
+              <th style={{ minWidth: 95 }}>% Pre-tax</th>
+              <th style={{ minWidth: 95 }}>% Roth</th>
+              <th style={{ width: 120 }}>Trad Cap ($)</th>
               <th style={{ width: 130 }}>Conv $/yr (today's $)</th>
-              <th style={{ width: 110 }}>Actions</th>
+              <th style={{ width: 40 }}></th>
             </tr>
           </thead>
           <tbody>
             {windows.map((w, idx) => {
               const sum = w.pctTaxable + w.pctTraditional + w.pctRoth;
               const sumOk = Math.abs(sum - 1) < 0.01;
+              const inp: React.CSSProperties = { width: '100%', padding: '8px 10px' };
               return (
                 <tr key={idx}>
-                  <td><NumberInput value={w.fromAge} digits={0} min={retireAge} max={planToAge} onCommit={(v) => updateWindow(idx, { fromAge: Math.round(v) })} /></td>
-                  <td><NumberInput value={w.toAge} digits={0} min={retireAge} max={planToAge} onCommit={(v) => updateWindow(idx, { toAge: Math.round(v) })} /></td>
-                  <td><NumberInput value={w.pctTaxable} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTaxable: v })} /></td>
-                  <td><NumberInput value={w.pctTraditional} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTraditional: v })} /></td>
-                  <td><NumberInput value={w.pctRoth} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctRoth: v })} /></td>
-                  <td style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", color: sumOk ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                    {Math.round(sum * 100)}%
-                  </td>
-                  <td><NumberInput value={w.tradCap ?? 0} min={0} onCommit={(v) => updateWindow(idx, { tradCap: v > 0 ? v : undefined })} /></td>
-                  <td><NumberInput value={w.convAmt ?? 0} min={0} onCommit={(v) => updateWindow(idx, { convAmt: v > 0 ? v : undefined })} /></td>
-                  <td>
-                    {!sumOk && <button className="btn btn-outline" onClick={() => normalizeRow(idx)} style={{ fontSize: 11, padding: '4px 8px', marginRight: 4 }}>Normalize</button>}
-                    {windows.length > 1 && <button className="btn btn-outline" onClick={() => removeWindow(idx)} style={{ fontSize: 11, padding: '4px 8px', color: 'var(--danger)' }}>✕</button>}
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.fromAge} digits={0} min={retireAge} max={planToAge} onCommit={(v) => updateWindow(idx, { fromAge: Math.round(v) })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.toAge} digits={0} min={retireAge} max={planToAge} onCommit={(v) => updateWindow(idx, { toAge: Math.round(v) })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctTaxable} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTaxable: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctTraditional} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTraditional: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctRoth} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctRoth: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.tradCap ?? 0} min={0} onCommit={(v) => updateWindow(idx, { tradCap: v > 0 ? v : undefined })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.convAmt ?? 0} digits={0} min={0} onCommit={(v) => updateWindow(idx, { convAmt: v > 0 ? Math.round(v) : undefined })} style={inp} /></td>
+                  <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                    {!sumOk
+                      ? <button className="btn btn-outline" onClick={() => normalizeRow(idx)} style={{ fontSize: 11, padding: '4px 7px' }} title="Normalize to 100%">⟳</button>
+                      : windows.length > 1
+                        ? <button className="btn btn-outline" onClick={() => removeWindow(idx)} style={{ fontSize: 13, padding: '4px 8px', color: 'var(--danger)', lineHeight: 1 }}>✕</button>
+                        : null}
                   </td>
                 </tr>
               );
@@ -105,7 +105,7 @@ export default function CustomBlendPanel() {
         </div>
         {!isValid && (
           <div style={{ marginTop: 12, padding: 10, background: 'var(--warning-light)', color: 'var(--warning)', borderRadius: 8, fontSize: 12 }}>
-            ⚠ One or more windows do not sum to 100%. Click <strong>Normalize</strong> to auto-fix.
+            ⚠ One or more windows do not sum to 100%. Click <strong>⟳</strong> on that row to auto-fix.
           </div>
         )}
         <div style={{ marginTop: 16, padding: 12, background: 'rgba(13,27,46,0.03)', borderRadius: 8, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>

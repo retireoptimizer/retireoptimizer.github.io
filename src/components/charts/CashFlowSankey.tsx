@@ -3,6 +3,7 @@ import type { ProjectionRow } from '../../engine/projection';
 
 interface Props {
   row: ProjectionRow;
+  real?: boolean;
   height?: number;
 }
 
@@ -12,31 +13,34 @@ interface Node { id: string; label: string; value: number; color: string; }
  * Lightweight custom-SVG cash-flow sankey for a single year.
  * Sources (left) → bus (middle) → Uses (right). Ribbon widths ∝ $ amount.
  */
-export default function CashFlowSankey({ row, height = 320 }: Props) {
-  const inf = row.inflationFactor;
-  // Inflows (real $)
+export default function CashFlowSankey({ row, real = true, height = 320 }: Props) {
+  const scale = (n: number) => real ? n / row.inflationFactor : n;
+  // Inflows
   const inflows: Node[] = [
-    { id: 'wdTax', label: 'Withdrawal · Taxable', value: row.wdTax / inf, color: palette.success },
-    { id: 'wdTrd', label: 'Withdrawal · Pre-tax', value: row.wdTrd / inf, color: palette.navy },
-    { id: 'rmd',   label: 'RMD · Pre-tax', value: row.rmd / inf, color: palette.warning },
-    { id: 'wdRth', label: 'Withdrawal · Roth', value: row.wdRth / inf, color: palette.gold },
-    { id: 'ss',    label: 'Social Security', value: row.totalSS / inf, color: palette.goldLight },
-    { id: 'oth',   label: 'Other Income', value: row.otherIncome / inf, color: palette.incomeOther },
+    { id: 'wdTax', label: 'Withdrawal · Taxable', value: scale(row.wdTax), color: palette.success },
+    { id: 'wdTrd', label: 'Withdrawal · Pre-tax', value: scale(row.wdTrd), color: palette.navy },
+    { id: 'rmd',   label: 'RMD · Pre-tax', value: scale(row.rmd), color: palette.warning },
+    { id: 'wdRth', label: 'Withdrawal · Roth', value: scale(row.wdRth), color: palette.gold },
+    { id: 'ss',    label: 'Social Security', value: scale(row.totalSS), color: palette.goldLight },
+    { id: 'oth',   label: 'Other Income', value: scale(row.otherIncome), color: palette.incomeOther },
   ].filter((n) => n.value > 0);
 
   const totalIn = inflows.reduce((s, n) => s + n.value, 0);
 
-  const fedTax = row.fedTax / inf;
-  const stateTax = row.stateTaxAmt / inf;
-  const irmaa = row.irmaa / inf;
-  const spending = row.netSpend / inf;
+  const fedTax = scale(row.fedTax);
+  const stateTax = scale(row.stateTaxAmt);
+  const irmaa = scale(row.irmaa);
+  const spending = scale(row.netSpend);
   const savings = Math.max(0, totalIn - spending - fedTax - stateTax - irmaa);
+  // Only show Net Savings when it's meaningful (≥2% of inflows) to avoid a tiny
+  // flickering bar that overlaps Federal Tax as the age slider moves.
+  const savingsThreshold = totalIn * 0.02;
 
   const outflows: Node[] = [
     { id: 'spend',  label: 'Net Spending', value: spending, color: palette.danger },
     { id: 'fed',    label: 'Federal Tax', value: fedTax, color: palette.warning },
     { id: 'state',  label: 'State + IRMAA', value: stateTax + irmaa, color: palette.taxOther },
-    { id: 'save',   label: 'Net Savings', value: savings, color: palette.success },
+    { id: 'save',   label: 'Net Savings', value: savings >= savingsThreshold ? savings : 0, color: palette.success },
   ].filter((n) => n.value > 0);
 
   const totalOut = outflows.reduce((s, n) => s + n.value, 0);

@@ -126,7 +126,7 @@ describe('inflationFactor accumulation', () => {
     plan.personA.retirementAge = 51; // retire immediately
     plan.personA.planToAge = 55;
     plan.assumptions.inflation = 0.03;
-    plan.assumptions.postRetReturn = 0.05;
+    plan.assumptions.tradReturn = 0.05;
     plan.expenseStreams = [{
       id: 'e1', description: 'spend', whose: 'A',
       startAge: 51, stopAge: 55, annualAmount: 10_000, inflationPct: 0.03,
@@ -145,7 +145,7 @@ describe('inflationFactor accumulation', () => {
     plan.personA.retirementAge = 51;
     plan.personA.planToAge = 55;
     plan.assumptions.inflation = 0.025;
-    plan.assumptions.postRetReturn = 0.05;
+    plan.assumptions.tradReturn = 0.05;
     plan.expenseStreams = [{
       id: 'e1', description: 'spend', whose: 'A',
       startAge: 51, stopAge: 55, annualAmount: 10_000, inflationPct: 0.025,
@@ -178,8 +178,9 @@ describe('portfolio balance update', () => {
     plan.portfolio.personA.traditional = 1_000_000;
     plan.portfolio.personA.roth = 0;
     plan.portfolio.personA.annualContribution = 0;
-    plan.assumptions.preRetReturn = 0;
-    plan.assumptions.postRetReturn = 0;
+    plan.assumptions.taxableReturn = 0;
+    plan.assumptions.tradReturn = 0;
+    plan.assumptions.rothReturn = 0;
     plan.assumptions.inflation = 0;
     plan.incomeStreams = [];
     plan.expenseStreams = [];
@@ -206,7 +207,7 @@ describe('portfolio balance update', () => {
     plan.portfolio.personA.taxable = 0;
     plan.portfolio.personA.roth = 0;
     plan.portfolio.personA.annualContribution = 0;
-    plan.assumptions.postRetReturn = 0.05;
+    plan.assumptions.tradReturn = 0.05;
     plan.assumptions.inflation = 0.03;
     plan.expenseStreams = [];
     plan.incomeStreams = [];
@@ -249,7 +250,7 @@ describe('CPI-indexed expense growth', () => {
     plan.portfolio.personA.roth = 0;
     plan.portfolio.personA.annualContribution = 0;
     plan.assumptions.inflation = 0.025;
-    plan.assumptions.postRetReturn = 0.05;
+    plan.assumptions.tradReturn = 0.05;
     plan.personA.ssPIA = 0;
     plan.incomeStreams = [];
 
@@ -285,7 +286,7 @@ describe('CPI-indexed expense growth', () => {
     plan.portfolio.personA.roth = 0;
     plan.portfolio.personA.annualContribution = 0;
     plan.assumptions.inflation = 0.025;
-    plan.assumptions.postRetReturn = 0.05;
+    plan.assumptions.tradReturn = 0.05;
     plan.personA.ssPIA = 0;
     plan.incomeStreams = [];
 
@@ -321,7 +322,7 @@ describe('row-level consistency', () => {
     plan.portfolio.personA.roth = 0;
     plan.portfolio.personA.annualContribution = 0;
     plan.assumptions.inflation = 0.025;
-    plan.assumptions.postRetReturn = 0.06;
+    plan.assumptions.tradReturn = 0.06;
     plan.personA.ssPIA = 0;
     plan.incomeStreams = [];
     plan.expenseStreams = [{

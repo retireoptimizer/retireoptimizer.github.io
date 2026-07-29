@@ -9,6 +9,7 @@ import type { UserGoal } from './recommender';
 export interface OptimizeWorkerOptions {
   useNelderMead?: boolean;
   thorough?: boolean;
+  mcAware?: boolean;
 }
 
 export interface EngineWorkerAPI {
@@ -30,6 +31,7 @@ const api: EngineWorkerAPI = {
     return optimizeStrategy(plan, goal, {
       useNelderMead: options?.useNelderMead,
       thorough: options?.thorough,
+      mcAware: options?.mcAware,
       onProgress: onProgress ? (frac, msg) => onProgress(frac, msg) : undefined,
     });
   },

@@ -69,16 +69,23 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
   });
 
   describe('Return & inflation assumptions', () => {
-    it('preRetReturn', () => {
+    it('taxableReturn', () => {
       const d = sensitivity(defaultPlan(), (p) => ({
-        ...p, assumptions: { ...p.assumptions, preRetReturn: p.assumptions.preRetReturn + 0.02 },
+        ...p, assumptions: { ...p.assumptions, taxableReturn: p.assumptions.taxableReturn + 0.02 },
       }));
       expect(d.endDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
 
-    it('postRetReturn', () => {
+    it('tradReturn', () => {
       const d = sensitivity(defaultPlan(), (p) => ({
-        ...p, assumptions: { ...p.assumptions, postRetReturn: p.assumptions.postRetReturn + 0.02 },
+        ...p, assumptions: { ...p.assumptions, tradReturn: p.assumptions.tradReturn + 0.02 },
+      }));
+      expect(d.endDelta).toBeGreaterThan(DELTA_THRESHOLD);
+    });
+
+    it('rothReturn', () => {
+      const d = sensitivity(defaultPlan(), (p) => ({
+        ...p, assumptions: { ...p.assumptions, rothReturn: p.assumptions.rothReturn + 0.02 },
       }));
       expect(d.endDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });

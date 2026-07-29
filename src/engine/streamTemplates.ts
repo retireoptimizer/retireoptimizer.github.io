@@ -47,28 +47,6 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
     }),
   },
   {
-    id: 'wages',
-    label: 'Wages / W-2',
-    hint: 'Pre-retirement employment income',
-    make: ({ retirementAge }) => ({
-      id: nid('stream'), description: 'Wages',
-      whose: 'A', type: 'Wages',
-      startAge: 25, stopAge: Math.max(50, retirementAge - 1),
-      annualAmount: 100000, growthPct: 0.03, taxablePct: 1,
-    }),
-  },
-  {
-    id: 'rental',
-    label: 'Rental income',
-    hint: 'Cash flow from a rental property',
-    make: ({ planToAge }) => ({
-      id: nid('stream'), description: 'Rental Income',
-      whose: 'Household', type: 'Rental',
-      startAge: 50, stopAge: planToAge,
-      annualAmount: 24000, growthPct: 0.025, taxablePct: 0.7,
-    }),
-  },
-  {
     id: 'annuity',
     label: 'Annuity',
     hint: 'Fixed annuity payout',

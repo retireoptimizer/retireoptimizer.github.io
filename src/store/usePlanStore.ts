@@ -7,6 +7,7 @@ import { runProjection, type ProjectionResult } from '../engine/projection';
 import type { Scenario } from '../engine/scenario';
 import { defaultScenarios } from '../engine/scenario';
 import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
+import { disposeEngineWorker } from '../engine/workerClient';
 
 export type DisplayMode = 'real' | 'nominal';
 
@@ -63,8 +64,8 @@ export const usePlanStore = create<PlanState>()(
       updateScenario: (id, patch) => set((st) => ({ scenarios: st.scenarios.map((x) => x.id === id ? { ...x, ...patch } : x) })),
       removeScenario: (id) => set((st) => ({ scenarios: st.scenarios.filter((x) => x.id !== id) })),
       resetScenarios: () => set({ scenarios: defaultScenarios() }),
-      setPersonA: (patch) => set((s) => ({ plan: { ...s.plan, personA: { ...s.plan.personA, ...patch } } })),
-      setPersonB: (patch) => set((s) => ({ plan: { ...s.plan, personB: s.plan.personB ? { ...s.plan.personB, ...patch } : undefined } })),
+      setPersonA: (patch) => set((s) => ({ plan: { ...s.plan, personA: { ...s.plan.personA, ...patch }, ...('retirementAge' in patch ? { basePersonA: undefined, basePersonB: undefined } : {}) } })),
+      setPersonB: (patch) => set((s) => ({ plan: { ...s.plan, personB: s.plan.personB ? { ...s.plan.personB, ...patch } : undefined, ...('retirementAge' in patch ? { basePersonA: undefined, basePersonB: undefined } : {}) } })),
       addPersonB: () => set((s) => ({
         plan: {
           ...s.plan,
@@ -88,31 +89,50 @@ export const usePlanStore = create<PlanState>()(
         plan: { ...s.plan, incomeStreams: s.plan.incomeStreams.map(x => x.id === id ? { ...x, ...patch } : x) },
       })),
       removeIncomeStream: (id) => set((s) => ({ plan: { ...s.plan, incomeStreams: s.plan.incomeStreams.filter(x => x.id !== id) } })),
-      setExpenseStreams: (expenseStreams) => set((s) => ({ plan: { ...s.plan, expenseStreams } })),
-      addExpenseStream: (stream) => set((s) => ({ plan: { ...s.plan, expenseStreams: [...s.plan.expenseStreams, stream] } })),
+      setExpenseStreams: (expenseStreams) => set((s) => ({ plan: { ...s.plan, expenseStreams, baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
+      addExpenseStream: (stream) => set((s) => ({ plan: { ...s.plan, expenseStreams: [...s.plan.expenseStreams, stream], baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
       updateExpenseStream: (id, patch) => set((s) => ({
-        plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.map(x => x.id === id ? { ...x, ...patch } : x) },
+        plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.map(x => x.id === id ? { ...x, ...patch } : x), baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined },
       })),
-      removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id) } })),
+      removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id), baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
       setWithdrawalStrategy: (withdrawalStrategy) => set((s) => ({
-        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, optimizedForGoal: undefined },
+        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined },
       })),
       setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy } })),
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
-      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined, optimizedForGoal: undefined } })),
+      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined } })),
       setConversion: (patch) => set((s) => ({ plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } })),
       setState: (state) => set((s) => ({ plan: { ...s.plan, state } })),
       addGoal: (g) => set((s) => ({ plan: { ...s.plan, goals: [...(s.plan.goals ?? []), g] } })),
       updateGoal: (id, patch) => set((s) => ({ plan: { ...s.plan, goals: (s.plan.goals ?? []).map((x) => x.id === id ? { ...x, ...patch } : x) } })),
       removeGoal: (id) => set((s) => ({ plan: { ...s.plan, goals: (s.plan.goals ?? []).filter((x) => x.id !== id) } })),
-      resetPlan: () => set({ plan: defaultPlan() }),
+      resetPlan: () => { disposeEngineWorker(); set({ plan: defaultPlan() }); },
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 6,
+      version: 7,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v7: replace preRetReturn/postRetReturn with per-bucket taxableReturn/tradReturn/rothReturn.
+        // Remove any income streams with removed types Wages/Rental.
+        if (fromVersion < 7 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const asm = planObj.assumptions as Record<string, unknown> | undefined;
+          if (asm) {
+            const pre = typeof asm.preRetReturn === 'number' ? asm.preRetReturn : 0.065;
+            const post = typeof asm.postRetReturn === 'number' ? asm.postRetReturn : 0.05;
+            if (!('taxableReturn' in asm)) asm.taxableReturn = pre;
+            if (!('tradReturn' in asm)) asm.tradReturn = pre;
+            if (!('rothReturn' in asm)) asm.rothReturn = post;
+            delete asm.preRetReturn;
+            delete asm.postRetReturn;
+          }
+          const streams = planObj.incomeStreams;
+          if (Array.isArray(streams)) {
+            planObj.incomeStreams = streams.filter((s: Record<string, unknown>) => s.type !== 'Wages' && s.type !== 'Rental');
+          }
+        }
         // v6: equityPct (stock/bond split) added to assumptions for Monte Carlo.
         if (fromVersion < 6 && ps.plan && typeof ps.plan === 'object') {
           const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;

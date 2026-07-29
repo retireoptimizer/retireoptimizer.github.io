@@ -62,8 +62,11 @@ export interface ProjectionResult {
   rows: ProjectionRow[];
   // Aggregates for KPI cards
   lifetimeFedTax: number;
+  lifetimeFedTaxReal: number;
   lifetimeRMD: number;
+  lifetimeRMDReal: number;
   lifetimeConversion: number;
+  lifetimeConversionReal: number;
   endTotalNominal: number;
   endTotalReal: number;
   yearsCovered: number;
@@ -93,8 +96,8 @@ const sumIncomeStreams = (
     const amount = s.annualAmount * Math.pow(1 + s.growthPct, yearIndex);
     const taxablePortion = amount * s.taxablePct;
     taxableAmt += taxablePortion;
-    if (s.type === 'Wages' || s.type === 'Rental' || s.type === 'Other') {
-      // IL and all states: ordinary non-retirement income is always taxable
+    if (s.type === 'Other') {
+      // Ordinary non-retirement income is always taxable
       nonExempt += taxablePortion;
     } else if (s.type === 'Pension' || s.type === 'Annuity') {
       // IL exempts pension/annuity; CA/NY do not — tracked separately so stateTax()
@@ -179,6 +182,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
   const rows: ProjectionRow[] = [];
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
+  let lifetimeFedTaxReal = 0, lifetimeRMDReal = 0, lifetimeConversionReal = 0;
   let ranOut = false;
   // Per-year final MAGI history for IRMAA 2-year lookback (year t's IRMAA uses magi[t-2]).
   const magiHistory: number[] = [];
@@ -247,6 +251,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const rmd = aliveA ? Math.max(0, trad) / rmdDivisor(ageA) : 0;
     const rmdAmt = ageA >= plan.assumptions.rmdStartAge && aliveA ? rmd : 0;
     lifetimeRMD += rmdAmt;
+    lifetimeRMDReal += rmdAmt / inflationFactor;
 
     // Standard deduction this year
     const stdD = standardDeduction(filingStatus, ageA, ageB, inflationFactor);
@@ -267,9 +272,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // and AFTER RMD has been satisfied. Capping at the bare begin-of-year balance
     // (`trad`) let the optimizer pick conv values that, combined with rmd, exceeded
     // post-growth available — surfacing as a Trad OVERDRAW invariant violation.
-    const gRateThisYear = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
+    const override = opts?.returnOverrides?.[i];
+    const gRateTaxYear  = override ?? plan.assumptions.taxableReturn;
+    const gRateTradYear = override ?? plan.assumptions.tradReturn;
+    const gRateRothYear = override ?? plan.assumptions.rothReturn;
     const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
-    const maxConv = Math.max(0, trad * (1 + gRateThisYear) + contribToTradEarly - rmdAmt);
+    const maxConv = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt);
     let conv: number;
     if (retired && policyConv != null) {
       conv = Math.min(maxConv, policyConv * inflationFactor);
@@ -285,6 +293,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       });
     }
     lifetimeConversion += conv;
+    lifetimeConversionReal += conv / inflationFactor;
 
     // Per-bucket "available to withdraw" caps. All three buckets are debited by the
     // end-of-year update `bucket = max(0, bucket*(1+g) + contrib +/- credits - withdrawal)`,
@@ -295,9 +304,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // gRateThisYear + contribToTradEarly are declared earlier (for the conv cap).
     const contribToTaxEarly = contribA * pfA.contribSplit.taxable + contribB * (pfB?.contribSplit.taxable ?? 0);
     const contribToRothEarly = contribA * pfA.contribSplit.roth + contribB * (pfB?.contribSplit.roth ?? 0);
-    const taxAvail = Math.max(0, taxable * (1 + gRateThisYear) + contribToTaxEarly);
-    const tradAvail = Math.max(0, trad * (1 + gRateThisYear) + contribToTradEarly - rmdAmt - conv);
-    const rothAvail = Math.max(0, roth * (1 + gRateThisYear) + contribToRothEarly + conv);
+    const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTaxEarly);
+    const tradAvail = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt - conv);
+    const rothAvail = Math.max(0, roth * (1 + gRateRothYear) + contribToRothEarly + conv);
 
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
@@ -384,7 +393,6 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
     // Update balances. Withdrawals were sized to cover all cash needs.
     // Contributions are split per-person using each person's own contribSplit.
-    const gRate = opts?.returnOverrides?.[i] ?? (retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn);
     const begTaxable = taxable, begTrad = trad, begRoth = roth;
     const splitAtoTax = pfA.contribSplit.taxable, splitAtoTrad = pfA.contribSplit.traditional, splitAtoRoth = pfA.contribSplit.roth;
     const splitBtoTax = pfB?.contribSplit.taxable ?? 0, splitBtoTrad = pfB?.contribSplit.traditional ?? 0, splitBtoRoth = pfB?.contribSplit.roth ?? 0;
@@ -392,9 +400,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const contribToTrad = contribA * splitAtoTrad + contribB * splitBtoTrad;
     const contribToRoth = contribA * splitAtoRoth + contribB * splitBtoRoth;
 
-    taxable = Math.max(0, taxable * (1 + gRate) + contribToTax - wdTax);
-    trad    = Math.max(0, trad    * (1 + gRate) + contribToTrad - wdTrd - rmdAmt - conv);
-    roth    = Math.max(0, roth    * (1 + gRate) + contribToRoth - wdRth + conv);
+    taxable = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - wdTax);
+    trad    = Math.max(0, trad    * (1 + gRateTradYear) + contribToTrad - wdTrd - rmdAmt - conv);
+    roth    = Math.max(0, roth    * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
 
     const endTotal = taxable + trad + roth;
     // Depletion is "could not fund the year's spending need from the portfolio", NOT just
@@ -409,6 +417,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     }
 
     lifetimeFedTax += fedTax;
+    lifetimeFedTaxReal += fedTax / inflationFactor;
     magiHistory.push(ordIncomeFinal + ltcgFinal);
 
     // Advance the running inflation factor for the next year.
@@ -451,8 +460,11 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   return {
     rows,
     lifetimeFedTax,
+    lifetimeFedTaxReal,
     lifetimeRMD,
+    lifetimeRMDReal,
     lifetimeConversion,
+    lifetimeConversionReal,
     endTotalNominal,
     endTotalReal,
     yearsCovered: rows.length,

@@ -12,7 +12,24 @@ import type { OptimizeResult } from './optimizer';
  *  Any goal that mutates more than `customPolicy` (e.g., scales expenses or
  *  drops retirement age) must mirror that mutation here. */
 export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
-  let next: Plan = { ...plan, customPolicy: result.policy, optimizedForGoal: result.goal };
+  const roundedPolicy = {
+    ...result.policy,
+    windows: result.policy.windows.map((w) => ({
+      ...w,
+      convAmt: w.convAmt != null ? Math.round(w.convAmt) : undefined,
+    })),
+  };
+  let next: Plan = { ...plan, customPolicy: roundedPolicy, optimizedForGoal: result.goal };
+
+  // Clear snapshots that belong to a different goal — prevents stale metadata
+  // from lingering in WhatIfBar or being used by the Dashboard re-optimizer after
+  // the user switches goals.
+  if (result.goal !== 'max-sustainable-spending') {
+    next = { ...next, solvedSpendingMultiplier: undefined, baseExpenseStreams: undefined };
+  }
+  if (result.goal !== 'min-retirement-age') {
+    next = { ...next, basePersonA: undefined, basePersonB: undefined };
+  }
 
   // max-sustainable-spending: the optimizer evaluated against scaleExpenses(plan, m).
   // Reproduce by scaling each expense stream's annualAmount. Idempotent against the
@@ -26,9 +43,14 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
   ) {
     const currentSum = plan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
     const alreadyApplied = typeof rec === 'number' && Math.abs(currentSum - rec) < 1;
+    // Always update the solved multiplier so WhatIfBar reflects the latest run.
+    next = { ...next, solvedSpendingMultiplier: m };
     if (!alreadyApplied) {
       next = {
         ...next,
+        // Snapshot original amounts the first time spending is scaled, so the
+        // Dashboard re-optimizer can restore them for non-spending goals.
+        baseExpenseStreams: plan.baseExpenseStreams ?? plan.expenseStreams,
         expenseStreams: plan.expenseStreams.map((e) => ({ ...e, annualAmount: e.annualAmount * m })),
       };
     }
@@ -43,7 +65,12 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
   ) {
     const targetA = result.solvedRetirementAge;
     const deltaA = targetA - plan.personA.retirementAge;
-    next = { ...next, personA: { ...next.personA, retirementAge: targetA } };
+    next = {
+      ...next,
+      basePersonA: plan.basePersonA ?? plan.personA,
+      basePersonB: plan.basePersonB ?? plan.personB,
+      personA: { ...next.personA, retirementAge: targetA },
+    };
     if (next.personB) {
       const targetB = Math.max(50, next.personB.retirementAge + deltaA);
       next = { ...next, personB: { ...next.personB, retirementAge: targetB } };

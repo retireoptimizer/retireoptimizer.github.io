@@ -8,8 +8,7 @@ import type { Plan } from '../schemas/plan';
 export interface WhatIfOverrides {
   retirementAgeA?: number;     // overrides plan.personA.retirementAge
   retirementAgeB?: number;     // overrides plan.personB.retirementAge (ignored if no person B)
-  preRetReturn?: number;       // overrides plan.assumptions.preRetReturn
-  postRetReturn?: number;      // overrides plan.assumptions.postRetReturn
+  returnRate?: number;         // overrides all three bucket returns uniformly
   inflation?: number;          // overrides plan.assumptions.inflation
   spendingMultiplier?: number; // multiplies every expense stream's annualAmount
 }
@@ -39,7 +38,11 @@ export const useWhatIfStore = create<WhatIfState>()((set) => ({
 export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
   if (!w.active) return plan;
   const o = w.overrides;
-  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.preRetReturn !== undefined || o.postRetReturn !== undefined || o.inflation !== undefined || (o.spendingMultiplier !== undefined && o.spendingMultiplier !== 1);
+  // When baseExpenseStreams exists (max-spending was applied), treat spendingMultiplier=1 as
+  // meaningful (user explicitly wants original-level expenses instead of scaled ones).
+  const hasSpending = o.spendingMultiplier !== undefined &&
+    (o.spendingMultiplier !== 1 || plan.baseExpenseStreams !== undefined);
+  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.returnRate !== undefined || o.inflation !== undefined || hasSpending;
   if (!hasAny) return plan;
 
   let next: Plan = plan;
@@ -47,11 +50,9 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
     const oldAge = plan.personA.retirementAge;
     const newAge = o.retirementAgeA;
     if (next.personB) {
-      // Two-person: shift 'A'-tagged expenses to A's new age; shift 'Household' expenses
-      // to the new first-retirement point (min of A's and B's retirement in A's age space).
       const birthYearA = parseInt(next.personA.dob.slice(0, 4));
       const birthYearB = parseInt(next.personB.dob.slice(0, 4));
-      const ageDiff = birthYearB - birthYearA;  // +ve when B is younger
+      const ageDiff = birthYearB - birthYearA;
       const ageA_when_B_retires = next.personB.retirementAge + ageDiff;
       const oldFirstRetireA = Math.min(oldAge, ageA_when_B_retires);
       const newFirstRetireA = Math.min(newAge, ageA_when_B_retires);
@@ -65,7 +66,6 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
         }),
       };
     } else {
-      // Single-person: shift all streams anchored to the old retirement age.
       next = {
         ...next,
         personA: { ...next.personA, retirementAge: newAge },
@@ -96,23 +96,28 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
       }),
     };
   }
-  if (o.preRetReturn !== undefined || o.postRetReturn !== undefined || o.inflation !== undefined) {
+  if (o.returnRate !== undefined || o.inflation !== undefined) {
     next = {
       ...next,
       assumptions: {
         ...next.assumptions,
-        preRetReturn: o.preRetReturn ?? next.assumptions.preRetReturn,
-        postRetReturn: o.postRetReturn ?? next.assumptions.postRetReturn,
+        taxableReturn: o.returnRate ?? next.assumptions.taxableReturn,
+        tradReturn: o.returnRate ?? next.assumptions.tradReturn,
+        rothReturn: o.returnRate ?? next.assumptions.rothReturn,
         inflation: o.inflation ?? next.assumptions.inflation,
       },
     };
   }
-  if (o.spendingMultiplier !== undefined && o.spendingMultiplier !== 1) {
+  if (hasSpending) {
+    // Apply against original expenses (baseExpenseStreams when available) so the slider
+    // is an absolute multiplier vs the user's configured spending — not double-stacked
+    // on top of a prior max-sustainable-spending scaling.
+    const baseExpenses = plan.baseExpenseStreams ?? next.expenseStreams;
     next = {
       ...next,
-      expenseStreams: next.expenseStreams.map((s) => ({
+      expenseStreams: baseExpenses.map((s) => ({
         ...s,
-        annualAmount: s.annualAmount * o.spendingMultiplier!,
+        annualAmount: s.annualAmount * (o.spendingMultiplier ?? 1),
       })),
     };
   }

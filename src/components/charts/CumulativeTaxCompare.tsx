@@ -5,17 +5,20 @@ import type { ComparisonResult } from '../../engine/comparison';
 
 interface Props {
   cmp: ComparisonResult;
+  real?: boolean;
   height?: number;
 }
 
-export default function CumulativeTaxCompare({ cmp, height = 220 }: Props) {
+export default function CumulativeTaxCompare({ cmp, real = true, height = 220 }: Props) {
   const labels = cmp.withConv.rows.map((r) => r.ageA);
+  const taxWith = real ? cmp.cumulativeTaxWith : cmp.cumulativeTaxWithNom;
+  const taxNo   = real ? cmp.cumulativeTaxNo   : cmp.cumulativeTaxNoNom;
   const data: ChartData<'line'> = {
     labels,
     datasets: [
       {
         label: 'With Roth Conversions',
-        data: cmp.cumulativeTaxWith,
+        data: taxWith,
         borderColor: palette.gold,
         backgroundColor: palette.gold + '33',
         borderWidth: 2,
@@ -25,7 +28,7 @@ export default function CumulativeTaxCompare({ cmp, height = 220 }: Props) {
       },
       {
         label: 'No Conversions',
-        data: cmp.cumulativeTaxNo,
+        data: taxNo,
         borderColor: palette.textMuted,
         backgroundColor: palette.textMuted + '33',
         borderWidth: 2,

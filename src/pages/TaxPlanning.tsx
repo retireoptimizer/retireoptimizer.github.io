@@ -4,10 +4,9 @@ import IrmaaMagiLine from '../components/charts/IrmaaMagiLine';
 import TaxDrag from '../components/charts/TaxDrag';
 import CumulativeTaxCompare from '../components/charts/CumulativeTaxCompare';
 import BalanceCompare from '../components/charts/BalanceCompare';
+import StateTaxDrag from '../components/charts/StateTaxDrag';
 import ChartFrame from '../components/charts/ChartFrame';
 import { STATE_PROFILES } from '../engine/stateTax';
-import { generateInsights, insightsForSurface } from '../engine/explain';
-import InsightCard from '../components/InsightCard';
 import { compareWithWithoutConversion } from '../engine/comparison';
 import { fmtK } from '../lib/format';
 
@@ -27,8 +26,14 @@ export default function TaxPlanning() {
     return q === 'state' || q === 'irmaa' ? q : 'federal';
   })();
   const [tab, setTab] = useState<TaxTab>(initialTab);
-  const insights = insightsForSurface(generateInsights(plan, proj), 'taxes');
   const cmp = useMemo(() => compareWithWithoutConversion(plan), [plan]);
+  const taxDelta = real
+    ? (cmp.cumulativeTaxWith.at(-1) ?? 0) - (cmp.cumulativeTaxNo.at(-1) ?? 0)
+    : (cmp.cumulativeTaxWithNom.at(-1) ?? 0) - (cmp.cumulativeTaxNoNom.at(-1) ?? 0);
+  const balDelta = real
+    ? (cmp.endTotalWith.at(-1) ?? 0) - (cmp.endTotalNo.at(-1) ?? 0)
+    : (cmp.endTotalWithNom.at(-1) ?? 0) - (cmp.endTotalNoNom.at(-1) ?? 0);
+  const dollarLabel = real ? "today's $" : 'nominal $';
 
   return (
     <div className="page">
@@ -75,7 +80,9 @@ export default function TaxPlanning() {
                 </div>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display',serif" }}>
-                    {stateProfile.name}{stateProfile.effectiveRate === 0 ? ' — No State Income Tax' : ` — ${(stateProfile.effectiveRate * 100).toFixed(2)}%`}
+                    {stateProfile.code === 'NONE'
+                      ? 'State Tax Excluded'
+                      : `${stateProfile.name}${stateProfile.effectiveRate === 0 ? ' — No State Income Tax' : ` — ${(stateProfile.effectiveRate * 100).toFixed(2)}%`}`}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{stateProfile.note}</div>
                 </div>
@@ -93,10 +100,17 @@ export default function TaxPlanning() {
                   <div className="insight-body">
                     {stateProfile.retirementExempt
                       ? 'Wages and rental income (if any) are taxed; 401(k)/IRA/Roth/Pension/SS are not.'
-                      : 'IRA, 401(k), and pension distributions count as taxable ordinary income. Consider a tax-free state for retirement.'}
+                      : 'IRA, 401(k), and pension distributions count as taxable ordinary income.'}
                   </div>
                 </div>
               </div>
+              {stateProfile.effectiveRate > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <ChartFrame caption="Bars are dollars of state tax paid each year; the line is state tax as a % of total income (MAGI).">
+                    <StateTaxDrag proj={proj} real={real} height={260} />
+                  </ChartFrame>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -124,17 +138,6 @@ export default function TaxPlanning() {
           </>
         )}
 
-        {insights.length > 0 && (
-          <div className="panel" style={{ marginBottom: 20 }}>
-            <div className="panel-header">
-              <div className="panel-title"><div className="panel-title-dot"></div>Key Tax Insights</div>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Bracket and IRMAA observations from your plan</span>
-            </div>
-            <div className="panel-body">
-              {insights.map((i) => <InsightCard key={i.id} insight={i} />)}
-            </div>
-          </div>
-        )}
 
         <div className="panel">
           <div className="panel-header">
@@ -143,13 +146,13 @@ export default function TaxPlanning() {
           </div>
           <div className="panel-body">
             <ChartFrame caption="With vs without Roth conversions. The gap is your lifetime federal tax delta from the conversion strategy.">
-              <CumulativeTaxCompare cmp={cmp} height={260} />
+              <CumulativeTaxCompare cmp={cmp} real={real} height={260} />
             </ChartFrame>
-            <div style={{ marginTop: 10, fontSize: 12, color: cmp.lifetimeTaxDelta < 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-              {cmp.lifetimeTaxDelta < 0
-                ? `Conversions save ${fmtK(Math.abs(cmp.lifetimeTaxDelta))} in lifetime federal tax`
-                : cmp.lifetimeTaxDelta > 1000
-                ? `Conversions add ${fmtK(cmp.lifetimeTaxDelta)} in lifetime federal tax — consider reducing scope`
+            <div style={{ marginTop: 10, fontSize: 12, color: taxDelta < 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+              {taxDelta < 0
+                ? `Conversions save ${fmtK(Math.abs(taxDelta))} in lifetime federal tax (${dollarLabel})`
+                : taxDelta > 1000
+                ? `Conversions add ${fmtK(taxDelta)} in lifetime federal tax (${dollarLabel}) — consider reducing scope`
                 : 'Conversion impact is currently minimal — enable a conversion mode on the Strategy page'}
             </div>
           </div>
@@ -162,13 +165,13 @@ export default function TaxPlanning() {
           </div>
           <div className="panel-body">
             <ChartFrame caption="Higher line = more end-of-plan wealth retained after the conversion strategy plays out.">
-              <BalanceCompare cmp={cmp} height={260} />
+              <BalanceCompare cmp={cmp} real={real} height={260} />
             </ChartFrame>
-            <div style={{ marginTop: 10, fontSize: 12, color: cmp.endBalanceDelta > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-              {cmp.endBalanceDelta > 1000
-                ? `End balance with conversions: +${fmtK(cmp.endBalanceDelta)} (today's $)`
-                : cmp.endBalanceDelta < -1000
-                ? `End balance with conversions: ${fmtK(cmp.endBalanceDelta)} (today's $)`
+            <div style={{ marginTop: 10, fontSize: 12, color: balDelta > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+              {balDelta > 1000
+                ? `End balance with conversions: +${fmtK(balDelta)} (${dollarLabel})`
+                : balDelta < -1000
+                ? `End balance with conversions: ${fmtK(balDelta)} (${dollarLabel})`
                 : 'Negligible end-balance impact — enable a conversion mode on the Strategy page'}
             </div>
           </div>

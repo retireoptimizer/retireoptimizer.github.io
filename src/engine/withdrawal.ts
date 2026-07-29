@@ -51,7 +51,7 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
     wdTrd = Math.min(traditional, Math.min(roomIn12, rem));
     rem -= wdTrd;
     if (roth > 0 && rem > 0) { wdRth = Math.min(roth, rem); rem -= wdRth; }
-    if (taxable > 0 && rem > 0) { wdTax = Math.min(taxable, rem); rem -= wdTax; }
+    if (taxable > 0 && rem > 0) { wdTax = Math.min(taxable, rem); }
   } else {
     const order = preset.order!;
     for (const src of order) {
@@ -114,7 +114,7 @@ export function applyBlendPolicy(inp: {
   }
   if (leftover > 0.01) {
     const addRth = Math.min(inp.roth - wdRth, leftover);
-    wdRth += addRth; leftover -= addRth;
+    wdRth += addRth;
   }
 
   return { wdTax, wdTrd, wdRth };

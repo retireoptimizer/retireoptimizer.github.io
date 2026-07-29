@@ -18,18 +18,21 @@ export default function WhatIfBar() {
   // Live values fall back to the saved plan when not overridden.
   const retireA = overrides.retirementAgeA ?? plan.personA.retirementAge;
   const retireB = overrides.retirementAgeB ?? plan.personB?.retirementAge ?? 0;
-  const preRet = overrides.preRetReturn ?? plan.assumptions.preRetReturn;
-  const postRet = overrides.postRetReturn ?? plan.assumptions.postRetReturn;
+  // Use tradReturn as the representative rate for the single what-if slider.
+  const returnRate = overrides.returnRate ?? plan.assumptions.tradReturn;
   const inflation = overrides.inflation ?? plan.assumptions.inflation;
-  const spendMult = overrides.spendingMultiplier ?? 1;
+  // Default to solvedSpendingMultiplier so slider reflects the optimizer result (e.g. 133%)
+  // rather than always starting at 100% after a max-spending run.
+  const spendMult = overrides.spendingMultiplier ?? plan.solvedSpendingMultiplier ?? 1;
+  const spendIsOverridden = overrides.spendingMultiplier !== undefined &&
+    (overrides.spendingMultiplier !== 1 || !!plan.baseExpenseStreams);
 
   const dirty = active && (
     overrides.retirementAgeA !== undefined ||
     overrides.retirementAgeB !== undefined ||
-    overrides.preRetReturn !== undefined ||
-    overrides.postRetReturn !== undefined ||
+    overrides.returnRate !== undefined ||
     overrides.inflation !== undefined ||
-    (overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1)
+    spendIsOverridden
   );
 
   const saveAsScenario = () => {
@@ -41,10 +44,9 @@ export default function WhatIfBar() {
     if (overrides.retirementAgeB !== undefined && plan.personB) {
       planOverrides.personB = { retirementAge: overrides.retirementAgeB };
     }
-    if (overrides.preRetReturn !== undefined || overrides.postRetReturn !== undefined || overrides.inflation !== undefined) {
+    if (overrides.returnRate !== undefined || overrides.inflation !== undefined) {
       planOverrides.assumptions = {
-        ...(overrides.preRetReturn !== undefined ? { preRetReturn: overrides.preRetReturn } : {}),
-        ...(overrides.postRetReturn !== undefined ? { postRetReturn: overrides.postRetReturn } : {}),
+        ...(overrides.returnRate !== undefined ? { taxableReturn: overrides.returnRate, tradReturn: overrides.returnRate, rothReturn: overrides.returnRate } : {}),
         ...(overrides.inflation !== undefined ? { inflation: overrides.inflation } : {}),
       };
     }
@@ -59,8 +61,7 @@ export default function WhatIfBar() {
     const labelParts: string[] = [];
     if (overrides.retirementAgeA !== undefined) labelParts.push(`${plan.personA.name} retire @${overrides.retirementAgeA}`);
     if (overrides.retirementAgeB !== undefined && plan.personB) labelParts.push(`${plan.personB.name} retire @${overrides.retirementAgeB}`);
-    if (overrides.preRetReturn !== undefined) labelParts.push(`${(overrides.preRetReturn * 100).toFixed(1)}% pre-ret`);
-    if (overrides.postRetReturn !== undefined) labelParts.push(`${(overrides.postRetReturn * 100).toFixed(1)}% post-ret`);
+    if (overrides.returnRate !== undefined) labelParts.push(`${(overrides.returnRate * 100).toFixed(1)}% return`);
     if (overrides.inflation !== undefined) labelParts.push(`${(overrides.inflation * 100).toFixed(1)}% infl`);
     if (overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1) labelParts.push(`spend ${Math.round(overrides.spendingMultiplier * 100)}%`);
     addScenario({
@@ -81,9 +82,9 @@ export default function WhatIfBar() {
     }}>
       {/* Header line: label + actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: dirty ? 'var(--warning)' : 'var(--text-muted)' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: dirty ? 'var(--warning)' : 'var(--text-secondary)' }}>
           What-if{dirty && ' · Active'}
-          <span style={{ fontSize: 11, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)', marginLeft: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
             live overlay · saved plan unchanged
           </span>
         </span>
@@ -133,24 +134,14 @@ export default function WhatIfBar() {
           />
         )}
         <Slider
-          label="Pre-ret return"
-          value={preRet * 100}
+          label="Portfolio return"
+          value={returnRate * 100}
           min={0}
           max={12}
           step={0.1}
           format={(v) => `${v.toFixed(1)}%`}
-          onChange={(v) => setOverride('preRetReturn', v / 100)}
-          isOverridden={overrides.preRetReturn !== undefined}
-        />
-        <Slider
-          label="Post-ret return"
-          value={postRet * 100}
-          min={0}
-          max={12}
-          step={0.1}
-          format={(v) => `${v.toFixed(1)}%`}
-          onChange={(v) => setOverride('postRetReturn', v / 100)}
-          isOverridden={overrides.postRetReturn !== undefined}
+          onChange={(v) => setOverride('returnRate', v / 100)}
+          isOverridden={overrides.returnRate !== undefined}
         />
         <Slider
           label="Inflation"
@@ -166,11 +157,11 @@ export default function WhatIfBar() {
           label="Spending"
           value={spendMult * 100}
           min={50}
-          max={150}
+          max={200}
           step={5}
           format={(v) => `${v.toFixed(0)}%`}
           onChange={(v) => setOverride('spendingMultiplier', v / 100)}
-          isOverridden={overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1}
+          isOverridden={spendIsOverridden}
         />
       </div>
     </div>

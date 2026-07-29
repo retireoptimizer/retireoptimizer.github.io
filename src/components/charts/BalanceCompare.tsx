@@ -5,17 +5,20 @@ import type { ComparisonResult } from '../../engine/comparison';
 
 interface Props {
   cmp: ComparisonResult;
+  real?: boolean;
   height?: number;
 }
 
-export default function BalanceCompare({ cmp, height = 220 }: Props) {
+export default function BalanceCompare({ cmp, real = true, height = 220 }: Props) {
   const labels = cmp.withConv.rows.map((r) => r.ageA);
+  const balWith = real ? cmp.endTotalWith : cmp.endTotalWithNom;
+  const balNo   = real ? cmp.endTotalNo   : cmp.endTotalNoNom;
   const data: ChartData<'line'> = {
     labels,
     datasets: [
       {
         label: 'With Conversions',
-        data: cmp.endTotalWith,
+        data: balWith,
         borderColor: palette.gold,
         backgroundColor: palette.gold + '22',
         borderWidth: 2,
@@ -25,7 +28,7 @@ export default function BalanceCompare({ cmp, height = 220 }: Props) {
       },
       {
         label: 'No Conversions',
-        data: cmp.endTotalNo,
+        data: balNo,
         borderColor: palette.textMuted,
         backgroundColor: palette.textMuted + '22',
         borderWidth: 2,

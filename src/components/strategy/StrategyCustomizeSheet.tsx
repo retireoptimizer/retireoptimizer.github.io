@@ -5,9 +5,9 @@ import CustomBlendPanel from './CustomBlendPanel';
 import RothVsRmd from '../charts/RothVsRmd';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
-/** Right-drawer side sheet hosting the rich strategy controls that don't fit
- *  inline on the Dashboard chip row. Closes on Escape or backdrop click. */
-export default function StrategyCustomizeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** Right-drawer side sheet for strategy details. `mode` controls which panel is shown:
+ *  'blend' → Custom Blend Editor; 'conversion' → Roth Conversion Mode + chart. */
+export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: 'blend' | 'conversion' }) {
   const proj = useProjection();
   const isMobile = useIsMobile();
 
@@ -39,7 +39,7 @@ export default function StrategyCustomizeSheet({ open, onClose }: { open: boolea
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: isMobile ? '100%' : 'min(560px, 100%)',
+          width: isMobile ? '100%' : mode === 'blend' ? 'min(800px, 100%)' : 'min(560px, 100%)',
           height: isMobile ? '85vh' : '100%',
           borderRadius: isMobile ? '20px 20px 0 0' : undefined,
           background: 'var(--bg-surface, #fff)',
@@ -61,7 +61,9 @@ export default function StrategyCustomizeSheet({ open, onClose }: { open: boolea
         }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Customize</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', fontFamily: "'Playfair Display', serif" }}>Strategy details</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', fontFamily: "'Playfair Display', serif" }}>
+              {mode === 'blend' ? 'Custom Blend Editor' : 'Roth Conversion Mode'}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -78,12 +80,16 @@ export default function StrategyCustomizeSheet({ open, onClose }: { open: boolea
           >Close</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: isMobile ? 'calc(16px + env(safe-area-inset-bottom))' : 16 }}>
-          <ConversionModePanel />
-          <CustomBlendPanel />
-          <div className="panel" style={{ marginTop: 20 }}>
-            <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Conversions vs RMDs</div></div>
-            <div className="panel-body"><RothVsRmd proj={proj} real height={240} /></div>
-          </div>
+          {mode === 'conversion' && (
+            <>
+              <ConversionModePanel />
+              <div className="panel" style={{ marginTop: 20 }}>
+                <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Conversions vs RMDs</div></div>
+                <div className="panel-body"><RothVsRmd proj={proj} real height={240} /></div>
+              </div>
+            </>
+          )}
+          {mode === 'blend' && <CustomBlendPanel />}
         </div>
       </div>
     </div>

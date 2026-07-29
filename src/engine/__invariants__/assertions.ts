@@ -18,8 +18,11 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
     ? r.ageB >= plan.personB.retirementAge
     : retiredA;
   const semiRetired = retiredA || retiredB;
-  const retired = retiredA && retiredB;
-  const gRate = retired ? plan.assumptions.postRetReturn : plan.assumptions.preRetReturn;
+
+  // Per-bucket growth rates (no retirement-phase switching; each bucket has its own rate).
+  const gRateTax = plan.assumptions.taxableReturn;
+  const gRateTrad = plan.assumptions.tradReturn;
+  const gRateRoth = plan.assumptions.rothReturn;
 
   // Derive contributions per bucket from the plan's contribSplit and the row's contribA/contribB.
   const pfA = plan.portfolio.personA;
@@ -30,16 +33,16 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
 
   // 1. NO-OVERDRAW: total outflow per bucket must not exceed what's available (growth + contrib).
   //    Catches phantom withdrawals — bucket-A drained while withdrawal still claimed cash.
-  const tradAvail = r.begTraditional * (1 + gRate) + contribToTrad;
+  const tradAvail = r.begTraditional * (1 + gRateTrad) + contribToTrad;
   const tradOutflow = r.wdTrd + r.rmd + r.rothConv;
   if (tradOutflow > tradAvail + tol) {
     out.push(`Trad OVERDRAW: outflow $${tradOutflow.toFixed(2)} > available $${tradAvail.toFixed(2)} (wdTrd=${r.wdTrd.toFixed(2)} + rmd=${r.rmd.toFixed(2)} + conv=${r.rothConv.toFixed(2)} vs begTrad*(1+g)+contribTrad)`);
   }
-  const rothAvail = r.begRoth * (1 + gRate) + contribToRoth + r.rothConv;
+  const rothAvail = r.begRoth * (1 + gRateRoth) + contribToRoth + r.rothConv;
   if (r.wdRth > rothAvail + tol) {
     out.push(`Roth OVERDRAW: wdRth $${r.wdRth.toFixed(2)} > available $${rothAvail.toFixed(2)}`);
   }
-  const taxAvail = r.begTaxable * (1 + gRate) + contribToTax;
+  const taxAvail = r.begTaxable * (1 + gRateTax) + contribToTax;
   if (r.wdTax > taxAvail + tol) {
     out.push(`Taxable OVERDRAW: wdTax $${r.wdTax.toFixed(2)} > available $${taxAvail.toFixed(2)}`);
   }
@@ -47,15 +50,15 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   // 2. MASS BALANCE: end-of-year balance must match the bucket-update arithmetic
   //    when no clamping occurred. Pinpoints both subtle update bugs and validates
   //    that the conversion symmetry (trad - conv = -delta, roth + conv = +delta) holds.
-  const expectedEndTrad = Math.max(0, r.begTraditional * (1 + gRate) + contribToTrad - r.wdTrd - r.rmd - r.rothConv);
+  const expectedEndTrad = Math.max(0, r.begTraditional * (1 + gRateTrad) + contribToTrad - r.wdTrd - r.rmd - r.rothConv);
   if (Math.abs(r.endTraditional - expectedEndTrad) > tol) {
     out.push(`Trad MASS BALANCE: endTraditional $${r.endTraditional.toFixed(2)} != expected $${expectedEndTrad.toFixed(2)} (delta $${(r.endTraditional - expectedEndTrad).toFixed(2)})`);
   }
-  const expectedEndRoth = Math.max(0, r.begRoth * (1 + gRate) + contribToRoth - r.wdRth + r.rothConv);
+  const expectedEndRoth = Math.max(0, r.begRoth * (1 + gRateRoth) + contribToRoth - r.wdRth + r.rothConv);
   if (Math.abs(r.endRoth - expectedEndRoth) > tol) {
     out.push(`Roth MASS BALANCE: endRoth $${r.endRoth.toFixed(2)} != expected $${expectedEndRoth.toFixed(2)}`);
   }
-  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRate) + contribToTax - r.wdTax);
+  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax);
   if (Math.abs(r.endTaxable - expectedEndTax) > tol) {
     out.push(`Taxable MASS BALANCE: endTaxable $${r.endTaxable.toFixed(2)} != expected $${expectedEndTax.toFixed(2)}`);
   }

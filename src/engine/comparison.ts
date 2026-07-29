@@ -10,8 +10,12 @@ export interface ComparisonResult {
   lifetimeRMDDelta: number;       // negative = conversions reduce RMDs
   cumulativeTaxWith: number[];    // running sum per year (today's $)
   cumulativeTaxNo: number[];
+  cumulativeTaxWithNom: number[]; // running sum per year (nominal $)
+  cumulativeTaxNoNom: number[];
   endTotalWith: number[];         // year-end balance (today's $)
   endTotalNo: number[];
+  endTotalWithNom: number[];      // year-end balance (nominal $)
+  endTotalNoNom: number[];
 }
 
 /** Run the plan twice — once as-is, once with Roth conversions forced off — and diff.
@@ -33,17 +37,28 @@ export function compareWithWithoutConversion(plan: Plan): ComparisonResult {
 
   const cumulativeTaxWith: number[] = [];
   const cumulativeTaxNo: number[] = [];
+  const cumulativeTaxWithNom: number[] = [];
+  const cumulativeTaxNoNom: number[] = [];
   const endTotalWith: number[] = [];
   const endTotalNo: number[] = [];
-  let cw = 0, cn = 0;
+  const endTotalWithNom: number[] = [];
+  const endTotalNoNom: number[] = [];
+  let cw = 0, cn = 0, cwn = 0, cnn = 0;
   const n = Math.min(withConv.rows.length, noConv.rows.length);
   for (let i = 0; i < n; i++) {
-    cw += withConv.rows[i].fedTax / withConv.rows[i].inflationFactor;
-    cn += noConv.rows[i].fedTax / noConv.rows[i].inflationFactor;
+    const rw = withConv.rows[i], rn = noConv.rows[i];
+    cw  += rw.fedTax / rw.inflationFactor;
+    cn  += rn.fedTax / rn.inflationFactor;
+    cwn += rw.fedTax;
+    cnn += rn.fedTax;
     cumulativeTaxWith.push(cw);
     cumulativeTaxNo.push(cn);
-    endTotalWith.push(withConv.rows[i].endTotal / withConv.rows[i].inflationFactor);
-    endTotalNo.push(noConv.rows[i].endTotal / noConv.rows[i].inflationFactor);
+    cumulativeTaxWithNom.push(cwn);
+    cumulativeTaxNoNom.push(cnn);
+    endTotalWith.push(rw.endTotal / rw.inflationFactor);
+    endTotalNo.push(rn.endTotal / rn.inflationFactor);
+    endTotalWithNom.push(rw.endTotal);
+    endTotalNoNom.push(rn.endTotal);
   }
 
   return {
@@ -57,7 +72,11 @@ export function compareWithWithoutConversion(plan: Plan): ComparisonResult {
     lifetimeRMDDelta: withConv.lifetimeRMD - noConv.lifetimeRMD,
     cumulativeTaxWith,
     cumulativeTaxNo,
+    cumulativeTaxWithNom,
+    cumulativeTaxNoNom,
     endTotalWith,
     endTotalNo,
+    endTotalWithNom,
+    endTotalNoNom,
   };
 }
