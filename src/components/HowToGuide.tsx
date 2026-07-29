@@ -312,16 +312,20 @@ function GuideContent() {
         them to grow, and how much you are still adding each year before you retire.
       </P>
 
-      <H3>Expected Growth Rates</H3>
+      <H3>Expected Returns</H3>
       <P>
-        These four numbers drive every dollar of growth in the projection. They apply to your
+        These three numbers drive every dollar of growth in the projection. They apply to your
         entire planning horizon, so even small differences compound significantly over 30 years.
       </P>
       <FieldTable rows={[
         ["Taxable Return", "Annual growth rate for your brokerage (non-retirement) accounts.", "6.5%"],
         ["Pre-tax Return", "Growth rate for Traditional 401(k) and IRA accounts.", "6.5%"],
         ["Roth Return", "Growth rate for Roth IRA and Roth 401(k) accounts.", "6.5%"],
-        ["Inflation", "How fast prices rise each year. The long-run US average is around 3%.", "3.0%"],
+      ]} />
+
+      <H3>Expected Inflation</H3>
+      <FieldTable rows={[
+        ["Annual Rate", "How fast prices rise each year. The long-run US average is around 3%.", "3.0%"],
       ]} />
       <Tip>
         A balanced portfolio of stocks and bonds has historically returned 6–7% before inflation.
@@ -670,7 +674,6 @@ function GuideContent() {
 
       <H3>Simulation settings</H3>
       <FieldTable rows={[
-        ["Return Model", "Historical bootstrap stitches together real multi-year market blocks from 1928 to present, preserving realistic clusters of good and bad years. Parametric normal draws returns independently from a bell curve — simpler, but tends to understate sequence-of-returns risk.", "Historical (recommended)"],
         ["Equity Allocation %", "The stock/bond split applied inside each simulated year. Match this to your actual portfolio allocation. More stocks means more upside potential and more risk in bad years.", "60%"],
         ["Number of Trials", "How many simulated futures to run. 500 is fast and accurate enough for planning decisions. 1,000–2,000 gives smoother percentile bands at the cost of a longer wait.", "500"],
       ]} />
