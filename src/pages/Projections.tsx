@@ -125,7 +125,7 @@ export default function Projections() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `fireopt-projection-${mode === 'real' ? 'realdollars' : 'nominal'}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `retirement-optimizer-projection-${mode === 'real' ? 'realdollars' : 'nominal'}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -143,7 +143,7 @@ export default function Projections() {
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Income above zero · Spending &amp; tax below zero · Portfolio total line on right axis</span>
           </div>
           <div className="panel-body">
-            <ChartFrame caption="Use this to see whether a year is a net build or net draw, and how taxes eat into income.">
+            <ChartFrame caption="Use this to see the net cash flow each year and how taxes eat into income.">
               <CashFlowsBalanced proj={proj} real={mode === 'real'} height={320} />
             </ChartFrame>
           </div>

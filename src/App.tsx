@@ -1,40 +1,37 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/AppShell';
+import InputsPage from './pages/InputsPage';
 import Dashboard from './pages/Dashboard';
-import PersonalDetails from './pages/PersonalDetails';
-import CashFlow from './pages/CashFlow';
-import Portfolio from './pages/Portfolio';
 import Projections from './pages/Projections';
-import Strategy from './pages/Strategy';
 import TaxPlanning from './pages/TaxPlanning';
 import MonteCarlo from './pages/MonteCarlo';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route element={<AppShell />}>
-          {/* First load lands on Personal Details, not the Dashboard. */}
-          <Route index element={<Navigate to="/personal" replace />} />
+          <Route index element={<Navigate to="/inputs" replace />} />
+          <Route path="inputs" element={<InputsPage />} />
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="personal" element={<PersonalDetails />} />
-          <Route path="cash-flow" element={<CashFlow />} />
-          <Route path="portfolio" element={<Portfolio />} />
           <Route path="projections" element={<Projections />} />
-          <Route path="strategy" element={<Strategy />} />
           <Route path="taxes" element={<TaxPlanning />} />
           <Route path="montecarlo" element={<MonteCarlo />} />
           {/* Legacy URL redirects */}
-          <Route path="income" element={<Navigate to="/cash-flow" replace />} />
-          <Route path="expenses" element={<Navigate to="/cash-flow" replace />} />
+          <Route path="personal" element={<Navigate to="/inputs" replace />} />
+          <Route path="cash-flow" element={<Navigate to="/inputs" replace />} />
+          <Route path="portfolio" element={<Navigate to="/inputs" replace />} />
+          <Route path="strategy" element={<Navigate to="/inputs" replace />} />
+          <Route path="income" element={<Navigate to="/inputs" replace />} />
+          <Route path="expenses" element={<Navigate to="/inputs" replace />} />
           <Route path="scenarios" element={<Navigate to="/dashboard" replace />} />
           <Route path="compare" element={<Navigate to="/dashboard" replace />} />
-          <Route path="withdrawal" element={<Navigate to="/strategy" replace />} />
-          <Route path="roth" element={<Navigate to="/strategy" replace />} />
+          <Route path="withdrawal" element={<Navigate to="/inputs" replace />} />
+          <Route path="roth" element={<Navigate to="/inputs" replace />} />
           <Route path="plan-health" element={<Navigate to="/dashboard" replace />} />
-          <Route path="irmaa" element={<Navigate to="/taxes?tab=irmaa" replace />} />
+          <Route path="irmaa" element={<Navigate to="/taxes" replace />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }

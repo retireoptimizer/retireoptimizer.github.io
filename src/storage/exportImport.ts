@@ -2,7 +2,7 @@ import type { Plan } from '../schemas/plan';
 import { PlanSchema } from '../schemas/plan';
 
 export interface ExportPayload {
-  app: 'fireopt';
+  app: 'retirement-optimizer';
   version: 1;
   exportedAt: string;
   plan: Plan;
@@ -10,7 +10,7 @@ export interface ExportPayload {
 
 export function exportPlanToJSON(plan: Plan): string {
   const payload: ExportPayload = {
-    app: 'fireopt',
+    app: 'retirement-optimizer',
     version: 1,
     exportedAt: new Date().toISOString(),
     plan,
@@ -18,7 +18,7 @@ export function exportPlanToJSON(plan: Plan): string {
   return JSON.stringify(payload, null, 2);
 }
 
-export function downloadPlan(plan: Plan, filename = 'fireopt-plan.json'): void {
+export function downloadPlan(plan: Plan, filename = 'retirement-optimizer-plan.json'): void {
   const json = exportPlanToJSON(plan);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
