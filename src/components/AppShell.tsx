@@ -12,7 +12,6 @@ export default function AppShell() {
   const resetPlan = usePlanStore((s) => s.resetPlan);
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-  const [overflowOpen, setOverflowOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,7 +29,7 @@ export default function AppShell() {
   const onImportClick = () => fileRef.current?.click();
 
   const onResetPlan = () => {
-    if (!window.confirm('Reset the entire plan to defaults? This clears every page’s inputs and can’t be undone.')) return;
+    if (!window.confirm("Reset the entire plan to defaults? This clears every page's inputs and can't be undone.")) return;
     resetPlan();
     navigate('/inputs');
     showToast('ok', 'Plan reset to defaults');
@@ -100,13 +99,15 @@ export default function AppShell() {
               title="Show inflated nominal dollars"
             >Nominal $</button>
           </div>
-          <button className="save-btn" onClick={onExport}>Export</button>
+          <button className="appbar-action-btn appbar-reset-btn" onClick={onResetPlan}>Reset</button>
+          <button className="appbar-action-btn" onClick={onImportClick}>Import</button>
+          <button className="appbar-action-btn" onClick={onExport}>Export</button>
           <button
-            className="appbar-overflow-btn btn btn-ghost"
-            onClick={() => setOverflowOpen((o) => !o)}
-            aria-label="More options"
-            style={{ padding: '8px 12px', fontSize: 18, lineHeight: 1 }}
-          >⋮</button>
+            className="appbar-help-btn"
+            onClick={() => setGuideOpen(true)}
+            aria-label="How-to Guide"
+            title="How-to Guide"
+          >?</button>
         </div>
       </div>
 
@@ -119,43 +120,6 @@ export default function AppShell() {
           boxShadow: 'var(--shadow-lg)',
         }}>
           {toast.text}
-        </div>
-      )}
-
-      {overflowOpen && (
-        <div
-          style={{
-            position: 'fixed', top: 60, right: 12,
-            background: '#fff', border: '1px solid var(--border-light)',
-            borderRadius: 10, boxShadow: 'var(--shadow-lg)',
-            zIndex: 200, padding: '8px 0', minWidth: 160,
-          }}
-          onClick={() => setOverflowOpen(false)}
-        >
-          <div
-            className="toggle-group"
-            style={{ margin: '8px 14px', display: 'flex' }}
-            role="radiogroup"
-          >
-            <button className={`toggle-opt ${displayMode === 'real' ? 'active' : ''}`} onClick={() => setDisplayMode('real')}>Today's $</button>
-            <button className={`toggle-opt ${displayMode === 'nominal' ? 'active' : ''}`} onClick={() => setDisplayMode('nominal')}>Nominal $</button>
-          </div>
-          <button className="btn btn-ghost" onClick={() => setGuideOpen(true)}
-            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13 }}>
-            How-to Guide
-          </button>
-          <button className="btn btn-ghost" onClick={onExport}
-            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13 }}>
-            Export Plan
-          </button>
-          <button className="btn btn-ghost" onClick={onImportClick}
-            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13 }}>
-            Import
-          </button>
-          <button className="btn btn-ghost" onClick={onResetPlan}
-            style={{ width: '100%', borderRadius: 0, padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)' }}>
-            Reset Plan
-          </button>
         </div>
       )}
 

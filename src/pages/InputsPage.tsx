@@ -308,25 +308,40 @@ export default function InputsPage() {
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total: {fmtM(total)}</span>
           </div>
           <div className="panel-body">
-            {/* Per-bucket growth rates */}
-            <div style={{ marginBottom: 20 }}>
-              <div className="subsection-label">Expected Growth Rates</div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 12 }}>
-                {[
-                  { label: 'Taxable', key: 'taxableReturn' as const, hint: 'Brokerage' },
-                  { label: 'Pre-tax', key: 'tradReturn' as const, hint: '401(k) / IRA' },
-                  { label: 'Roth', key: 'rothReturn' as const, hint: 'Roth IRA / 401k' },
-                  { label: 'Inflation', key: 'inflation' as const, hint: 'Annual CPI' },
-                ].map(({ label, key, hint }) => (
-                  <div key={key} className="form-group">
-                    <label>{label}</label>
-                    <div className="input-suffix-wrap">
-                      <NumberInput value={asm[key]} scale={100} digits={1} onCommit={(v) => setAssumptions({ [key]: v })} />
-                      <span className="input-suffix">%</span>
+            {/* Returns + Inflation on one row */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 20, flexDirection: isMobile ? 'column' : 'row' }}>
+              <div style={{ flex: 3 }}>
+                <div className="subsection-label">Expected Returns</div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 12 }}>
+                  {[
+                    { label: 'Taxable', key: 'taxableReturn' as const, hint: 'Brokerage' },
+                    { label: 'Pre-tax', key: 'tradReturn' as const, hint: '401(k) / IRA' },
+                    { label: 'Roth', key: 'rothReturn' as const, hint: 'Roth IRA / 401k' },
+                  ].map(({ label, key, hint }) => (
+                    <div key={key} className="form-group">
+                      <label>{label}</label>
+                      <div className="input-suffix-wrap">
+                        <NumberInput value={asm[key]} scale={100} digits={1} onCommit={(v) => setAssumptions({ [key]: v })} />
+                        <span className="input-suffix">%</span>
+                      </div>
+                      {hint && <div className="helper-text">{hint}</div>}
                     </div>
-                    {hint && <div className="helper-text">{hint}</div>}
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ width: 1, background: 'rgba(13,27,46,0.12)', margin: isMobile ? '12px 0' : '0 24px', alignSelf: 'stretch' }} />
+
+              <div style={{ flex: 1 }}>
+                <div className="subsection-label">Expected Inflation</div>
+                <div className="form-group">
+                  <label>Annual Rate</label>
+                  <div className="input-suffix-wrap">
+                    <NumberInput value={asm.inflation} scale={100} digits={1} onCommit={(v) => setAssumptions({ inflation: v })} />
+                    <span className="input-suffix">%</span>
                   </div>
-                ))}
+                  <div className="helper-text">Annual CPI</div>
+                </div>
               </div>
             </div>
 

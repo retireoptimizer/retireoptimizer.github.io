@@ -82,9 +82,9 @@ export default function WhatIfBar() {
     }}>
       {/* Header line: label + actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: dirty ? 'var(--warning)' : 'var(--text-secondary)' }}>
-          What-if{dirty && ' · Active'}
-          <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: dirty ? 'var(--warning)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+          What-If{dirty && ' · Active'}
+          <span style={{ fontSize: 11, fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)', marginLeft: 8 }}>
             live overlay · saved plan unchanged
           </span>
         </span>

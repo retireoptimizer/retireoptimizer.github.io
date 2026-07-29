@@ -90,7 +90,7 @@ export default function Dashboard() {
             {optimizerResult && (
               <button
                 onClick={() => setRationaleOpen(true)}
-                style={{ fontSize: 11, padding: 0, background: 'transparent', border: 'none', color: 'rgba(201,168,76,0.75)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                style={{ fontSize: 11, padding: 0, background: 'transparent', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', textDecoration: 'underline', fontWeight: 600 }}
               >
                 explain optimization rationale →
               </button>
@@ -292,8 +292,8 @@ export default function Dashboard() {
 function HeroStat({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
   return (
     <div style={{ flex: 1, minWidth: 80, padding: '2px 8px' }}>
-      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'rgba(255,255,255,0.58)' }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: valueColor ?? 'rgba(255,255,255,0.95)', lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'rgba(255,255,255,0.58)' }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: valueColor ?? 'rgba(255,255,255,0.95)', lineHeight: 1.2 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.72)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
