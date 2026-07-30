@@ -19,7 +19,16 @@ const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color:
 
 const ageFromDob = (iso: string): number => {
   if (!iso || iso.length < 4) return 0;
-  return new Date().getFullYear() - parseInt(iso.slice(0, 4), 10);
+  const yr = parseInt(iso.slice(0, 4), 10);
+  if (yr < 1900 || yr > new Date().getFullYear()) return 0;
+  return new Date().getFullYear() - yr;
+};
+
+const isValidDob = (iso: string): boolean => {
+  if (!iso || iso.length < 10) return false;
+  const yr = parseInt(iso.slice(0, 4), 10);
+  const age = new Date().getFullYear() - yr;
+  return yr >= 1900 && age >= 10 && age <= 100;
 };
 
 export default function InputsPage() {
@@ -60,7 +69,8 @@ export default function InputsPage() {
   const total = totals.taxable + totals.traditional + totals.roth;
   const nameA = A.name || 'Person A';
   const nameB = B?.name || 'Person B';
-  const canBuild = A.name.trim().length > 0 && (!B || B.name.trim().length > 0);
+  const canBuild = A.name.trim().length > 0 && (!B || B.name.trim().length > 0)
+    && isValidDob(A.dob) && (!B || isValidDob(B.dob));
   const retirementAge = A.retirementAge;
   const planToAge = A.planToAge;
 
@@ -125,8 +135,10 @@ export default function InputsPage() {
               </div>
               <div className="form-group">
                 <label>Date of Birth</label>
-                <input type="date" value={A.dob} onChange={(e) => { if (e.target.value) setPersonA({ dob: e.target.value }); }} />
-                <div className="helper-text">Age {ageFromDob(A.dob)}</div>
+                <input type="date" value={A.dob} onChange={(e) => { if (isValidDob(e.target.value)) setPersonA({ dob: e.target.value }); }} />
+                <div className="helper-text" style={{ color: isValidDob(A.dob) ? undefined : 'var(--color-danger, #c0392b)' }}>
+                  {isValidDob(A.dob) ? `Age ${ageFromDob(A.dob)}` : 'Invalid date'}
+                </div>
               </div>
               <div className="form-group">
                 <label>Retirement Age</label>
@@ -147,8 +159,10 @@ export default function InputsPage() {
                 </div>
                 <div className="form-group">
                   <label>Date of Birth</label>
-                  <input type="date" value={B.dob} onChange={(e) => { if (e.target.value) setPersonB({ dob: e.target.value }); }} />
-                  <div className="helper-text">Age {ageFromDob(B.dob)}</div>
+                  <input type="date" value={B.dob} onChange={(e) => { if (isValidDob(e.target.value)) setPersonB({ dob: e.target.value }); }} />
+                  <div className="helper-text" style={{ color: isValidDob(B.dob) ? undefined : 'var(--color-danger, #c0392b)' }}>
+                    {isValidDob(B.dob) ? `Age ${ageFromDob(B.dob)}` : 'Invalid date'}
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Retirement Age</label>
@@ -387,7 +401,9 @@ export default function InputsPage() {
           </button>
           <div style={{ fontSize: 12, color: !canBuild ? 'var(--color-danger, #c0392b)' : 'var(--text-muted)' }}>
             {!canBuild
-              ? 'Enter names for all people in Personal Details to build your plan.'
+              ? (!isValidDob(A.dob) || (B && !isValidDob(B.dob))
+                  ? 'Fix the date of birth in Personal Details (year must be 1900–present).'
+                  : 'Enter names for all people in Personal Details to build your plan.')
               : 'Runs the optimizer for your selected goal, then opens your results dashboard.'}
           </div>
           {buildError && (
