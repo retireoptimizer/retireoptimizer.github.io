@@ -157,6 +157,7 @@ export const PlanSchema = z.object({
   solvedSpendingMultiplier: z.number().optional(),
   conversion: ConversionParamsSchema,
   state: z.string().default('IL'),
+  customStateTaxRate: z.number().min(0).max(0.5).optional(),
   goals: z.array(GoalSchema).default([]),
 });
 export type Plan = z.infer<typeof PlanSchema>;

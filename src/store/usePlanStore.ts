@@ -45,6 +45,7 @@ interface PlanState {
   clearCustomPolicy: () => void;
   setConversion: (patch: Partial<ConversionParams>) => void;
   setState: (state: string) => void;
+  setCustomStateTaxRate: (rate: number) => void;
   addGoal: (g: Goal) => void;
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   removeGoal: (id: string) => void;
@@ -103,6 +104,7 @@ export const usePlanStore = create<PlanState>()(
       clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined } })),
       setConversion: (patch) => set((s) => ({ plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } })),
       setState: (state) => set((s) => ({ plan: { ...s.plan, state } })),
+      setCustomStateTaxRate: (rate) => set((s) => ({ plan: { ...s.plan, customStateTaxRate: rate } })),
       addGoal: (g) => set((s) => ({ plan: { ...s.plan, goals: [...(s.plan.goals ?? []), g] } })),
       updateGoal: (id, patch) => set((s) => ({ plan: { ...s.plan, goals: (s.plan.goals ?? []).map((x) => x.id === id ? { ...x, ...patch } : x) } })),
       removeGoal: (id) => set((s) => ({ plan: { ...s.plan, goals: (s.plan.goals ?? []).filter((x) => x.id !== id) } })),

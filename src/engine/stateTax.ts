@@ -52,6 +52,9 @@ export const STATE_PROFILES: Record<string, StateTaxProfile> = {
   WA: { code: 'WA', name: 'Washington', effectiveRate: 0, retirementExempt: true, ssExempt: true,
     personalExemptionPerPerson: 0, over65ExemptionPerPerson: 0,
     note: 'No state income tax (excluding 7% capital-gains tax on gains above ~$262K)' },
+  CUSTOM: { code: 'CUSTOM', name: 'Custom (Flat Rate)', effectiveRate: 0, retirementExempt: false, ssExempt: false,
+    personalExemptionPerPerson: 0, over65ExemptionPerPerson: 0,
+    note: 'User-defined flat rate applied to all income including retirement distributions and SS' },
 };
 
 /**
@@ -67,9 +70,12 @@ export function stateTax(
   numPersons = 1,
   inflationFactor = 1,
   numOver65 = 0,
+  customRate?: number,
 ): number {
   const profile = STATE_PROFILES[state];
-  if (!profile || profile.effectiveRate === 0) return 0;
+  if (!profile) return 0;
+  const effectiveRate = state === 'CUSTOM' ? (customRate ?? 0) : profile.effectiveRate;
+  if (effectiveRate === 0) return 0;
   const grossTaxable = profile.retirementExempt
     ? Math.max(0, nonExemptOrdinaryIncome)
     : Math.max(0, nonExemptOrdinaryIncome + retirementDistributions);
@@ -78,7 +84,7 @@ export function stateTax(
     profile.over65ExemptionPerPerson * numOver65
   ) * inflationFactor;
   const taxable = Math.max(0, grossTaxable - exemption);
-  return taxable * profile.effectiveRate;
+  return taxable * effectiveRate;
 }
 
 export function listStates(): StateTaxProfile[] {

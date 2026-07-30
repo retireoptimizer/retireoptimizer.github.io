@@ -40,6 +40,7 @@ export default function InputsPage() {
   const removePersonB = usePlanStore((s) => s.removePersonB);
   const setAssumptions = usePlanStore((s) => s.setAssumptions);
   const setStateField = usePlanStore((s) => s.setState);
+  const setCustomStateTaxRate = usePlanStore((s) => s.setCustomStateTaxRate);
   const setPersonAPortfolio = usePlanStore((s) => s.setPersonAPortfolio);
   const setPersonBPortfolio = usePlanStore((s) => s.setPersonBPortfolio);
   const addIncomeStream = usePlanStore((s) => s.addIncomeStream);
@@ -194,6 +195,19 @@ export default function InputsPage() {
                   </select>
                   <div className="helper-text">TX/FL/WA exact; CA/NY/IL approx</div>
                 </div>
+                {plan.state === 'CUSTOM' && (
+                  <div className="form-group" style={{ marginTop: 8 }}>
+                    <label>Flat Tax Rate</label>
+                    <NumberInput
+                      value={(plan.customStateTaxRate ?? 0.05) * 100}
+                      digits={2}
+                      min={0}
+                      max={20}
+                      onCommit={(v) => setCustomStateTaxRate(v / 100)}
+                    />
+                    <div className="helper-text">Applied to all income incl. retirement &amp; SS</div>
+                  </div>
+                )}
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>

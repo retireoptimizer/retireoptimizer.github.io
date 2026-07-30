@@ -322,7 +322,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // For CA/NY: retirement withdrawals + conversions are also taxable.
     // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
     const numPersons = (aliveA ? 1 : 0) + (aliveB ? 1 : 0);
-    let stateAmt = stateTax(plan.state, other.nonExempt, other.pensionAmt, numPersons, inflationFactor, numAt65Plus); // initial pass; ltcg unknown until loop iter 1
+    let stateAmt = stateTax(plan.state, other.nonExempt, other.pensionAmt, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate); // initial pass; ltcg unknown until loop iter 1
 
     // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
@@ -365,7 +365,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
       // ltcg goes into nonExemptOrdinaryIncome so IL (retirementExempt:true) still taxes it —
       // IL exempts retirement distributions but NOT capital gains.
-      stateAmt = stateTax(plan.state, other.nonExempt + ltcg, wdTrd + rmdAmt + conv + other.pensionAmt, numPersons, inflationFactor, numAt65Plus);
+      stateAmt = stateTax(plan.state, other.nonExempt + ltcg, wdTrd + rmdAmt + conv + other.pensionAmt, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate);
 
       // ACA marketplace premium (pre-Medicare years when the user has opted in).
       acaPremiumYear = 0;
