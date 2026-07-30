@@ -188,7 +188,12 @@ export default function InputsPage() {
                 <div className="subsection-label">State of Residence</div>
                 <div className="form-group">
                   <label>Current State</label>
-                  <select value={plan.state} onChange={(e) => setStateField(e.target.value)}>
+                  <select value={plan.state} onChange={(e) => {
+                    setStateField(e.target.value);
+                    if (e.target.value === 'CUSTOM' && plan.customStateTaxRate == null) {
+                      setCustomStateTaxRate(0.05);
+                    }
+                  }}>
                     {listStates().map((s) => (
                       <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
                     ))}
