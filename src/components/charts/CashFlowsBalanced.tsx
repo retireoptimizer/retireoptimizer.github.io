@@ -151,6 +151,13 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
       },
       {
         type: 'bar',
+        label: 'ACA Premium',
+        data: rows.map((r) => -scale(r.acaPremium, r.inflationFactor)),
+        backgroundColor: palette.acaBar,
+        stack: 'out',
+      },
+      {
+        type: 'bar',
         label: 'Federal Tax',
         data: rows.map((r) => -scale(r.fedTax, r.inflationFactor)),
         backgroundColor: palette.warning,

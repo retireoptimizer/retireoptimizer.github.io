@@ -52,6 +52,7 @@ const COLUMNS: Column[] = [
   { key: 'rmd', label: 'RMD', group: 'income', essential: false, fmt: 'money', get: (r) => r.rmd, bg: 'rgba(59,94,138,0.1)' },
   { key: 'rothConv', label: 'Roth Conv', group: 'income', essential: false, fmt: 'money', get: (r) => r.rothConv, bg: 'rgba(59,94,138,0.1)' },
   { key: 'netSpend', label: 'Net Spend', group: 'income', essential: false, fmt: 'money', get: (r) => r.netSpend, bg: 'rgba(192,57,43,0.08)' },
+  { key: 'acaPremium', label: 'ACA Premium', group: 'income', essential: false, fmt: 'money', get: (r) => r.acaPremium, bg: 'rgba(192,57,43,0.08)' },
 
   // Taxes
   { key: 'fedTax', label: 'Fed Tax', group: 'taxes', essential: true, fmt: 'money', get: (r) => r.fedTax, bg: 'rgba(59,94,138,0.1)' },

@@ -68,6 +68,7 @@ export const palette = {
   bucketRoth:    '#c9a84c',   // gold
   incomeOther:   '#3b5e8a',   // blue-slate — distinct from textMuted
   taxOther:      '#7a96b0',   // textMuted — kept for state-tax / IRMAA aggregate
+  acaBar:        '#c0714d',   // warm coral — ACA premium (spend, not tax)
 };
 
 export const bucketColors = {

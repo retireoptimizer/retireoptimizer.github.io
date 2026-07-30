@@ -183,26 +183,23 @@ export default function InputsPage() {
             <hr className="divider" />
 
             {/* State + ACA row */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'auto 1fr', gap: 32 }}>
               <div>
                 <div className="subsection-label">State of Residence</div>
-                <div className="form-group">
-                  <label>Current State</label>
-                  <select value={plan.state} onChange={(e) => {
+                <div style={{ display: 'grid', gridTemplateColumns: plan.state === 'CUSTOM' ? '200px 132px' : '200px', rowGap: 4, columnGap: 16 }}>
+                  <label>State</label>
+                  {plan.state === 'CUSTOM' && <label>Flat Rate %</label>}
+                  <select style={{ height: 38, boxSizing: 'border-box' }} value={plan.state} onChange={(e) => {
                     setStateField(e.target.value);
                     if (e.target.value === 'CUSTOM' && plan.customStateTaxRate == null) {
                       setCustomStateTaxRate(0.05);
                     }
                   }}>
                     {listStates().map((s) => (
-                      <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
+                      <option key={s.code} value={s.code}>{s.code === 'CUSTOM' ? s.name : `${s.name} (${s.code})`}</option>
                     ))}
                   </select>
-                  <div className="helper-text">TX/FL/WA exact; CA/NY/IL approx</div>
-                </div>
-                {plan.state === 'CUSTOM' && (
-                  <div className="form-group" style={{ marginTop: 8 }}>
-                    <label>Flat Tax Rate</label>
+                  {plan.state === 'CUSTOM' && (
                     <NumberInput
                       value={(plan.customStateTaxRate ?? 0.05) * 100}
                       digits={2}
@@ -210,11 +207,12 @@ export default function InputsPage() {
                       max={20}
                       onCommit={(v) => setCustomStateTaxRate(v / 100)}
                     />
-                    <div className="helper-text">Applied to all income incl. retirement &amp; SS</div>
-                  </div>
-                )}
+                  )}
+                  <div className="helper-text">TX/FL/WA exact; CA/NY/IL approx</div>
+                  {plan.state === 'CUSTOM' && <div className="helper-text">Incl. SS &amp; retirement</div>}
+                </div>
               </div>
-              <div>
+              <div style={{ justifySelf: 'end' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                   <div className="subsection-label" style={{ marginBottom: 0 }}>ACA Healthcare</div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 400, color: 'var(--text-secondary)' }}>
@@ -223,7 +221,7 @@ export default function InputsPage() {
                   </label>
                 </div>
                 {asm.modelACA && (
-                  <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '150px auto' : '150px 100px auto', gap: 10, alignItems: 'start' }}>
                     <div className="form-group">
                       <label>Annual Premium</label>
                       <div className="input-prefix-wrap"><span className="input-prefix">$</span>
@@ -237,10 +235,10 @@ export default function InputsPage() {
                         <NumberInput value={asm.acaHouseholdSize} digits={0} min={1} max={8} onCommit={(v) => setAssumptions({ acaHouseholdSize: Math.round(v) })} />
                       </div>
                     )}
-                    <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 400, color: 'var(--text-secondary)', marginBottom: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', paddingTop: 18 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 400, color: 'var(--text-secondary)', marginBottom: 0, whiteSpace: 'nowrap' }}>
                         <input type="checkbox" checked={asm.acaNoSubsidy} onChange={(e) => setAssumptions({ acaNoSubsidy: e.target.checked })} style={{ accentColor: 'var(--gold)', width: 13, height: 13 }} />
-                        No subsidy (COBRA)
+                        No subsidy
                       </label>
                     </div>
                   </div>
