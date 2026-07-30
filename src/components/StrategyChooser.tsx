@@ -36,6 +36,11 @@ export default function StrategyChooser() {
     if (activeGoal) setPendingGoal(activeGoal);
   }, [activeGoal]);
 
+  // Clear pendingGoal when the user manually edits the custom blend (which clears optimizedForGoal).
+  useEffect(() => {
+    if (hasCustom && !activeGoal) setPendingGoal(null);
+  }, [hasCustom, activeGoal]);
+
   const canReOptimize = pendingGoal !== null && !optimizing && !(hasCustom && pendingGoal === activeGoal);
 
   const runReOptimize = async () => {
@@ -127,7 +132,7 @@ export default function StrategyChooser() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 }}>
               <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginRight: 4, whiteSpace: 'nowrap' }}>
-                Withdrawal:
+                Withdrawal Strategies:
               </span>
               {STRATEGIES.map((s) => {
                 const isActive = s.key === activeKey && !hasCustom && pendingGoal === null;

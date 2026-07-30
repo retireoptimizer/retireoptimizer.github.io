@@ -98,7 +98,7 @@ export const usePlanStore = create<PlanState>()(
       setWithdrawalStrategy: (withdrawalStrategy) => set((s) => ({
         plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined },
       })),
-      setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy } })),
+      setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy, optimizedForGoal: undefined } })),
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
       clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined } })),
       setConversion: (patch) => set((s) => ({ plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } })),
