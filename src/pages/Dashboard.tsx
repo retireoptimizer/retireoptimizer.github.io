@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
@@ -17,7 +16,6 @@ import { compareWithWithoutConversion } from '../engine/comparison';
 import { explainPolicy } from '../engine/explain/optimizerRationale';
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const plan = usePlanStore((s) => s.plan);
   const proj = useProjection();
   const displayMode = usePlanStore((s) => s.displayMode);
@@ -232,18 +230,6 @@ export default function Dashboard() {
           )}
           <div className="panel-body" style={{ padding: 0 }}>
             <ScenarioCompare limit={3} metricKeys={['longevity', 'endReal', 'lifetimeTax', 'wdRate']} allowRemove />
-          </div>
-        </div>
-
-        <div className="panel" style={{ marginTop: 20, background: 'rgba(13,27,46,0.02)', borderStyle: 'dashed' }}>
-          <div className="panel-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 24px' }}>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Deep-dive: <strong style={{ color: 'var(--text)' }}>Projections</strong> · <strong style={{ color: 'var(--text)' }}>Taxes &amp; Roth</strong> · <strong style={{ color: 'var(--text)' }}>Monte Carlo</strong>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => navigate('/projections')} style={{ fontSize: 12 }}>Projections →</button>
-              <button className="btn btn-ghost" onClick={() => navigate('/taxes')} style={{ fontSize: 12 }}>Taxes →</button>
-            </div>
           </div>
         </div>
 

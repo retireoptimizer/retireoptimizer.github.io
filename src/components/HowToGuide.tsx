@@ -173,6 +173,24 @@ function GuideContent() {
   return (
     <div>
 
+      {/* Legal disclaimer */}
+      <div style={{
+        background: 'rgba(13,27,46,0.04)',
+        border: '1px solid var(--border-light)',
+        borderRadius: 8,
+        padding: '10px 14px',
+        fontSize: 11,
+        color: 'var(--text-secondary)',
+        lineHeight: 1.6,
+        marginBottom: 28,
+      }}>
+        <strong>Not financial advice.</strong>{' '}
+        Retirement Optimizer is an educational planning tool for illustrative and informational purposes only.
+        It does not constitute professional financial, tax, investment, or legal advice.
+        Results are projections based on the assumptions you enter and are not guarantees of future performance.
+        Consult a qualified financial advisor before making retirement planning decisions.
+      </div>
+
       {/* ── Section 0: Getting Started ───────────────────────── */}
       <H2 id="s0">Getting Started</H2>
       <P>

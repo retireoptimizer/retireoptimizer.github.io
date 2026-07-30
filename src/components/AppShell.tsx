@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import BottomTabBar from './BottomTabBar';
 import HowToGuide from './HowToGuide';
+import ReleaseNotes from './ReleaseNotes';
 import { usePlanStore } from '../store/usePlanStore';
 import { downloadPlan, importPlanFromJSON, readFileAsText } from '../storage/exportImport';
 
@@ -13,6 +14,7 @@ export default function AppShell() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -125,10 +127,36 @@ export default function AppShell() {
 
       <div className="content">
         <Outlet />
+        <div style={{
+          margin: '32px 0 8px',
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border-light)',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          lineHeight: 1.6,
+          textAlign: 'center',
+        }}>
+          <div style={{ marginBottom: 6, color: 'var(--text-secondary)' }}>
+            <span>v{__APP_VERSION__}</span>
+            <span style={{ margin: '0 6px', opacity: 0.4 }}>·</span>
+            <span>{__BUILD_DATE__}</span>
+            <span style={{ margin: '0 6px', opacity: 0.4 }}>·</span>
+            <button
+              onClick={() => setReleaseOpen(true)}
+              style={{ background: 'none', border: 'none', padding: 0, fontSize: 11, color: 'var(--gold, #c9a84c)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}
+            >Release notes</button>
+          </div>
+          <strong style={{ color: 'var(--text-secondary)' }}>Not financial advice.</strong>{' '}
+          Retirement Optimizer is an educational planning tool for illustrative and informational purposes only.
+          It does not constitute professional financial, tax, investment, or legal advice.
+          Results are projections based on the assumptions you enter and are not guarantees of future performance.
+          Consult a qualified financial advisor before making retirement planning decisions.
+        </div>
       </div>
 
       <BottomTabBar />
       <HowToGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <ReleaseNotes open={releaseOpen} onClose={() => setReleaseOpen(false)} />
     </>
   );
 }

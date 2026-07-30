@@ -93,7 +93,7 @@ export default function WhatIfBar() {
             className="btn btn-ghost"
             onClick={reset}
             disabled={!dirty}
-            style={{ fontSize: 12, padding: '6px 12px', opacity: dirty ? 1 : 0.4 }}
+            style={{ fontSize: 12, padding: '6px 12px', opacity: dirty ? 1 : 0.4, background: 'rgba(13,27,46,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}
           >
             Reset
           </button>
