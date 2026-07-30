@@ -47,6 +47,7 @@ export default function InputsPage() {
   );
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   const A = plan.personA;
   const B = plan.personB;
@@ -78,18 +79,20 @@ export default function InputsPage() {
   const onBuildPlan = async () => {
     setBuilding(true);
     setBuildProgress(0);
+    setBuildError(null);
     try {
       const worker = getEngineWorker();
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
       const result = await worker.optimize(plan, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
       setOptimizerResult(result);
       applyOptimizerResult(applyResultToPlan(plan, result));
-    } catch {
-      // optimizer failed — navigate anyway, user sees unoptimized projection
-    } finally {
-      setBuilding(false);
       window.scrollTo(0, 0);
       navigate('/dashboard');
+    } catch (err) {
+      console.error('[InputsPage] optimizer failed:', err);
+      setBuildError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBuilding(false);
     }
   };
 
@@ -387,6 +390,11 @@ export default function InputsPage() {
               ? 'Enter names for all people in Personal Details to build your plan.'
               : 'Runs the optimizer for your selected goal, then opens your results dashboard.'}
           </div>
+          {buildError && (
+            <div style={{ fontSize: 12, color: 'var(--color-danger, #c0392b)', maxWidth: 400, textAlign: 'center' }}>
+              Optimizer failed: {buildError}
+            </div>
+          )}
         </div>
 
       </div>
