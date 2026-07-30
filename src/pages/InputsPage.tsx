@@ -59,6 +59,7 @@ export default function InputsPage() {
   const total = totals.taxable + totals.traditional + totals.roth;
   const nameA = A.name || 'Person A';
   const nameB = B?.name || 'Person B';
+  const canBuild = A.name.trim().length > 0 && (!B || B.name.trim().length > 0);
   const retirementAge = A.retirementAge;
   const planToAge = A.planToAge;
 
@@ -376,13 +377,15 @@ export default function InputsPage() {
           <button
             className="btn btn-gold"
             onClick={onBuildPlan}
-            disabled={building}
-            style={{ fontSize: 15, padding: '14px 40px', borderRadius: 10, opacity: building ? 0.7 : 1 }}
+            disabled={building || !canBuild}
+            style={{ fontSize: 15, padding: '14px 40px', borderRadius: 10, opacity: (building || !canBuild) ? 0.5 : 1 }}
           >
             {building ? `Optimizing… ${Math.round(buildProgress * 100)}%` : 'Build Plan →'}
           </button>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Runs the optimizer for your selected goal, then opens your results dashboard.
+          <div style={{ fontSize: 12, color: !canBuild ? 'var(--color-danger, #c0392b)' : 'var(--text-muted)' }}>
+            {!canBuild
+              ? 'Enter names for all people in Personal Details to build your plan.'
+              : 'Runs the optimizer for your selected goal, then opens your results dashboard.'}
           </div>
         </div>
 

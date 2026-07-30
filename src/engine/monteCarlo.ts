@@ -1,7 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import { runProjection } from './projection';
 import { mulberry32, parametricNormal, historicalBootstrap, historicalSequence } from './returnModels';
-import { indexOfYear } from './marketHistory';
+import { indexOfYear, START_YEAR, N_YEARS } from './marketHistory';
 
 export type ReturnModel = 'historical' | 'parametric';
 
@@ -261,4 +261,94 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
     equityPct,
     stressScenarios,
   };
+}
+
+// ── Historical Sequence Sweep (cFIREsim-style) ────────────────────────────────
+
+export interface HistoricalCohort {
+  startYear: number;
+  survived: boolean;
+  endBalanceReal: number;
+  /** True when the full retirement window is covered by historical data (no padding needed). */
+  fullCoverage: boolean;
+  /** Real-$ portfolio by age — NaN beyond historical data coverage. */
+  portfolioByAge: number[];
+}
+
+export interface HistoricalSweepResult {
+  ages: number[];
+  cohorts: HistoricalCohort[];
+  /** Success rate among full-coverage cohorts only. */
+  historicalSuccessRate: number;
+  fullCoverageCount: number;
+  /** Percentile fan across full-coverage cohort trajectories (real $). */
+  p10: number[];
+  p25: number[];
+  p50: number[];
+  p75: number[];
+  p90: number[];
+}
+
+/**
+ * Runs every valid historical retirement cohort (1928–2023) through the plan
+ * using actual sequential market returns + CPI. Equivalent to cFIREsim's rolling
+ * window analysis. Pre-retirement years use the plan's tradReturn.
+ */
+export function runHistoricalSweep(plan: Plan, opts: { equityPct?: number } = {}): HistoricalSweepResult {
+  const equityPct = opts.equityPct ?? plan.assumptions.equityPct ?? 0.6;
+  const baseline = runProjection(plan);
+  const nYears = baseline.rows.length;
+  const ages = baseline.rows.map((r) => r.ageA);
+
+  const retireYearIdx = Math.max(0, baseline.rows.findIndex((r) => r.phase !== 'Accum.' && r.phase !== 'Past Plan'));
+  const nStressYears = nYears - retireYearIdx;
+  const preRet = plan.assumptions.tradReturn;
+  const preRetInf = plan.assumptions.inflation;
+
+  const cohorts: HistoricalCohort[] = [];
+
+  for (let si = 0; si < N_YEARS; si++) {
+    const startYear = START_YEAR + si;
+    const seq = historicalSequence(equityPct, nStressYears, si);
+    const fullCoverage = seq.yearsAvailable >= nStressYears;
+
+    const stressReturns = [...seq.returns, ...Array(nStressYears - seq.yearsAvailable).fill(preRet)];
+    const stressInflations = [...seq.inflations, ...Array(nStressYears - seq.yearsAvailable).fill(preRetInf)];
+
+    const returns = [...Array(retireYearIdx).fill(preRet), ...stressReturns];
+    const inflations = [...Array(retireYearIdx).fill(preRetInf), ...stressInflations];
+
+    const out = projectWithReturns(plan, returns, inflations);
+
+    const truncateAt = retireYearIdx + seq.yearsAvailable;
+    const portfolioByAge = out.endByAge.map((v, i) => (i < truncateAt ? v : NaN));
+
+    cohorts.push({ startYear, survived: !out.ranOut, endBalanceReal: out.endRealTotal, fullCoverage, portfolioByAge });
+  }
+
+  const fullCoverageCohorts = cohorts.filter((c) => c.fullCoverage);
+  const historicalSuccessRate = fullCoverageCohorts.length > 0
+    ? fullCoverageCohorts.filter((c) => c.survived).length / fullCoverageCohorts.length
+    : 0;
+
+  // Percentile fan from full-coverage cohort trajectories.
+  const matrix: number[][] = Array.from({ length: nYears }, () => []);
+  for (const c of fullCoverageCohorts) {
+    for (let i = 0; i < nYears; i++) {
+      const v = c.portfolioByAge[i];
+      if (!isNaN(v)) matrix[i].push(v);
+    }
+  }
+
+  const p10: number[] = [], p25: number[] = [], p50: number[] = [], p75: number[] = [], p90: number[] = [];
+  for (const col of matrix) {
+    const sorted = [...col].sort((a, b) => a - b);
+    p10.push(quantile(sorted, 0.10));
+    p25.push(quantile(sorted, 0.25));
+    p50.push(quantile(sorted, 0.50));
+    p75.push(quantile(sorted, 0.75));
+    p90.push(quantile(sorted, 0.90));
+  }
+
+  return { ages, cohorts, historicalSuccessRate, fullCoverageCount: fullCoverageCohorts.length, p10, p25, p50, p75, p90 };
 }

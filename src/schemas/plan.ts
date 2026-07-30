@@ -164,7 +164,7 @@ export type Plan = z.infer<typeof PlanSchema>;
 /** Blank starting plan — shown to new users. All values are placeholders to be replaced. */
 export const defaultPlan = (): Plan => ({
   personA: {
-    name: '',
+    name: 'Person A',
     dob: '1975-01-01',
     retirementAge: 65,
     planToAge: 90,
@@ -196,8 +196,12 @@ export const defaultPlan = (): Plan => ({
     },
     personB: undefined,
   },
-  incomeStreams: [],
-  expenseStreams: [],
+  incomeStreams: [
+    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1 },
+  ],
+  expenseStreams: [
+    { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: 0.025 },
+  ],
   withdrawalStrategy: 'taxfirst',
   conversion: {
     mode: 'off',
@@ -207,7 +211,7 @@ export const defaultPlan = (): Plan => ({
     bracketCeiling: 96950,
     manualSchedule: {},
   },
-  state: 'IL',
+  state: 'NONE',
   goals: [],
 });
 

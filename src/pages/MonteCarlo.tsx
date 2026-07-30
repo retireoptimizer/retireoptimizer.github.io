@@ -6,8 +6,10 @@ import type { MonteCarloResult } from '../engine/monteCarlo';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import MonteCarloFan from '../components/charts/MonteCarloFan';
+import HistoricalCohortChart from '../components/charts/HistoricalCohortChart';
 import StressScenarioModal from '../components/StressScenarioModal';
-import { fmtM, fmtPct } from '../lib/format';
+import { fmtM, fmtK, fmtPct } from '../lib/format';
+import type { HistoricalSweepResult } from '../engine/monteCarlo';
 import { generateInsights, insightsForSurface } from '../engine/explain';
 import InsightCard from '../components/InsightCard';
 
@@ -49,6 +51,8 @@ export default function MonteCarlo() {
   const [detailScenario, setDetailScenario] = useState<number | null>(null);
   const [optimizingRobust, setOptimizingRobust] = useState(false);
   const [robustProgress, setRobustProgress] = useState<{ frac: number; msg?: string }>({ frac: 0 });
+  const [historicalResult, setHistoricalResult] = useState<HistoricalSweepResult | null>(null);
+  const [runningHistorical, setRunningHistorical] = useState(false);
 
   const run = async () => {
     setRunning(true);
@@ -58,6 +62,17 @@ export default function MonteCarlo() {
       setResult(mc);
     } finally {
       setRunning(false);
+    }
+  };
+
+  const runHistorical = async () => {
+    setRunningHistorical(true);
+    try {
+      const worker = getEngineWorker();
+      const sweep = await worker.historicalSweep(robustnessPlan ?? plan, { equityPct: equityPct / 100 });
+      setHistoricalResult(sweep);
+    } finally {
+      setRunningHistorical(false);
     }
   };
 
@@ -164,8 +179,10 @@ export default function MonteCarlo() {
                 {optimizingRobust ? 'Optimizing…' : 'Optimize for Robustness'}
               </button>
             </div>
-            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-              Blocks of real S&P 500 + Treasury returns (1928–2023) stitched randomly, blended {mixLabel} stock/bond. Preserves sequence-of-returns risk. 500 trials ≈ 1–2 s.
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--text-secondary)' }}>Historical block bootstrap</strong> — randomly assembles 3-year blocks of real S&amp;P 500 + Treasury returns (1928–2023), blended {mixLabel} stock/bond, into 500 synthetic sequences.
+              Each block preserves short-run volatility clustering, but long secular trends (e.g., the 16-year 1966–1982 stagflation era) get broken up and diluted.
+              Result: a broad probability distribution over many possible futures. Tends to be somewhat optimistic for long retirements because it cannot reproduce multi-decade bear markets intact.
             </div>
           </div>
         </div>
@@ -304,6 +321,100 @@ export default function MonteCarlo() {
             )}
           </div>
         </div>
+
+        {/* ── Historical Sequence Analysis ────────────────────────── */}
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Historical Sequence Analysis</div>
+            <span className={`badge ${historicalResult ? 'badge-success' : 'badge-neutral'}`}>
+              {runningHistorical ? 'Running' : historicalResult ? `${historicalResult.fullCoverageCount} cohorts` : 'Idle'}
+            </span>
+          </div>
+          <div className="panel-body">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1, lineHeight: 1.6 }}>
+                <strong style={{ color: 'var(--text-secondary)' }}>Historical sequence analysis</strong> — runs your plan through every actual retirement cohort from 1928 to 2023 in order, using real sequential returns and CPI with no sampling or randomization.
+                Someone who retired in 1966 gets the actual 1966–2000 return sequence, including all 16 years of stagflation intact.
+                The historical success rate is the share of full-coverage cohorts that did not run out of money.
+                More conservative than bootstrap for long retirements; red lines on the chart are the cohorts that failed.
+              </div>
+              <button className="btn btn-gold" onClick={runHistorical} disabled={runningHistorical || running || optimizingRobust}>
+                {runningHistorical ? 'Running…' : '▶ Run Historical Sequences'}
+              </button>
+            </div>
+
+            {historicalResult && (() => {
+              const hr = historicalResult;
+              const failed = hr.cohorts.filter((c) => c.fullCoverage && !c.survived);
+              const worst = hr.cohorts.filter((c) => c.fullCoverage).sort((a, b) => a.endBalanceReal - b.endBalanceReal)[0];
+              const hColor = hr.historicalSuccessRate >= 0.95 ? 'var(--success)' : hr.historicalSuccessRate >= 0.80 ? 'var(--warning)' : 'var(--danger)';
+              return (
+                <>
+                  <div className="metrics-grid" style={{ marginBottom: 16 }}>
+                    <div className="metric-card">
+                      <div className="metric-label">Historical Success Rate</div>
+                      <div className="metric-value" style={{ color: hColor }}>{fmtPct(hr.historicalSuccessRate, 0)}</div>
+                      <div className="metric-sub">Full-coverage cohorts only</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Cohorts Tested</div>
+                      <div className="metric-value">{hr.fullCoverageCount}</div>
+                      <div className="metric-sub">Full retirement window covered</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Failed Cohorts</div>
+                      <div className="metric-value" style={{ color: failed.length > 0 ? 'var(--danger)' : 'var(--success)' }}>{failed.length}</div>
+                      <div className="metric-sub">{failed.length > 0 ? failed.map((c) => c.startYear).join(', ') : 'All survived'}</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Worst Cohort End Balance</div>
+                      <div className="metric-value">{worst ? fmtK(worst.endBalanceReal) : '—'}</div>
+                      <div className="metric-sub">{worst ? `Retire ${worst.startYear} · today's $` : ''}</div>
+                    </div>
+                  </div>
+
+                  {/* Survival timeline */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 5, display: 'flex', gap: 12 }}>
+                      <span>Retirement start year</span>
+                      <span style={{ color: '#1a8a5a' }}>■ Survived</span>
+                      <span style={{ color: '#c0392b' }}>■ Failed</span>
+                      <span style={{ color: 'rgba(13,27,46,0.2)' }}>■ Partial data</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 1 }}>
+                      {hr.cohorts.map((c) => (
+                        <div
+                          key={c.startYear}
+                          title={`Retire ${c.startYear}: ${!c.fullCoverage ? 'Partial data' : c.survived ? '✓ Survived' : '✗ Failed'}`}
+                          style={{
+                            width: 7, minWidth: 7, height: 20, borderRadius: 2, cursor: 'default',
+                            background: !c.fullCoverage ? 'rgba(13,27,46,0.12)' : c.survived ? '#1a8a5a' : '#c0392b',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 1, marginTop: 2 }}>
+                      {hr.cohorts.map((c) => (
+                        <div key={c.startYear} style={{ width: 7, minWidth: 7, textAlign: 'center', fontSize: 8, color: 'var(--text-muted)', lineHeight: 1 }}>
+                          {c.startYear % 10 === 0 ? String(c.startYear).slice(2) : ''}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <HistoricalCohortChart result={hr} height={300} />
+                </>
+              );
+            })()}
+
+            {!historicalResult && (
+              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', background: 'rgba(13,27,46,0.03)', borderRadius: 8 }}>
+                Run historical sequences to see all {`1928–2023`} cohorts plotted against your plan
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
 
       {detailScenario !== null && result && (

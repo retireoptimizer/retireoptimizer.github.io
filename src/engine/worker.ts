@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import * as Comlink from 'comlink';
 import type { Plan } from '../schemas/plan';
-import { runMonteCarlo, type MonteCarloOptions, type MonteCarloResult } from './monteCarlo';
+import { runMonteCarlo, runHistoricalSweep, type MonteCarloOptions, type MonteCarloResult, type HistoricalSweepResult } from './monteCarlo';
 import { optimizeStrategy, type OptimizeResult } from './optimizer';
 import { previewAllPresets, type PresetPreviewResult } from './presetPreview';
 import type { UserGoal } from './recommender';
@@ -14,6 +14,7 @@ export interface OptimizeWorkerOptions {
 
 export interface EngineWorkerAPI {
   monteCarlo(plan: Plan, opts?: MonteCarloOptions): MonteCarloResult;
+  historicalSweep(plan: Plan, opts?: { equityPct?: number }): HistoricalSweepResult;
   optimize(
     plan: Plan,
     goal: UserGoal,
@@ -26,6 +27,9 @@ export interface EngineWorkerAPI {
 const api: EngineWorkerAPI = {
   monteCarlo(plan, opts) {
     return runMonteCarlo(plan, opts);
+  },
+  historicalSweep(plan, opts) {
+    return runHistoricalSweep(plan, opts);
   },
   optimize(plan, goal, options, onProgress) {
     return optimizeStrategy(plan, goal, {

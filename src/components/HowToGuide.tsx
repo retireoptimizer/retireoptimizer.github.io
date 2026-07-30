@@ -11,6 +11,7 @@ const SECTIONS = [
   { id: 's6', label: 'Projections' },
   { id: 's7', label: 'Tax Planning' },
   { id: 's8', label: 'Monte Carlo' },
+  { id: 's9', label: 'Historical Sequences' },
 ];
 
 export default function HowToGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -620,32 +621,42 @@ function GuideContent() {
         of different market histories?</em> Some of those histories include crashes at exactly
         the wrong moment. Some are boom periods. The simulation tests your plan against all of them.
       </P>
+
+      <H3>How it works — historical block bootstrap</H3>
       <P>
-        The engine runs 500 or more simulated futures by stitching together sequences of real
-        historical market returns going back to 1928. Every simulation plays out your full spending
-        plan and checks whether the portfolio makes it to your Plan-To Age.
+        The engine draws from real S&amp;P 500, Treasury, and CPI data going back to 1928. Each
+        simulated future is built by randomly picking 3-year chunks of actual history and stitching
+        them end-to-end until the sequence covers your full retirement. Using 3-year blocks — rather
+        than single years — preserves short-run volatility clustering: crashes tend to bleed into
+        the following year, and rallies often run for a few years. With 500 trials you get a
+        realistic spread of outcomes from unlucky to fortunate.
+      </P>
+      <P>
+        <strong>What this method cannot reproduce:</strong> multi-decade secular trends. The
+        1966–1982 stagflation era lasted 16 consecutive years of near-zero real returns. Chopping
+        it into 3-year blocks and mixing them with random other periods dilutes that sustained
+        damage. As a result, bootstrap success rates tend to be somewhat optimistic for plans
+        with long retirements — typically 20–30 years or more.
       </P>
 
-      <H3>Two ways to run the simulation</H3>
+      <H3>Running the simulation</H3>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.9, paddingLeft: 20, margin: '0 0 12px' }}>
         <li>
-          <strong>Run Simulation</strong> — runs Monte Carlo against your current saved plan
-          using the settings in the Simulation Inputs panel. Takes 1–2 seconds. Run this first
-          to understand your baseline success rate, and again any time you change the simulation
-          settings.
+          <strong>▶ Run Simulation</strong> — runs Monte Carlo against your current saved plan.
+          Takes 1–2 seconds. Run this first to get a baseline, and again any time you change
+          simulation settings.
         </li>
         <li>
-          <strong>Optimize for Robustness</strong> — a deeper pass that tests your withdrawal
-          strategy across 15 different historical return sequences, then picks the strategy that
-          holds up best across all of them before running the full simulation. Takes 60–90
-          seconds. Use this when you like your plan overall but want to squeeze out extra
-          resilience against bad-luck sequences early in retirement.
+          <strong>Optimize for Robustness</strong> — tests your withdrawal strategy across 15
+          different historical return sequences, picks the strategy that holds up best across all
+          of them, then runs the full simulation. Takes 60–90 seconds. Use this when you want to
+          squeeze out extra resilience — it is a fine-tuning step, not a fix for a plan that is
+          fundamentally underfunded.
         </li>
       </ul>
       <Tip>
         Run the standard simulation first to establish your baseline. Use Optimize for Robustness
-        only once you have a plan you broadly feel good about — it is a fine-tuning step, not a
-        fix for a plan that is fundamentally underfunded.
+        only once you have a plan you broadly feel good about.
       </Tip>
 
       <H3>Robustness optimization — preview and apply</H3>
@@ -655,33 +666,25 @@ function GuideContent() {
         chart updates to reflect the optimized strategy. You then have two choices:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.9, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li>
-          <strong>Apply to Plan</strong> — permanently saves the new strategy to your plan. All
-          other pages (Dashboard, Projections, Tax Planning) update to reflect it, exactly as if
-          you had configured that strategy manually on the Dashboard.
-        </li>
-        <li>
-          <strong>Discard</strong> — throws away the robustness result and reverts the chart to
-          your original saved plan. Nothing in your plan is changed.
-        </li>
+        <li><strong>Apply to Plan</strong> — permanently saves the new strategy. All other pages update to reflect it.</li>
+        <li><strong>Discard</strong> — throws away the result and reverts to your original saved plan.</li>
       </ul>
       <P>
-        The robustness optimizer typically produces a strategy that scores slightly lower on the
-        deterministic Projections page (average-case scenario) but meaningfully higher on Monte
-        Carlo success rate — because it optimizes for the worst historical sequences, not just
-        the average one. For most people, that trade-off is worth taking.
+        The robustness optimizer typically scores slightly lower on the deterministic Projections
+        page but meaningfully higher on Monte Carlo success rate — because it optimizes for bad
+        sequences, not the average case. For most people, that trade-off is worth taking.
       </P>
 
       <H3>Simulation settings</H3>
       <FieldTable rows={[
-        ["Equity Allocation %", "The stock/bond split applied inside each simulated year. Match this to your actual portfolio allocation. More stocks means more upside potential and more risk in bad years.", "60%"],
-        ["Number of Trials", "How many simulated futures to run. 500 is fast and accurate enough for planning decisions. 1,000–2,000 gives smoother percentile bands at the cost of a longer wait.", "500"],
+        ["Equity Allocation %", "The stock/bond split applied inside each simulated year. Match this to your actual portfolio allocation. More stocks means more upside and more risk in bad years.", "60%"],
+        ["Number of Trials", "How many simulated futures to run. 500 is fast and accurate enough for planning decisions. 1,000–2,000 gives smoother bands at the cost of a longer wait.", "500"],
       ]} />
 
       <H3>How to read the success rate</H3>
       <FieldTable rows={[
         ["95%+", "Very strong. Your plan survives almost every realistic market history. You have a meaningful safety margin.", ""],
-        ["90–95%", "Healthy. Only the worst handful of historical sequences cause problems. This is a common planning target.", ""],
+        ["90–95%", "Healthy. Only the worst handful of historical sequences cause problems. A common planning target.", ""],
         ["75–90%", "Worth watching. A meaningful number of scenarios end in shortfall. Consider retiring slightly later or trimming spending.", ""],
         ["50–75%", "Under pressure. More than a quarter of simulations run out of money. The plan needs meaningful changes.", ""],
         ["Below 50%", "At risk. More than half of simulated futures deplete the portfolio. Major structural changes required.", ""],
@@ -695,25 +698,20 @@ function GuideContent() {
         <li><strong>Red ribbon at the bottom</strong> — the fraction of simulations that have already run out of money by each age. If the ribbon appears before age 80, the plan is fragile to early-retirement bad luck — the most damaging kind.</li>
       </ul>
 
+      <H3>Worst-case historical cohort cards</H3>
+      <P>
+        Below the fan chart, four named historical crises (1929 crash, 1966 stagflation, 1973 oil
+        shock, 2000 dot-com + 2008 double-crash) are run as continuous historical sequences applied
+        to your retirement start date. Click a card to overlay that trajectory on the fan chart as
+        a dashed line. If your plan survives 1929 and 1966, it has genuine resilience.
+      </P>
+
       <H3>Key metrics</H3>
       <FieldTable rows={[
         ["Median Final Portfolio", "The middle-of-the-road outcome. Half of simulations ended better than this number, half worse.", "$620K"],
-        ["10th Percentile", "A bad-luck scenario — only 10% of simulations ended worse than this. If this is still positive, the plan has real resilience even in difficult markets.", "$85K"],
-        ["90th Percentile", "A good-luck scenario — only 10% of simulations ended better.", "$1.8M"],
+        ["10th Percentile", "A bad-luck scenario. Only 10% of simulations ended worse. If still positive, the plan has real resilience in difficult markets.", "$85K"],
+        ["90th Percentile", "A good-luck scenario. Only 10% of simulations ended better.", "$1.8M"],
       ]} />
-
-      <H3>Historical Stress Scenarios</H3>
-      <P>
-        The table below the fan chart lists named historical crises — the 1929 crash, 1970s
-        stagflation, the dot-com bust, the 2008 financial crisis, and others — applied directly
-        to your plan&apos;s timeline starting at your retirement date. Click any row to overlay
-        that scenario&apos;s portfolio path on the fan chart as a dashed line.
-      </P>
-      <P>
-        If your plan survives the Great Depression or 1970s stagflation, it is genuinely
-        resilient. A plan that only fails in the most extreme historical scenarios is well-designed;
-        one that fails in moderate scenarios needs structural changes.
-      </P>
 
       <H3>What to do if your success rate is below 90%</H3>
       <P>
@@ -722,10 +720,107 @@ function GuideContent() {
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: 20, margin: '0 0 24px' }}>
         <li><strong>Retiring 2–3 years later</strong> typically has the largest single impact — more contributions, fewer withdrawal years, and a higher Social Security benefit all compound together.</li>
-        <li><strong>Reducing spending by 10%</strong> often moves the needle more than changing your asset allocation or return assumptions.</li>
-        <li><strong>Testing lower return assumptions</strong> shows how sensitive your plan is to market outcomes. If a 1% drop in returns causes the plan to fail, build in more buffer before you retire.</li>
-        <li><strong>Roth conversions</strong> will not dramatically shift your success probability (they move tax timing, not total assets), but they can improve outcomes in the 10th-percentile bad-luck scenarios by reducing tax drag when markets are already down.</li>
-        <li><strong>Optimize for Robustness</strong> — if you are at 85–92% and want to push higher without changing your retirement date or spending, this often finds a withdrawal sequencing that gains a few more percentage points of resilience.</li>
+        <li><strong>Reducing spending by 10%</strong> often moves the needle more than changing asset allocation or return assumptions.</li>
+        <li><strong>Testing lower return assumptions</strong> shows how sensitive the plan is to market outcomes. If a 1% drop causes failure, build in more buffer before you retire.</li>
+        <li><strong>Roth conversions</strong> will not dramatically shift success probability (they move tax timing, not total assets), but they can improve the 10th-percentile outcome by reducing tax drag when markets are already down.</li>
+        <li><strong>Optimize for Robustness</strong> — if you are at 85–92% and want to push higher without changing your retirement date or spending, this often finds a withdrawal sequencing that gains a few more percentage points.</li>
+      </ul>
+
+      {/* ── Section 9: Historical Sequences ─────────────────── */}
+      <H2 id="s9">Historical Sequence Analysis</H2>
+      <P>
+        This is a fundamentally different type of simulation from the bootstrap above, and the
+        two answer different questions. Understanding both helps you know how confident to be in
+        your plan.
+      </P>
+
+      <H3>How it works — rolling cohorts</H3>
+      <P>
+        The engine takes every calendar year from 1928 to 2023 and asks: "What would have happened
+        to someone who retired in that year and followed this exact plan?" For a retiree starting
+        in 1966, it applies the actual 1966 return, then the actual 1967 return, then 1968, and so
+        on — in strict historical order, with no randomization whatsoever.
+      </P>
+      <P>
+        This is the same method used by tools like cFIREsim. Each start year is called a{' '}
+        <em>retirement cohort</em>. The <strong>historical success rate</strong> is simply the
+        share of cohorts whose portfolio lasted to your Plan-To Age.
+      </P>
+      <P>
+        A cohort is marked as <strong>full coverage</strong> only when the historical record is
+        long enough to cover your entire retirement window without running out of data. A retiree
+        who started in 2010 with a 40-year plan would reach 2050 — well beyond 2023 — so that
+        cohort has partial coverage and is excluded from the success rate calculation.
+      </P>
+
+      <H3>Why it is more conservative than bootstrap for long retirements</H3>
+      <P>
+        The 1966–1982 stagflation era ran 16 consecutive years of near-zero or negative real
+        returns. In the bootstrap, that era gets chopped into 3-year blocks and mixed with random
+        other periods — any one simulation might get two of those stagflation blocks and then jump
+        to the 1990s boom. In the historical sequence, the 1966 cohort gets all 16 years of
+        stagflation intact. That sustained damage is much harder for a plan to absorb.
+      </P>
+      <P>
+        If the bootstrap says 95% and the historical sequences say 80%, the gap is telling you
+        something important: your plan&apos;s weakness is long secular bear markets, not short
+        crashes. That is a different risk than what the bootstrap measures and may require a
+        different response (lower withdrawal rate, more conservative asset allocation, flexible
+        spending rules).
+      </P>
+
+      <H3>How to read the survival timeline</H3>
+      <P>
+        The colored bar shows one block per retirement start year from 1928 to 2023. Green means
+        that cohort&apos;s portfolio survived to your Plan-To Age. Red means it ran out of money.
+        Gray blocks have partial historical coverage and are not included in the success rate.
+        Hover over any block to see the exact year and result.
+      </P>
+      <P>
+        Clusters of red blocks reveal the dangerous eras: typically 1929–1932 (Great Depression),
+        1965–1973 (stagflation onset), and sometimes 1999–2001 (dot-com bust). If red blocks
+        appear outside those clusters, examine your plan — moderate eras should not be causing
+        failure.
+      </P>
+
+      <H3>How to read the trajectory chart</H3>
+      <P>
+        The gold fan shows the range of portfolio outcomes across full-coverage cohorts — same
+        structure as the bootstrap fan chart. The thin red lines running through the fan are the
+        individual trajectories of cohorts that eventually ran out of money. You can see both
+        when depletion started and how steeply the portfolio fell.
+      </P>
+      <P>
+        The median line reflects the cohort at the 50th percentile — half of full-coverage
+        cohorts ended with more, half with less.
+      </P>
+
+      <H3>Using bootstrap and historical sequences together</H3>
+      <P>
+        The two tools are complementary, not redundant. A useful planning posture:
+      </P>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: 20, margin: '0 0 12px' }}>
+        <li>Use the <strong>bootstrap success rate</strong> as your primary probability estimate — it has 500 trials and gives a statistically stable read on your risk profile.</li>
+        <li>Use the <strong>historical success rate</strong> as a stress-test floor — if the plan fails more than a handful of historical cohorts, it has a structural vulnerability to the kind of sustained bad decade that the bootstrap understates.</li>
+        <li>If bootstrap and historical rates are close (within 5–8%), the plan is robust to both short volatility and long secular trends. If the gap is large, the plan relies on the future not producing a decade as bad as 1966–1982 or 1929–1933.</li>
+      </ul>
+      <Tip>
+        A plan that passes both tests — bootstrap 90%+ and historical 85%+ — is genuinely well
+        constructed. A plan that passes bootstrap but fails many historical cohorts is telling you
+        it would have struggled in the real world&apos;s worst decades, regardless of what a
+        probabilistic model says.
+      </Tip>
+
+      <H3>Worst cohort end balance</H3>
+      <P>
+        This metric cards shows the real-dollar end balance of the single worst-performing
+        full-coverage cohort. It is not the cohort that ran out earliest — it is the one that
+        ended with the smallest (possibly negative) balance at your Plan-To Age. This is your
+        absolute downside under actual historical conditions.
+      </P>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: 20, margin: '0 0 24px' }}>
+        <li>If this number is positive, even the worst historical market environment left something in the portfolio.</li>
+        <li>If it is deeply negative, the worst cohort ran out significantly before your Plan-To Age — examine which year it was and what made it particularly damaging.</li>
       </ul>
     </div>
   );
