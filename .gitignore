@@ -30,3 +30,10 @@ blob-report
 
 # Firebase local deploy cache
 .firebase/
+
+# Claude Code local config and AI instructions
+.claude/
+CLAUDE.md
+
+# Personal reference artifacts (research snapshots, prototypes)
+reference/
