@@ -26,3 +26,5 @@ jobs:
         with:
           folder: dist
           branch: gh-pages
+          git-config-name: retireoptimizer
+          git-config-email: retireoptimizer@users.noreply.github.com
