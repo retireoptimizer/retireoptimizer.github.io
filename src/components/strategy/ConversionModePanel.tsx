@@ -22,7 +22,7 @@ export default function ConversionModePanel() {
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
   const convBracketOptions = brackets.slice(0, 4)
-    .filter(([top]) => top <= plan.withdrawalBracketCeiling)
+    .filter(([top]) => plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
     .map(([top, rate]) => ({
       value: top,
       label: `Top of ${Math.round(rate * 100)}% bracket ($${top.toLocaleString()})`,
