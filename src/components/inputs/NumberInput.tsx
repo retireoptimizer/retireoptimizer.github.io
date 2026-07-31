@@ -11,6 +11,7 @@ interface Props {
   className?: string;
   style?: CSSProperties;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 const formatFor = (v: number, scale: number, digits?: number, withCommas = false): string => {
@@ -32,6 +33,7 @@ export function NumberInput({
   className,
   style,
   placeholder,
+  disabled,
 }: Props) {
   // Live comma formatting is only useful for unscaled, integer-ish dollar inputs.
   // Percentage / decimal inputs (scale != 1 or digits set) skip it so the user
@@ -77,6 +79,7 @@ export function NumberInput({
       style={style}
       value={draft}
       placeholder={placeholder}
+      disabled={disabled}
       onFocus={() => { focusedRef.current = true; }}
       onChange={handleChange}
       onBlur={handleBlur}

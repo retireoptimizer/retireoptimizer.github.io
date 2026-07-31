@@ -13,9 +13,9 @@ export type Person = z.infer<typeof PersonSchema>;
 
 export const AssumptionsSchema = z.object({
   /** Per-bucket expected annual growth rates. Replaces the old single preRetReturn/postRetReturn. */
-  taxableReturn: z.number().default(0.05),
+  taxableReturn: z.number().default(0.055),
   tradReturn: z.number().default(0.055),
-  rothReturn: z.number().default(0.06),
+  rothReturn: z.number().default(0.055),
   inflation: z.number(),
   /** Equity (stock) share of the portfolio, 0..1. Drives Monte Carlo stock/bond blend. */
   equityPct: z.number().min(0).max(1).default(0.6),
@@ -175,9 +175,9 @@ export const defaultPlan = (): Plan => ({
   },
   personB: undefined,
   assumptions: {
-    taxableReturn: 0.05,
+    taxableReturn: 0.055,
     tradReturn: 0.055,
-    rothReturn: 0.06,
+    rothReturn: 0.055,
     inflation: 0.025,
     equityPct: 0.6,
     rmdStartAge: 75,
@@ -237,9 +237,9 @@ export const samplePlan = (): Plan => ({
     ssClaimAge: 62,
   },
   assumptions: {
-    taxableReturn: 0.05,
+    taxableReturn: 0.055,
     tradReturn: 0.055,
-    rothReturn: 0.06,
+    rothReturn: 0.055,
     inflation: 0.025,
     equityPct: 0.6,
     rmdStartAge: 75,

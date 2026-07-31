@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as Comlink from 'comlink';
 import { useNavigate } from 'react-router-dom';
 import { usePlanStore } from '../store/usePlanStore';
@@ -58,6 +58,8 @@ export default function InputsPage() {
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
   const [buildError, setBuildError] = useState<string | null>(null);
+  const [dobA, setDobA] = useState(plan.personA.dob);
+  const [dobB, setDobB] = useState(plan.personB?.dob ?? '');
 
   const A = plan.personA;
   const B = plan.personB;
@@ -70,8 +72,15 @@ export default function InputsPage() {
   const total = totals.taxable + totals.traditional + totals.roth;
   const nameA = A.name || 'Person A';
   const nameB = B?.name || 'Person B';
+  const isRetiredA = isValidDob(A.dob) && ageFromDob(A.dob) >= A.retirementAge;
+  const isRetiredB = B ? (isValidDob(B.dob) && ageFromDob(B.dob) >= B.retirementAge) : false;
+  const splitPctA = Math.round((pf.personA.contribSplit.taxable + pf.personA.contribSplit.traditional + pf.personA.contribSplit.roth) * 100);
+  const splitPctB = pf.personB ? Math.round((pf.personB.contribSplit.taxable + pf.personB.contribSplit.traditional + pf.personB.contribSplit.roth) * 100) : 100;
+  const splitValidA = isRetiredA || pf.personA.annualContribution === 0 || splitPctA === 100;
+  const splitValidB = !pf.personB || isRetiredB || pf.personB.annualContribution === 0 || splitPctB === 100;
   const canBuild = A.name.trim().length > 0 && (!B || B.name.trim().length > 0)
-    && isValidDob(A.dob) && (!B || isValidDob(B.dob));
+    && isValidDob(A.dob) && (!B || isValidDob(B.dob))
+    && splitValidA && splitValidB;
   const retirementAge = A.retirementAge;
   const planToAge = A.planToAge;
 
@@ -136,9 +145,12 @@ export default function InputsPage() {
               </div>
               <div className="form-group">
                 <label>Date of Birth</label>
-                <input type="date" value={A.dob} onChange={(e) => { if (isValidDob(e.target.value)) setPersonA({ dob: e.target.value }); }} />
-                <div className="helper-text" style={{ color: isValidDob(A.dob) ? undefined : 'var(--color-danger, #c0392b)' }}>
-                  {isValidDob(A.dob) ? `Age ${ageFromDob(A.dob)}` : 'Invalid date'}
+                <input type="date" value={dobA}
+                  onChange={(e) => { setDobA(e.target.value); if (isValidDob(e.target.value)) setPersonA({ dob: e.target.value }); }}
+                  onBlur={() => { if (!isValidDob(dobA)) setDobA(A.dob); }}
+                />
+                <div className="helper-text" style={{ color: isValidDob(dobA) ? undefined : 'var(--color-danger, #c0392b)' }}>
+                  {isValidDob(dobA) ? `Age ${ageFromDob(dobA)}` : 'Invalid date'}
                 </div>
               </div>
               <div className="form-group">
@@ -160,9 +172,12 @@ export default function InputsPage() {
                 </div>
                 <div className="form-group">
                   <label>Date of Birth</label>
-                  <input type="date" value={B.dob} onChange={(e) => { if (isValidDob(e.target.value)) setPersonB({ dob: e.target.value }); }} />
-                  <div className="helper-text" style={{ color: isValidDob(B.dob) ? undefined : 'var(--color-danger, #c0392b)' }}>
-                    {isValidDob(B.dob) ? `Age ${ageFromDob(B.dob)}` : 'Invalid date'}
+                  <input type="date" value={dobB}
+                    onChange={(e) => { setDobB(e.target.value); if (isValidDob(e.target.value)) setPersonB({ dob: e.target.value }); }}
+                    onBlur={() => { if (!isValidDob(dobB)) setDobB(B.dob); }}
+                  />
+                  <div className="helper-text" style={{ color: isValidDob(dobB) ? undefined : 'var(--color-danger, #c0392b)' }}>
+                    {isValidDob(dobB) ? `Age ${ageFromDob(dobB)}` : 'Invalid date'}
                   </div>
                 </div>
                 <div className="form-group">
@@ -385,11 +400,11 @@ export default function InputsPage() {
             {/* Person A + B bucket panels */}
             <div className="two-col" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 16, gap: 0 }}>
               <div style={{ paddingRight: 24, borderRight: '2px solid rgba(13,27,46,0.18)' }}>
-                <PortfolioPersonSection name={nameA} data={pf.personA} onChange={setPersonAPortfolio} />
+                <PortfolioPersonSection name={nameA} data={pf.personA} onChange={setPersonAPortfolio} isRetired={isRetiredA} />
               </div>
               {pf.personB ? (
                 <div style={{ paddingLeft: 24 }}>
-                  <PortfolioPersonSection name={nameB} data={pf.personB} onChange={setPersonBPortfolio} />
+                  <PortfolioPersonSection name={nameB} data={pf.personB} onChange={setPersonBPortfolio} isRetired={isRetiredB} />
                 </div>
               ) : (
                 <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 16 }}>No second person on this plan.</div>
@@ -420,7 +435,9 @@ export default function InputsPage() {
             {!canBuild
               ? (!isValidDob(A.dob) || (B && !isValidDob(B.dob))
                   ? 'Fix the date of birth in Personal Details (year must be 1900–present).'
-                  : 'Enter names for all people in Personal Details to build your plan.')
+                  : (!splitValidA || !splitValidB)
+                    ? 'Contribution mix must add up to 100% in Portfolio.'
+                    : 'Enter names for all people in Personal Details to build your plan.')
               : 'Runs the optimizer for your selected goal, then opens your results dashboard.'}
           </div>
           {buildError && (
@@ -435,21 +452,34 @@ export default function InputsPage() {
   );
 }
 
-function PortfolioPersonSection({ name, data, onChange }: { name: string; data: PersonPortfolio; onChange: (patch: Partial<PersonPortfolio>) => void }) {
+function PortfolioPersonSection({ name, data, onChange, isRetired = false }: { name: string; data: PersonPortfolio; onChange: (patch: Partial<PersonPortfolio>) => void; isRetired?: boolean }) {
   const split = data.contribSplit;
   const splitPct = Math.round((split.taxable + split.traditional + split.roth) * 100);
 
-  const setBucket = (key: keyof typeof split, val: number) => {
-    const v = Math.max(0, Math.min(1, val));
-    const [o1, o2] = (['taxable', 'traditional', 'roth'] as const).filter((k) => k !== key);
-    const rem = 1 - v;
-    const osum = split[o1] + split[o2];
-    const n1 = osum > 0 ? rem * (split[o1] / osum) : rem / 2;
-    const next = { ...split };
-    next[key] = v;
-    next[o1] = n1;
-    next[o2] = rem - n1;
-    onChange({ contribSplit: next });
+  type BucketKey = 'taxable' | 'traditional' | 'roth';
+  const [pctDraft, setPctDraft] = useState<Record<BucketKey, string>>({
+    taxable: String(Math.round(split.taxable * 100)),
+    traditional: String(Math.round(split.traditional * 100)),
+    roth: String(Math.round(split.roth * 100)),
+  });
+  const editingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editingRef.current) {
+      setPctDraft({
+        taxable: String(Math.round(split.taxable * 100)),
+        traditional: String(Math.round(split.traditional * 100)),
+        roth: String(Math.round(split.roth * 100)),
+      });
+    }
+  }, [split.taxable, split.traditional, split.roth]);
+
+  const commitBucket = (key: BucketKey) => {
+    editingRef.current = false;
+    const parsed = parseFloat(pctDraft[key]);
+    const v = isNaN(parsed) ? split[key] * 100 : Math.max(0, Math.min(100, parsed));
+    setPctDraft((prev) => ({ ...prev, [key]: String(v) }));
+    onChange({ contribSplit: { ...split, [key]: v / 100 } });
   };
 
   return (
@@ -479,29 +509,40 @@ function PortfolioPersonSection({ name, data, onChange }: { name: string; data: 
         <div className="form-group">
           <label>Annual contribution</label>
           <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-            <NumberInput value={data.annualContribution} min={0} style={{ paddingLeft: 22 }} onCommit={(v) => onChange({ annualContribution: v })} />
+            <NumberInput value={isRetired ? 0 : data.annualContribution} min={0} style={{ paddingLeft: 22 }} disabled={isRetired} onCommit={(v) => onChange({ annualContribution: v })} />
           </div>
+          {isRetired && <div className="helper-text">Already retired</div>}
         </div>
         <div className="form-group">
           <label>Contribution growth</label>
           <div className="input-suffix-wrap">
-            <NumberInput value={data.contribGrowth} scale={100} digits={1} min={0} onCommit={(v) => onChange({ contribGrowth: v })} />
+            <NumberInput value={isRetired ? 0 : data.contribGrowth} scale={100} digits={1} min={0} disabled={isRetired} onCommit={(v) => onChange({ contribGrowth: v })} />
             <span className="input-suffix">%</span>
           </div>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Contribution mix</div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: splitPct === 100 ? 'var(--success)' : 'var(--warning)' }}>
-          {splitPct === 100 ? '✓ 100%' : `⚠ ${splitPct}%`}
-        </span>
+        {!isRetired && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: splitPct === 100 ? 'var(--success)' : 'var(--warning)' }}>
+            {splitPct === 100 ? '✓ 100%' : `⚠ ${splitPct}%`}
+          </span>
+        )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         {(['taxable', 'traditional', 'roth'] as const).map((k) => (
           <div key={k} className="form-group">
             <label>{k === 'taxable' ? 'Taxable' : k === 'traditional' ? 'Pre-tax' : 'Roth'}</label>
             <div className="input-suffix-wrap">
-              <NumberInput value={split[k]} scale={100} digits={0} min={0} max={100} onCommit={(v) => setBucket(k, v)} />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={isRetired ? '0' : pctDraft[k]}
+                disabled={isRetired}
+                onFocus={() => { editingRef.current = true; }}
+                onChange={(e) => setPctDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                onBlur={() => commitBucket(k)}
+              />
               <span className="input-suffix">%</span>
             </div>
           </div>

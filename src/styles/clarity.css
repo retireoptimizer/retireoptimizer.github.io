@@ -688,6 +688,12 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(201,168,76,0.1);
 }
+input:disabled, select:disabled, textarea:disabled {
+  background: rgba(13,27,46,0.04);
+  border-color: rgba(13,27,46,0.10);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
 .input-prefix-wrap { position: relative; }
 .input-prefix {
   position: absolute;
