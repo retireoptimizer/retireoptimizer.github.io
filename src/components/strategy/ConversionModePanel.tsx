@@ -2,6 +2,7 @@ import { usePlanStore } from '../../store/usePlanStore';
 import type { ConversionParams } from '../../schemas/plan';
 import { NumberInput } from '../inputs/NumberInput';
 import { fmtUSD } from '../../lib/format';
+import { rmdStartAgeForDob } from '../../engine/rmd';
 
 /** 4-mode Roth conversion UI (Off / Fixed Amount / Bracket-Fill / Manual schedule).
  *  Extracted from the pre-refactor Strategy page so it can live inside the
@@ -28,7 +29,7 @@ export default function ConversionModePanel() {
 
   const startAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
   const manualAges: number[] = [];
-  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.assumptions.rmdStartAge; age++) manualAges.push(age);
+  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= rmdStartAgeForDob(plan.personA.dob); age++) manualAges.push(age);
 
   const setManualForAge = (age: number, value: number) => {
     setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: value } });

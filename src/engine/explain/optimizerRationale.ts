@@ -1,6 +1,7 @@
 import type { Plan } from '../../schemas/plan';
 import type { OptimizeResult } from '../optimizer';
 import { fmtUSD } from '../../lib/format';
+import { rmdStartAgeForDob } from '../rmd';
 import { generateInsights, insightsForSurface } from './index';
 
 /** Builds 2-4 plain-English sentences explaining the optimizer's policy choice.
@@ -46,7 +47,7 @@ export function explainPolicy(plan: Plan, result: OptimizeResult): string[] {
   }
 
   // Reason 3: RMD-driven IRMAA risk
-  const rmdAge = plan.assumptions.rmdStartAge;
+  const rmdAge = rmdStartAgeForDob(plan.personA.dob);
   const peakRmd = Math.max(0, ...result.projection.rows.map((r) => r.rmd / r.inflationFactor));
   if (peakRmd > 50000) {
     reasons.push(`deferring conversions would force RMDs above ${fmtUSD(peakRmd)} (today's $) after age ${rmdAge}, pushing future MAGI into higher IRMAA tiers`);

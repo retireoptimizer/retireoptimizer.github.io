@@ -2,7 +2,7 @@ import type { Plan, IncomeStream, ExpenseStream } from '../schemas/plan';
 import { householdTotals } from '../schemas/plan';
 import { SS_TAXABLE_PCT, TAXABLE_BASIS_PCT } from './taxConstants';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
-import { rmdDivisor } from './rmd';
+import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity } from './tax';
 import { rothConversion } from './conversion';
@@ -188,6 +188,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const magiHistory: number[] = [];
 
   const maxYears = Math.min(75, planToAge - startAgeA + 1);
+  const rmdStartAge = rmdStartAgeForDob(plan.personA.dob);
   // Running inflation factor — compounded from per-year CPI overrides when provided,
   // otherwise from the plan's fixed inflation rate. Year 0 is always 1 (base year).
   let runningInflationFactor = 1;
@@ -249,7 +250,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
     // RMD on traditional balance (only if owner alive)
     const rmd = aliveA ? Math.max(0, trad) / rmdDivisor(ageA) : 0;
-    const rmdAmt = ageA >= plan.assumptions.rmdStartAge && aliveA ? rmd : 0;
+    const rmdAmt = ageA >= rmdStartAge && aliveA ? rmd : 0;
     lifetimeRMD += rmdAmt;
     lifetimeRMDReal += rmdAmt / inflationFactor;
 

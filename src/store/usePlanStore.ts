@@ -112,10 +112,15 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 7,
+      version: 8,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v8: rmdStartAge removed from assumptions (now derived from personA.dob).
+        if (fromVersion < 8 && ps.plan && typeof ps.plan === 'object') {
+          const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
+          if (asm) delete asm.rmdStartAge;
+        }
         // v7: replace preRetReturn/postRetReturn with per-bucket taxableReturn/tradReturn/rothReturn.
         // Remove any income streams with removed types Wages/Rental.
         if (fromVersion < 7 && ps.plan && typeof ps.plan === 'object') {

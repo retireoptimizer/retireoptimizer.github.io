@@ -27,7 +27,6 @@ function goldenBase(): Plan {
       tradReturn: 0.065,
       rothReturn: 0.065,
       inflation: 0.025,
-      rmdStartAge: 75,
     },
     portfolio: {
       personA: {

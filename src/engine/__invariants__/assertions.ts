@@ -1,6 +1,7 @@
 import type { Plan } from '../../schemas/plan';
 import type { ProjectionRow, ProjectionResult } from '../projection';
 import { runProjection } from '../projection';
+import { rmdStartAgeForDob } from '../rmd';
 
 /**
  * Per-row dollar-flow invariants. Each row's bucket motion is independently checked
@@ -83,8 +84,9 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   if (r.rothConv < -tol) out.push(`rothConv negative: ${r.rothConv}`);
 
   // 6. RMD must be 0 before rmdStartAge
-  if (r.ageA < plan.assumptions.rmdStartAge && r.rmd > tol) {
-    out.push(`RMD before rmdStartAge (${plan.assumptions.rmdStartAge}): ageA=${r.ageA}, rmd=${r.rmd}`);
+  const rmdStartAge = rmdStartAgeForDob(plan.personA.dob);
+  if (r.ageA < rmdStartAge && r.rmd > tol) {
+    out.push(`RMD before rmdStartAge (${rmdStartAge}): ageA=${r.ageA}, rmd=${r.rmd}`);
   }
 
   // 7. SPENDING COVERAGE (when either person is retired and portfolio not depleted).

@@ -97,9 +97,10 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
 
-    it('rmdStartAge (asserts lifetimeRMD shifts — on default taxfirst plan, end balance is invariant because the engine offsets forced RMDs with reduced voluntary withdrawals)', () => {
+    it('rmdStartAge via dob (lifetimeRMD shifts when dob moves person from age-75 to age-73 threshold)', () => {
       const base = runProjection(defaultPlan());
-      const mut = runProjection({ ...defaultPlan(), assumptions: { ...defaultPlan().assumptions, rmdStartAge: 73 } });
+      // dob '1951-01-01' → rmdStartAge 73; default dob '1974-05-03' → 75
+      const mut = runProjection({ ...defaultPlan(), personA: { ...defaultPlan().personA, dob: '1951-01-01' } });
       expect(Math.abs(mut.lifetimeRMD - base.lifetimeRMD)).toBeGreaterThan(DELTA_THRESHOLD);
     });
   });

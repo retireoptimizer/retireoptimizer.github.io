@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { rmdDivisor, requiredMinDistribution } from './rmd';
+import { rmdDivisor, requiredMinDistribution, rmdStartAgeForDob } from './rmd';
+
+describe('rmdStartAgeForDob', () => {
+  it('born before July 1 1949 → 70', () => expect(rmdStartAgeForDob('1948-12-31')).toBe(70));
+  it('born June 30 1949 → 70', () => expect(rmdStartAgeForDob('1949-06-30')).toBe(70));
+  it('born July 1 1949 → 72', () => expect(rmdStartAgeForDob('1949-07-01')).toBe(72));
+  it('born Dec 31 1950 → 72', () => expect(rmdStartAgeForDob('1950-12-31')).toBe(72));
+  it('born Jan 1 1951 → 73', () => expect(rmdStartAgeForDob('1951-01-01')).toBe(73));
+  it('born Dec 31 1959 → 73', () => expect(rmdStartAgeForDob('1959-12-31')).toBe(73));
+  it('born Jan 1 1960 → 75', () => expect(rmdStartAgeForDob('1960-01-01')).toBe(75));
+  it('born 1974 → 75', () => expect(rmdStartAgeForDob('1974-05-03')).toBe(75));
+});
 
 describe('rmdDivisor', () => {
   it('age 75 = 24.6', () => expect(rmdDivisor(75)).toBe(24.6));

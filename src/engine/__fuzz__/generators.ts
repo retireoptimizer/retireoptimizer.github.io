@@ -119,7 +119,6 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           rothReturn: s.rothReturn,
           inflation: s.inflation,
           equityPct: 0.6,
-          rmdStartAge: 75,
           modelACA: false,
           acaHouseholdSize: 2,
           acaBenchmarkPremium: 0,
