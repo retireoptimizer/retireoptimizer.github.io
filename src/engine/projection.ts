@@ -1,6 +1,6 @@
 import type { Plan, IncomeStream, ExpenseStream } from '../schemas/plan';
 import { householdTotals } from '../schemas/plan';
-import { SS_TAXABLE_PCT, TAXABLE_BASIS_PCT } from './taxConstants';
+import { TAXABLE_BASIS_PCT } from './taxConstants';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
@@ -280,13 +280,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
     const maxConv = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt);
     let conv: number;
-    if (retired && policyConv != null) {
+    const eitherRetired = retiredA || retiredB;
+    if (eitherRetired && policyConv != null) {
       conv = Math.min(maxConv, policyConv * inflationFactor);
     } else {
       conv = rothConversion({
         params: plan.conversion,
         ageA,
-        retired,
+        retired: eitherRetired,
         inflationFactor,
         traditionalBalance: maxConv,
         baseOrdinaryIncome: baseOrdIncForConv,
@@ -295,6 +296,11 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     }
     lifetimeConversion += conv;
     lifetimeConversionReal += conv / inflationFactor;
+
+    // Base ordinary income for withdrawal bracket-fill sizing (conv now known; wdTrd unknown).
+    const piForWd = other.taxableAmt + rmdAmt + conv + 0.5 * ss.total;
+    const taxableSSForWd = taxableSocialSecurity(piForWd, ss.total, filingStatus);
+    const baseOrdIncForWd = taxableSSForWd + rmdAmt + conv + other.taxableAmt;
 
     // Per-bucket "available to withdraw" caps. All three buckets are debited by the
     // end-of-year update `bucket = max(0, bucket*(1+g) + contrib +/- credits - withdrawal)`,
@@ -335,7 +341,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         : applyWithdrawalOrder({
             strategy: plan.withdrawalStrategy,
             gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail,
-            rmd: rmdAmt, ssA: ss.ssA, ssB: ss.ssB, ssTaxablePct: SS_TAXABLE_PCT,
+            rmd: rmdAmt, baseOrdinaryIncome: baseOrdIncForWd,
+            bracketCeiling: plan.withdrawalBracketCeiling,
             stdD, inflationFactor,
           });
       wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;

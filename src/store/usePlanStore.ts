@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { FED_BRACKETS_MFJ } from '../engine/taxConstants';
 import type { Plan, Person, Assumptions, PersonPortfolio, IncomeStream, ExpenseStream, ConversionParams, Goal } from '../schemas/plan';
 import type { BlendPolicy } from '../engine/blendPolicy';
 import { defaultPlan } from '../schemas/plan';
@@ -44,6 +45,7 @@ interface PlanState {
   applyOptimizerResult: (next: Plan) => void;
   clearCustomPolicy: () => void;
   setConversion: (patch: Partial<ConversionParams>) => void;
+  setWithdrawalBracketCeiling: (v: number) => void;
   setState: (state: string) => void;
   setCustomStateTaxRate: (rate: number) => void;
   addGoal: (g: Goal) => void;
@@ -103,6 +105,13 @@ export const usePlanStore = create<PlanState>()(
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
       clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined } })),
       setConversion: (patch) => set((s) => ({ plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } })),
+      setWithdrawalBracketCeiling: (v: number) => set((s) => ({
+        plan: {
+          ...s.plan,
+          withdrawalBracketCeiling: v,
+          conversion: { ...s.plan.conversion, bracketCeiling: Math.min(s.plan.conversion.bracketCeiling, v) },
+        },
+      })),
       setState: (state) => set((s) => ({ plan: { ...s.plan, state } })),
       setCustomStateTaxRate: (rate) => set((s) => ({ plan: { ...s.plan, customStateTaxRate: rate } })),
       addGoal: (g) => set((s) => ({ plan: { ...s.plan, goals: [...(s.plan.goals ?? []), g] } })),
@@ -112,10 +121,27 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 8,
+      version: 10,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v10: migrate stale 2025 bracket thresholds → 2026 values (taxConstants update).
+        if (fromVersion < 10 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const OLD_TO_NEW: Record<number, number> = { 23850: 24800, 96950: 100800, 206700: 211400, 394600: 403550 };
+          const wdCur = planObj.withdrawalBracketCeiling as number | undefined;
+          if (wdCur !== undefined && OLD_TO_NEW[wdCur] !== undefined) planObj.withdrawalBracketCeiling = OLD_TO_NEW[wdCur];
+          const conv = planObj.conversion as Record<string, unknown> | undefined;
+          if (conv) {
+            const convCur = conv.bracketCeiling as number | undefined;
+            if (convCur !== undefined && OLD_TO_NEW[convCur] !== undefined) conv.bracketCeiling = OLD_TO_NEW[convCur];
+          }
+        }
+        // v9: withdrawalBracketCeiling added (configurable bracket-fill ceiling for withdrawal ordering).
+        if (fromVersion < 9 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          if (!('withdrawalBracketCeiling' in planObj)) planObj.withdrawalBracketCeiling = FED_BRACKETS_MFJ[1][0];
+        }
         // v8: rmdStartAge removed from assumptions (now derived from personA.dob).
         if (fromVersion < 8 && ps.plan && typeof ps.plan === 'object') {
           const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;

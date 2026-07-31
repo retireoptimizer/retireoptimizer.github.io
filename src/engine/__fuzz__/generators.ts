@@ -131,6 +131,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
         incomeStreams: s.incomes,
         expenseStreams: [s.expense],
         withdrawalStrategy: s.strategy,
+        withdrawalBracketCeiling: s.hasPersonB ? 100800 : 50400,
         conversion: {
           mode: s.convMode,
           startAge: 65,

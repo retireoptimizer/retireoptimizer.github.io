@@ -466,19 +466,44 @@ function GuideContent() {
         <li><strong>Roth First</strong> — spend Roth money first, which shrinks future Required Minimum Distributions from your pre-tax accounts.</li>
         <li><strong>Traditional First</strong> — spend pre-tax accounts first, also reducing RMDs but increasing your taxable income now.</li>
         <li><strong>Proportional</strong> — draw from all three account types in proportion to their balances each year. Simple, but rarely the most tax-efficient.</li>
-        <li><strong>Bracket Fill</strong> — withdraws from each bucket each year to keep your taxable income just below a chosen tax bracket ceiling. Usually the most tax-efficient approach over the long run.</li>
+        <li><strong>Bracket Fill</strong> — the Bracket Fill chip is a dropdown. Select which bracket ceiling to target: the engine pulls from traditional (pre-tax) accounts up to that ceiling each year, then covers any remaining spending need from Roth or taxable. Options are automatically sized for your household — MFJ ceilings for couples, Single ceilings for solo plans. Usually the most tax-efficient withdrawal approach over the long run.</li>
         <li><strong>Custom</strong> — opens an editor where you can define your own withdrawal blend by age window. For example: Taxable First from 62 to 70, then Bracket Fill from 70 onward. Click the Custom chip to open the editor.</li>
       </ul>
       <P>
         At the end of Row 2, the <strong>&#9881; Roth Conversion Mode</strong> button opens a
         sheet to configure whether and how the plan converts pre-tax money to Roth each year.
+        The conversion ceiling is always capped at or below the withdrawal Bracket Fill ceiling
+        — the dropdown enforces this automatically.
       </P>
       <FieldTable rows={[
         ["No Conversions", "Leave pre-tax money where it is. RMDs starting at age 73 may push you into higher brackets in later years.", "—"],
         ["Fixed Amount", "Convert a set dollar amount each year within an age window you define. Good if you have a specific amount in mind.", "$30,000/yr, ages 60–70"],
-        ["Bracket Fill", "Convert enough each year to fill up to a chosen tax bracket ceiling. The optimizer finds the ceiling that helps most.", "Top of 22% bracket"],
+        ["Bracket Fill", "Convert enough each year to fill the bracket up to a chosen ceiling. Options are capped at the withdrawal Bracket Fill ceiling so conversions never overshoot the withdrawal target.", "Top of 12% bracket"],
         ["Manual Schedule", "Enter a custom conversion amount for each specific age. Maximum control for those with a detailed plan.", "$50k at 62, $40k at 63"],
       ]} />
+
+      <H3>How the two Bracket Fill controls interact</H3>
+      <P>
+        There are two independent Bracket Fill controls — one for <em>withdrawals</em> and one
+        for <em>Roth conversions</em> — and they share the same bracket space each year.
+        The engine always runs them in this order:
+      </P>
+      <ol style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
+        <li><strong>Roth conversion runs first.</strong> The conversion fills ordinary income from its current level up to the conversion ceiling.</li>
+        <li><strong>Withdrawal bracket fill runs second.</strong> It sees the conversion already sitting in income and fills any remaining room up to the withdrawal ceiling.</li>
+      </ol>
+      <P>
+        This means the two ceilings act as a two-stage bracket strategy:
+      </P>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
+        <li><strong>Conversion ceiling = Withdrawal ceiling</strong> — the conversion consumes all available bracket room; withdrawal bracket fill adds nothing extra from traditional. Use this when you want all pre-tax draws to be voluntary conversions (maximum Roth build-up).</li>
+        <li><strong>Conversion ceiling &lt; Withdrawal ceiling</strong> — the conversion fills the lower band; the withdrawal bracket fill pulls more traditional to fill the rest. For example: conversions target the top of 12% ($100,800 MFJ), withdrawals target the top of 22% ($211,400 MFJ) — conversions cover the 10–12% band, withdrawals cover the 12–22% band for cash flow needs. This is the most common effective setup.</li>
+      </ul>
+      <Tip>
+        Setting the conversion ceiling higher than the withdrawal ceiling is not allowed — the
+        UI prevents it. If you lower the withdrawal ceiling, the conversion ceiling is
+        automatically clamped down to match.
+      </Tip>
 
       <H3>What-If Bar</H3>
       <P>
@@ -612,7 +637,7 @@ function GuideContent() {
         The optimizer accounts for this when sizing Roth conversions in Bracket Fill mode.
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li><strong>Tier 1</strong> (2025): income above $212,000 for married filing jointly adds roughly $594/year per person to Part B alone.</li>
+        <li><strong>Tier 1</strong> (2026): income above $212,000 for married filing jointly adds roughly $594/year per person to Part B alone.</li>
         <li><strong>Tier 2–4</strong>: progressively higher surcharges. The top tier adds over $5,000/year per person.</li>
       </ul>
       <Tip>

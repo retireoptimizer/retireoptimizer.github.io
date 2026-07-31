@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { FED_BRACKETS_MFJ } from '../engine/taxConstants';
+
+const BRACKET_12_TOP_MFJ = FED_BRACKETS_MFJ[1][0];
 
 export const PersonSchema = z.object({
   name: z.string().min(1),
@@ -113,7 +116,7 @@ export const ConversionParamsSchema = z.object({
   startAge: z.number().int().default(65),
   endAge: z.number().int().default(72),
   autoAmount: z.number().nonnegative().default(70000),
-  bracketCeiling: z.number().nonnegative().default(96950),
+  bracketCeiling: z.number().nonnegative().default(BRACKET_12_TOP_MFJ),
   manualSchedule: z.record(z.string(), z.number()).default({}),
 });
 export type ConversionParams = z.infer<typeof ConversionParamsSchema>;
@@ -141,6 +144,7 @@ export const PlanSchema = z.object({
   incomeStreams: z.array(IncomeStreamSchema).default([]),
   expenseStreams: z.array(ExpenseStreamSchema).default([]),
   withdrawalStrategy: z.enum(['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill']),
+  withdrawalBracketCeiling: z.number().nonnegative().default(BRACKET_12_TOP_MFJ),
   customPolicy: BlendPolicySchema.optional(),
   optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
   /** Snapshot of expenseStreams before any max-sustainable-spending scaling. Used by the
@@ -202,12 +206,13 @@ export const defaultPlan = (): Plan => ({
     { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: 0.025 },
   ],
   withdrawalStrategy: 'taxfirst',
+  withdrawalBracketCeiling: BRACKET_12_TOP_MFJ,
   conversion: {
     mode: 'off',
     startAge: 65,
     endAge: 72,
     autoAmount: 70000,
-    bracketCeiling: 96950,
+    bracketCeiling: BRACKET_12_TOP_MFJ,
     manualSchedule: {},
   },
   state: 'NONE',
@@ -272,12 +277,13 @@ export const samplePlan = (): Plan => ({
     { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: 0.025 },
   ],
   withdrawalStrategy: 'taxfirst',
+  withdrawalBracketCeiling: BRACKET_12_TOP_MFJ,
   conversion: {
     mode: 'off',
     startAge: 65,
     endAge: 72,
     autoAmount: 70000,
-    bracketCeiling: 96950,
+    bracketCeiling: BRACKET_12_TOP_MFJ,
     manualSchedule: {},
   },
   state: 'IL',

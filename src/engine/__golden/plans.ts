@@ -53,12 +53,13 @@ function goldenBase(): Plan {
       { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, stopAge: 82, annualAmount: 18000, inflationPct: 0.03 },
     ],
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     conversion: {
       mode: 'off',
       startAge: 65,
       endAge: 72,
       autoAmount: 70000,
-      bracketCeiling: 206700,
+      bracketCeiling: 211400,
       manualSchedule: {},
     },
     state: 'IL',
@@ -93,6 +94,7 @@ export function planB_largeTradSingle(): Plan {
       { id: 'core', description: 'Core', whose: 'A', startAge: 65, stopAge: 95, annualAmount: 75000, inflationPct: 0.025 },
     ],
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'IL',
   };
 }
@@ -120,8 +122,9 @@ export function planC_bracketFillConv(): Plan {
         contribSplit: p.portfolio.personB?.contribSplit ?? { taxable: 0.2, traditional: 0.4, roth: 0.4 },
       },
     },
-    conversion: { mode: 'bracket-fill', startAge: 60, endAge: 73, autoAmount: 70000, bracketCeiling: 96950, manualSchedule: {} },
+    conversion: { mode: 'bracket-fill', startAge: 60, endAge: 73, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'IL',
   };
 }
@@ -149,6 +152,7 @@ export function planD_singleFIRE(): Plan {
       { id: 'core', description: 'FIRE Core', whose: 'A', startAge: 45, stopAge: 95, annualAmount: 55000, inflationPct: 0.025 },
     ],
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'TX',
   };
 }
@@ -177,6 +181,7 @@ export function planE_allRothCouple(): Plan {
       },
     },
     withdrawalStrategy: 'rothfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'IL',
   };
 }
@@ -204,8 +209,9 @@ export function planF_allTradCouple(): Plan {
         contribSplit: { taxable: 0, traditional: 1, roth: 0 },
       },
     },
-    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 74, autoAmount: 80000, bracketCeiling: 96950, manualSchedule: {} },
+    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 74, autoAmount: 80000, bracketCeiling: 100800, manualSchedule: {} },
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'IL',
   };
 }
@@ -219,8 +225,9 @@ export function planG_californiaCouple(): Plan {
       personA: { taxable: 400000, traditional: 800000, roth: 200000, annualContribution: 23000, contribGrowth: 0.03, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
       personB: { taxable: 300000, traditional: 500000, roth: 120000, annualContribution: 18000, contribGrowth: 0.03, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
     },
-    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 73, autoAmount: 60000, bracketCeiling: 96950, manualSchedule: {} },
+    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 73, autoAmount: 60000, bracketCeiling: 100800, manualSchedule: {} },
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'CA',
   };
 }
@@ -237,6 +244,7 @@ export function planH_survivorMidPlan(): Plan {
       personB: { taxable: 200000, traditional: 300000, roth: 100000, annualContribution: 18000, contribGrowth: 0.03, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
     },
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'IL',
   };
 }
@@ -253,6 +261,7 @@ export function planI_multiStreamIncome(): Plan {
       { id: 'rental', description: 'Rental Net', whose: 'Household', type: 'Other', startAge: 65, stopAge: 80, annualAmount: 12000, growthPct: 0.02, taxablePct: 1 },
     ],
     withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
     state: 'IL',
   };
 }
@@ -278,7 +287,8 @@ export function planJ_personBZeroBalance(): Plan {
       { id: 'ssb2', description: 'SS B FRA', whose: 'B', type: 'SS', startAge: 67, stopAge: 100, annualAmount: 15000, growthPct: 0.025, taxablePct: 1 },
     ],
     withdrawalStrategy: 'taxfirst',
-    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 206700, manualSchedule: {} },
+    withdrawalBracketCeiling: 100800,
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
     state: 'IL',
   };
 }

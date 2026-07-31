@@ -4,14 +4,15 @@ import { runProjection, type ProjectionResult } from './projection';
 import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommender';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
 import { mulberry32, historicalBootstrap } from './returnModels';
+import { FED_BRACKETS_MFJ } from './taxConstants';
 
 const COARSE_STEPS = [0, 0.25, 0.5, 0.75, 1.0];
 const FINE_STEPS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 const CONV_COARSE = [0, 0.25, 0.5, 0.75, 1.0];
 const CONV_FINE = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 
-// 12% bracket top (today's $) — same constant used in withdrawal.ts:48.
-const BRACKET_12_TOP = 96950;
+// 12% bracket top (today's $) — MFJ upper bound of the second bracket.
+const BRACKET_12_TOP = FED_BRACKETS_MFJ[1][0];
 
 interface Split { tax: number; trad: number; roth: number; }
 

@@ -7,9 +7,8 @@ export interface WithdrawalInputs {
   traditional: number;
   roth: number;
   rmd: number;
-  ssA: number;
-  ssB: number;
-  ssTaxablePct: number;
+  baseOrdinaryIncome: number;
+  bracketCeiling: number;
   stdD: number;
   inflationFactor: number;
 }
@@ -21,7 +20,7 @@ export interface WithdrawalOutputs {
 }
 
 export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
-  const { strategy, taxable, traditional, roth, ssA, ssB, ssTaxablePct, stdD, inflationFactor } = inp;
+  const { strategy, taxable, traditional, roth, baseOrdinaryIncome, bracketCeiling, stdD, inflationFactor } = inp;
   let rem = Math.max(0, inp.gap);
   let wdTax = 0, wdTrd = 0, wdRth = 0;
 
@@ -45,10 +44,9 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
       }
     }
   } else if (preset.kind === 'bracketfill') {
-    const bracketTop12 = 96950 * inflationFactor;
-    const baseOrdInc = ssA * ssTaxablePct + ssB * ssTaxablePct;
-    const roomIn12 = Math.max(0, bracketTop12 - stdD - baseOrdInc);
-    wdTrd = Math.min(traditional, Math.min(roomIn12, rem));
+    const ceilingNominal = bracketCeiling * inflationFactor;
+    const roomInBracket = Math.max(0, ceilingNominal - stdD - baseOrdinaryIncome);
+    wdTrd = Math.min(traditional, Math.min(roomInBracket, rem));
     rem -= wdTrd;
     if (roth > 0 && rem > 0) { wdRth = Math.min(roth, rem); rem -= wdRth; }
     if (taxable > 0 && rem > 0) { wdTax = Math.min(taxable, rem); }

@@ -1,35 +1,51 @@
 import { describe, it, expect } from 'vitest';
 import { federalOrdinaryTax, standardDeduction, yearFederalTax, taxableSocialSecurity } from './tax';
+import {
+  FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE,
+  STANDARD_DEDUCTION_MFJ, STANDARD_DEDUCTION_SINGLE,
+  SENIOR_ADDON_MFJ, SENIOR_ADDON_SINGLE,
+  LTCG_BRACKETS_MFJ,
+} from './taxConstants';
+
+const MFJ_10 = FED_BRACKETS_MFJ[0][0];   // top of 10% bracket, MFJ
+const MFJ_12 = FED_BRACKETS_MFJ[1][0];   // top of 12% bracket, MFJ
+const MFJ_22 = FED_BRACKETS_MFJ[2][0];   // top of 22% bracket, MFJ
+const SGL_10 = FED_BRACKETS_SINGLE[0][0]; // top of 10% bracket, Single
+const LTCG_0_MFJ = LTCG_BRACKETS_MFJ[0][0]; // top of 0% LTCG bracket, MFJ
 
 describe('federalOrdinaryTax MFJ 2026', () => {
   it('zero on zero income', () => {
     expect(federalOrdinaryTax(0, 'MFJ', 1)).toBe(0);
   });
 
-  it('full 10% bracket at $23,850 (below $24,800 ceiling)', () => {
-    // 10% of 23,850 = 2,385 (still within 10% bracket which ends at $24,800)
-    expect(federalOrdinaryTax(23850, 'MFJ', 1)).toBeCloseTo(2385, 0);
+  it('full 10% bracket at ceiling', () => {
+    // 10% × MFJ_10
+    expect(federalOrdinaryTax(MFJ_10, 'MFJ', 1)).toBeCloseTo(MFJ_10 * 0.10, 0);
   });
 
-  it('through 12% bracket at $100,800', () => {
-    // 10%*24,800 + 12%*(100,800-24,800) = 2,480 + 9,120 = 11,600
-    expect(federalOrdinaryTax(100800, 'MFJ', 1)).toBeCloseTo(11600, 0);
+  it('through 12% bracket at ceiling', () => {
+    // 10%×MFJ_10 + 12%×(MFJ_12 - MFJ_10)
+    const expected = MFJ_10 * 0.10 + (MFJ_12 - MFJ_10) * 0.12;
+    expect(federalOrdinaryTax(MFJ_12, 'MFJ', 1)).toBeCloseTo(expected, 0);
   });
 
-  it('through 22% bracket at $211,400', () => {
-    // 11,600 + 22% * (211,400-100,800) = 11,600 + 24,332 = 35,932
-    expect(federalOrdinaryTax(211400, 'MFJ', 1)).toBeCloseTo(35932, 0);
+  it('through 22% bracket at ceiling', () => {
+    // tax at MFJ_12 + 22%×(MFJ_22 - MFJ_12)
+    const taxAt12 = MFJ_10 * 0.10 + (MFJ_12 - MFJ_10) * 0.12;
+    const expected = taxAt12 + (MFJ_22 - MFJ_12) * 0.22;
+    expect(federalOrdinaryTax(MFJ_22, 'MFJ', 1)).toBeCloseTo(expected, 0);
   });
 
   it('inflation indexes brackets', () => {
-    // At inflF=2, $20k is still well within 10% bracket (which now extends to $49,600)
+    // At inflF=2, $20k is still well within 10% bracket
     expect(federalOrdinaryTax(20000, 'MFJ', 2)).toBeCloseTo(2000, 0);
   });
 });
 
-describe('federalOrdinaryTax Single 2025', () => {
-  it('full 10% bracket at $11,925', () => {
-    expect(federalOrdinaryTax(11925, 'Single', 1)).toBeCloseTo(1192.5, 0);
+describe('federalOrdinaryTax Single 2026', () => {
+  it('full 10% bracket at ceiling', () => {
+    // 10% × SGL_10
+    expect(federalOrdinaryTax(SGL_10, 'Single', 1)).toBeCloseTo(SGL_10 * 0.10, 0);
   });
 
   it('Single brackets narrower than MFJ', () => {
@@ -40,30 +56,30 @@ describe('federalOrdinaryTax Single 2025', () => {
 });
 
 describe('standardDeduction', () => {
-  it('MFJ base = $32,200', () => {
-    expect(standardDeduction('MFJ', 50, 50, 1)).toBeCloseTo(32200, 0);
+  it('MFJ base', () => {
+    expect(standardDeduction('MFJ', 50, 50, 1)).toBeCloseTo(STANDARD_DEDUCTION_MFJ, 0);
   });
 
-  it('MFJ both 65+ adds $3,300 (2 × $1,650)', () => {
-    expect(standardDeduction('MFJ', 70, 68, 1)).toBeCloseTo(32200 + 3300, 0);
+  it('MFJ both 65+ adds 2 × senior add-on', () => {
+    expect(standardDeduction('MFJ', 70, 68, 1)).toBeCloseTo(STANDARD_DEDUCTION_MFJ + 2 * SENIOR_ADDON_MFJ, 0);
   });
 
-  it('MFJ only one 65+ adds $1,650', () => {
-    expect(standardDeduction('MFJ', 70, 60, 1)).toBeCloseTo(33850, 0);
+  it('MFJ only one 65+ adds 1 × senior add-on', () => {
+    expect(standardDeduction('MFJ', 70, 60, 1)).toBeCloseTo(STANDARD_DEDUCTION_MFJ + SENIOR_ADDON_MFJ, 0);
   });
 
-  it('Single 65+ = $16,100 + $2,050', () => {
-    expect(standardDeduction('Single', 70, undefined, 1)).toBeCloseTo(18150, 0);
+  it('Single 65+ = base + senior add-on', () => {
+    expect(standardDeduction('Single', 70, undefined, 1)).toBeCloseTo(STANDARD_DEDUCTION_SINGLE + SENIOR_ADDON_SINGLE, 0);
   });
 
   it('scales by inflation factor', () => {
-    expect(standardDeduction('MFJ', 50, 50, 1.5)).toBeCloseTo(32200 * 1.5, 0);
+    expect(standardDeduction('MFJ', 50, 50, 1.5)).toBeCloseTo(STANDARD_DEDUCTION_MFJ * 1.5, 0);
   });
 });
 
 describe('yearFederalTax — LTCG stacked brackets', () => {
   it('LTCG in 0% bracket when ordinary income is low (MFJ)', () => {
-    // ordIncome=0, taxableOrdinary=0, ltcg stacks from 0 → all in 0% bracket (<$94,050)
+    // ordIncome=0, ltcg stacks from 0 → all in 0% bracket
     const out = yearFederalTax({
       filingStatus: 'MFJ', inflationFactor: 1,
       ordinaryIncome: 0, ltcgIncome: 10000, standardDeduction: 31500,
@@ -73,15 +89,17 @@ describe('yearFederalTax — LTCG stacked brackets', () => {
 
   it('LTCG spills into 15% bracket when stacked income exceeds 0% threshold', () => {
     // taxableOrdinary = max(0, 100000 - 31500) = 68500
-    // 0% LTCG room = max(0, 98900 - 68500) = 30400 (2026 MFJ LTCG threshold)
-    // LTCG in 0%: 30400; LTCG in 15%: 40000 - 30400 = 9600
-    // ordTax = 10%*24800 + 12%*(68500-24800) = 2480 + 5244 = 7724
-    // ltcgTax = 9600 * 0.15 = 1440
+    // 0% LTCG room = max(0, LTCG_0_MFJ - 68500)
+    // ordTax = 10%×MFJ_10 + 12%×(68500 - MFJ_10)
+    const taxableOrd = 100000 - 31500;
+    const ltcgRoom = Math.max(0, LTCG_0_MFJ - taxableOrd);
+    const ltcgSpill = 40000 - ltcgRoom;
+    const ordTax = MFJ_10 * 0.10 + (taxableOrd - MFJ_10) * 0.12;
     const out = yearFederalTax({
       filingStatus: 'MFJ', inflationFactor: 1,
       ordinaryIncome: 100000, ltcgIncome: 40000, standardDeduction: 31500,
     });
-    expect(out.fedTax).toBeCloseTo(7724 + 1440, 0);
+    expect(out.fedTax).toBeCloseTo(ordTax + ltcgSpill * 0.15, 0);
   });
 
   it('ordinary income below std deduction → no ordinary tax', () => {
@@ -124,14 +142,11 @@ describe('taxableSocialSecurity (IRC §86)', () => {
   });
 
   it('caps at 85% of gross SS', () => {
-    // High PI: should never exceed 85% of SS
     expect(taxableSocialSecurity(500000, 40000, 'MFJ')).toBeCloseTo(34000, 0);
   });
 
   it('Single has lower thresholds ($25k base, $34k upper)', () => {
-    // PI = 25000: exactly at base → 0
     expect(taxableSocialSecurity(25000, 20000, 'Single')).toBe(0);
-    // PI = 30000: 50% of (30000-25000)=2500
     expect(taxableSocialSecurity(30000, 20000, 'Single')).toBeCloseTo(2500, 0);
   });
 });

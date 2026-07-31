@@ -3,6 +3,7 @@ import type { ConversionParams } from '../../schemas/plan';
 import { NumberInput } from '../inputs/NumberInput';
 import { fmtUSD } from '../../lib/format';
 import { rmdStartAgeForDob } from '../../engine/rmd';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants';
 
 /** 4-mode Roth conversion UI (Off / Fixed Amount / Bracket-Fill / Manual schedule).
  *  Extracted from the pre-refactor Strategy page so it can live inside the
@@ -15,16 +16,17 @@ const CONV_MODES: Array<{ value: ConversionParams['mode']; title: string; descri
   { value: 'manual', title: 'Manual Schedule', description: 'Per-year custom amounts in today\'s $. Matches Excel exactly.' },
 ];
 
-const BRACKET_OPTIONS = [
-  { value: 23850, label: 'Top of 10% bracket ($23,850)' },
-  { value: 96950, label: 'Top of 12% bracket ($96,950)' },
-  { value: 206700, label: 'Top of 22% bracket ($206,700)' },
-  { value: 394600, label: 'Top of 24% bracket ($394,600)' },
-];
-
 export default function ConversionModePanel() {
   const plan = usePlanStore((s) => s.plan);
   const setConversion = usePlanStore((s) => s.setConversion);
+
+  const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
+  const convBracketOptions = brackets.slice(0, 4)
+    .filter(([top]) => top <= plan.withdrawalBracketCeiling)
+    .map(([top, rate]) => ({
+      value: top,
+      label: `Top of ${Math.round(rate * 100)}% bracket ($${top.toLocaleString()})`,
+    }));
   const conv = plan.conversion;
 
   const startAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
@@ -106,7 +108,7 @@ export default function ConversionModePanel() {
                 <label>Target Bracket Ceiling</label>
                 <select value={conv.bracketCeiling} onChange={(e) => setConversion({ bracketCeiling: parseInt(e.target.value, 10) })}
                   style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, background: '#fff' }}>
-                  {BRACKET_OPTIONS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                  {convBracketOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
                 </select>
               </div>
               <div className="form-group">

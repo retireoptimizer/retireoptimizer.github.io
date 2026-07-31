@@ -7,8 +7,9 @@ import type { Plan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 import { assertProjectionInvariants } from './__invariants__/assertions';
 
+import { FED_BRACKETS_MFJ } from './taxConstants';
 // 12% bracket top — same constant the optimizer uses for its cap heuristic.
-const BRACKET_12_TOP = 96950;
+const BRACKET_12_TOP = FED_BRACKETS_MFJ[1][0];
 
 /** Deep-clone a plan to keep test cases isolated. */
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));

@@ -5,11 +5,8 @@ import { USER_GOALS, type UserGoal } from '../engine/recommender';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { getEngineWorker } from '../engine/workerClient';
 import StrategyCustomizeSheet from './strategy/StrategyCustomizeSheet';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../engine/taxConstants';
 
-/** Dashboard's tactical strategy widget.
- *  Row 1 (Optimize For): goal chips — selecting one enables Re-optimize to run inline.
- *  Row 2 (Custom Strategy): 5 preset chips — clicking one clears customPolicy and
- *    de-selects row 1. Customize button at end of row 2 opens StrategyCustomizeSheet. */
 const GOAL_SHORT_LABELS: Record<UserGoal, string> = {
   'max-end-balance': 'Max End Balance',
   'max-sustainable-spending': 'Max Spending',
@@ -19,7 +16,14 @@ const GOAL_SHORT_LABELS: Record<UserGoal, string> = {
 export default function StrategyChooser() {
   const plan = usePlanStore((s) => s.plan);
   const setStrategy = usePlanStore((s) => s.setWithdrawalStrategy);
+  const setWithdrawalBracketCeiling = usePlanStore((s) => s.setWithdrawalBracketCeiling);
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
+
+  const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
+  const bracketOptions = brackets.slice(0, 4).map(([top, rate]) => ({
+    value: top,
+    label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})`,
+  }));
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const [sheetMode, setSheetMode] = useState<null | 'blend' | 'conversion'>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -136,6 +140,43 @@ export default function StrategyChooser() {
               </span>
               {STRATEGIES.map((s) => {
                 const isActive = s.key === activeKey && !hasCustom && pendingGoal === null;
+                if (s.key === 'bracketfill') {
+                  return (
+                    <select
+                      key={s.key}
+                      value={isActive ? plan.withdrawalBracketCeiling : ''}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) {
+                          if (hasCustom) clearCustomPolicy();
+                          setStrategy('bracketfill');
+                          setWithdrawalBracketCeiling(val);
+                          setPendingGoal(null);
+                        }
+                      }}
+                      title={s.description}
+                      style={{
+                        fontSize: 13, fontWeight: 600,
+                        padding: '0 14px',
+                        height: 34,
+                        boxSizing: 'border-box' as const,
+                        lineHeight: '32px',
+                        borderRadius: 999,
+                        border: isActive ? '2px solid var(--gold)' : '1px solid var(--border-light)',
+                        background: isActive ? 'rgba(201,168,76,0.08)' : 'var(--bg-surface, #fff)',
+                        color: isActive ? '#7a5c10' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        width: 'fit-content',
+                      }}
+                    >
+                      <option value="">Bracket-Fill</option>
+                      {bracketOptions.map((b) => (
+                        <option key={b.value} value={b.value}>{b.label}</option>
+                      ))}
+                    </select>
+                  );
+                }
                 return (
                   <button
                     key={s.key}
