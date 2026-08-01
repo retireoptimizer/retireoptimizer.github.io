@@ -32,7 +32,7 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
     make: () => ({
       id: nid('stream'), description: 'New Income Stream',
       whose: 'Household', type: 'Other',
-      startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1,
+      startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1,
     }),
   },
   {
@@ -43,7 +43,7 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
       id: nid('stream'), description: 'Pension',
       whose: 'Household', type: 'Pension',
       startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 30000, growthPct: 0.02, taxablePct: 1,
+      annualAmount: 30000, growthPct: 0.02, taxablePct: 1, stateTaxablePct: 1,
     }),
   },
   {
@@ -54,7 +54,7 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
       id: nid('stream'), description: 'Annuity',
       whose: 'Household', type: 'Annuity',
       startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 18000, growthPct: 0, taxablePct: 0.7,
+      annualAmount: 18000, growthPct: 0, taxablePct: 0.7, stateTaxablePct: 1,
     }),
   },
 ];

@@ -37,6 +37,7 @@ export type Assumptions = z.infer<typeof AssumptionsSchema>;
 
 export const PersonPortfolioSchema = z.object({
   taxable: z.number().nonnegative(),
+  taxableBasis: z.number().nonnegative().default(0),
   traditional: z.number().nonnegative(),
   roth: z.number().nonnegative(),
   annualContribution: z.number().nonnegative(),
@@ -81,6 +82,7 @@ export const IncomeStreamSchema = z.object({
   annualAmount: z.number().nonnegative(),
   growthPct: z.number().min(-0.1).max(0.2),
   taxablePct: z.number().min(0).max(1),
+  stateTaxablePct: z.number().min(0).max(1).default(1),
 });
 export type IncomeStream = z.infer<typeof IncomeStreamSchema>;
 
@@ -191,6 +193,7 @@ export const defaultPlan = (): Plan => ({
   portfolio: {
     personA: {
       taxable: 0,
+      taxableBasis: 0,
       traditional: 0,
       roth: 0,
       annualContribution: 0,
@@ -200,7 +203,7 @@ export const defaultPlan = (): Plan => ({
     personB: undefined,
   },
   incomeStreams: [
-    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
   ],
   expenseStreams: [
     { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: 0.025 },
@@ -253,6 +256,7 @@ export const samplePlan = (): Plan => ({
   portfolio: {
     personA: {
       taxable: 271000,
+      taxableBasis: 135500,
       traditional: 779000,
       roth: 441000,
       annualContribution: 60000,
@@ -261,6 +265,7 @@ export const samplePlan = (): Plan => ({
     },
     personB: {
       taxable: 315000,
+      taxableBasis: 157500,
       traditional: 106000,
       roth: 171000,
       annualContribution: 40000,
@@ -269,9 +274,9 @@ export const samplePlan = (): Plan => ({
     },
   },
   incomeStreams: [
-    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1 },
-    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1 },
-    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: 0.025, taxablePct: 1 },
+    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
   ],
   expenseStreams: [
     { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: 0.025 },

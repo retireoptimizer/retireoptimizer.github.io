@@ -73,7 +73,7 @@ export const usePlanStore = create<PlanState>()(
         plan: {
           ...s.plan,
           personB: { name: 'Person B', dob: '1975-01-01', retirementAge: 65, planToAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
-          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
+          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
         },
       })),
       removePersonB: () => set((s) => ({
@@ -121,10 +121,29 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 10,
+      version: 12,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v12: backfill stateTaxablePct = 1 on existing income streams.
+        if (fromVersion < 12 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const streams = planObj.incomeStreams as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(streams)) {
+            for (const s of streams) {
+              if (s.stateTaxablePct == null) s.stateTaxablePct = 1;
+            }
+          }
+        }
+        // v11: initialize taxableBasis to 50% of taxable balance (preserves prior 50% flat assumption).
+        if (fromVersion < 11 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const pf = planObj.portfolio as Record<string, unknown> | undefined;
+          const pA = pf?.personA as Record<string, unknown> | undefined;
+          const pB = pf?.personB as Record<string, unknown> | undefined;
+          if (pA && pA.taxableBasis == null) pA.taxableBasis = ((pA.taxable as number) ?? 0) * 0.5;
+          if (pB && pB.taxableBasis == null) pB.taxableBasis = ((pB.taxable as number) ?? 0) * 0.5;
+        }
         // v10: migrate stale 2025 bracket thresholds → 2026 values (taxConstants update).
         if (fromVersion < 10 && ps.plan && typeof ps.plan === 'object') {
           const planObj = ps.plan as Record<string, unknown>;

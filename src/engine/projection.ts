@@ -1,6 +1,5 @@
 import type { Plan, IncomeStream, ExpenseStream } from '../schemas/plan';
 import { householdTotals } from '../schemas/plan';
-import { TAXABLE_BASIS_PCT } from './taxConstants';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
@@ -10,6 +9,7 @@ import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
 import { findWindow } from './blendPolicy';
 import { annualIRMAACost } from './irmaa';
+import { annualNIIT } from './niit';
 import { stateTax } from './stateTax';
 import { acaNetPremium } from './aca';
 
@@ -44,6 +44,7 @@ export interface ProjectionRow {
   fedTax: number;
   stateTaxAmt: number;
   irmaa: number;
+  niit: number;
   effRate: number;
   stdDeduction: number;
   magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; used for IRMAA/ACA)
@@ -96,13 +97,13 @@ const sumIncomeStreams = (
     const amount = s.annualAmount * Math.pow(1 + s.growthPct, yearIndex);
     const taxablePortion = amount * s.taxablePct;
     taxableAmt += taxablePortion;
+    const stf = s.stateTaxablePct ?? 1;
     if (s.type === 'Other') {
-      // Ordinary non-retirement income is always taxable
-      nonExempt += taxablePortion;
+      nonExempt += taxablePortion * stf;
     } else if (s.type === 'Pension' || s.type === 'Annuity') {
       // IL exempts pension/annuity; CA/NY do not — tracked separately so stateTax()
       // can apply per-state retirementExempt logic alongside IRA/401(k) distributions.
-      pensionAmt += taxablePortion;
+      pensionAmt += taxablePortion * stf;
     }
   }
   return { taxableAmt, nonExempt, pensionAmt };
@@ -179,6 +180,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   let roth = totals.roth;
   const pfA = plan.portfolio.personA;
   const pfB = plan.portfolio.personB;
+  let taxableBasis = (pfA.taxableBasis ?? 0) + (pfB?.taxableBasis ?? 0);
 
   const rows: ProjectionRow[] = [];
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
@@ -312,15 +314,17 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const contribToTaxEarly = contribA * pfA.contribSplit.taxable + contribB * (pfB?.contribSplit.taxable ?? 0);
     const contribToRothEarly = contribA * pfA.contribSplit.roth + contribB * (pfB?.contribSplit.roth ?? 0);
     const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTaxEarly);
+    const preBasisThisYear = taxableBasis + contribToTaxEarly;
+    const gainFraction = taxAvail > 0 ? Math.max(0, Math.min(1, 1 - preBasisThisYear / taxAvail)) : 0;
     const tradAvail = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt - conv);
     const rothAvail = Math.max(0, roth * (1 + gRateRothYear) + contribToRothEarly + conv);
 
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
     // are accounted for as resources. Conversion CREATES tax; loop sizes withdrawals to cover it.
-    let prevTax = 0, prevIRMAA = 0, prevStateAmt = 0, prevACA = 0;
+    let prevTax = 0, prevIRMAA = 0, prevNIIT = 0, prevStateAmt = 0, prevACA = 0;
     let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0;
-    let irmaa = 0, acaPremiumYear = 0;
+    let irmaa = 0, niit = 0, acaPremiumYear = 0;
     let gap = 0;
 
     const numAt65Plus = (aliveA && ageA >= 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= 65 ? 1 : 0);
@@ -335,7 +339,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
     for (let iter = 0; iter < 16; iter++) {
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
-      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA + prevACA);
+      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA + prevNIIT + prevACA);
       const w = activePolicy
         ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail })
         : applyWithdrawalOrder({
@@ -347,7 +351,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
           });
       wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;
 
-      const ltcg = wdTax * (1 - TAXABLE_BASIS_PCT);
+      const ltcg = wdTax * gainFraction;
       // SS taxability via IRC §86 provisional-income tiers (replaces flat 0.85).
       const provisionalIncome = other.taxableAmt + wdTrd + rmdAmt + conv + 0.5 * ss.total;
       const taxableSS = taxableSocialSecurity(provisionalIncome, ss.total, filingStatus);
@@ -366,6 +370,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // For the first two years, fall back to the current year's MAGI.
       const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
       irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus, filingStatus) : 0;
+      niit = annualNIIT(magi, ltcg, filingStatus);
 
       // Refine state tax to include retirement distributions for states that tax them.
       // Include stateAmt in the convergence check — for CA/NY plans, state tax is a
@@ -390,11 +395,13 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       if (
         Math.abs(fedTax - prevTax) < 1 &&
         Math.abs(irmaa - prevIRMAA) < 1 &&
+        Math.abs(niit - prevNIIT) < 1 &&
         Math.abs(stateAmt - prevStateAmt) < 1 &&
         Math.abs(acaPremiumYear - prevACA) < 1
       ) break;
       prevTax = fedTax;
       prevIRMAA = irmaa;
+      prevNIIT = niit;
       prevStateAmt = stateAmt;
       prevACA = acaPremiumYear;
     }
@@ -411,6 +418,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     taxable = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - wdTax);
     trad    = Math.max(0, trad    * (1 + gRateTradYear) + contribToTrad - wdTrd - rmdAmt - conv);
     roth    = Math.max(0, roth    * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
+    taxableBasis = Math.max(0, taxableBasis + contribToTax - wdTax * (1 - gainFraction));
 
     const endTotal = taxable + trad + roth;
     // Depletion is "could not fund the year's spending need from the portfolio", NOT just
@@ -451,6 +459,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       fedTax,
       stateTaxAmt: stateAmt,
       irmaa,
+      niit,
       effRate,
       stdDeduction: stdD,
       magi: ordIncomeFinal + ltcgFinal,

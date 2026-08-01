@@ -27,6 +27,7 @@ const contribSplit = () =>
 const personPortfolio = () =>
   fc.record({
     taxable: fc.integer({ min: 0, max: 3_000_000 }),
+    taxableBasis: fc.integer({ min: 0, max: 3_000_000 }),
     traditional: fc.integer({ min: 0, max: 3_000_000 }),
     roth: fc.integer({ min: 0, max: 2_000_000 }),
     annualContribution: fc.integer({ min: 0, max: 75_000 }),
@@ -45,6 +46,7 @@ const incomeStream = () =>
     annualAmount: fc.integer({ min: 0, max: 80_000 }),
     growthPct: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }),
     taxablePct: fc.double({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
+    stateTaxablePct: fc.double({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
   })
     .filter((s) => s.stopAge > s.startAge);
 

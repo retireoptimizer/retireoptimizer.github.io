@@ -791,7 +791,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   animation: rowIn 0.2s ease;
 }
 @keyframes rowIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
-.stream-row.income-row { grid-template-columns: 1.8fr 1fr 1fr 0.7fr 0.7fr 0.7fr 0.7fr 28px; }
+.stream-row.income-row { grid-template-columns: 1.4fr 1fr 1fr 0.7fr 0.7fr 0.7fr 0.7fr 0.7fr 28px; }
 .stream-row.expense-row { grid-template-columns: 2fr 1fr 0.7fr 0.7fr 0.9fr 0.8fr 28px; }
 /* Inputs and dropdowns in a stream row share one fixed height so the selects
    line up with the number boxes. */

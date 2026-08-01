@@ -15,7 +15,7 @@ import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import GoalSelectPanel from '../components/GoalSelectPanel';
 import type { UserGoal } from '../engine/recommender';
 
-const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' };
+const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', whiteSpace: 'nowrap' };
 
 const ageFromDob = (iso: string): number => {
   if (!iso || iso.length < 4) return 0;
@@ -279,6 +279,7 @@ export default function InputsPage() {
                 <div style={headerStyle}>Stop age</div>
                 <div style={headerStyle}>Annual amt</div>
                 <div style={headerStyle}>Growth %</div>
+                <div style={headerStyle}>State taxable % <span title="Only applies when using a Custom flat-rate state. Named states (IL, CA, NY…) apply their own built-in exemption rules regardless of this value." style={{ cursor: 'help', opacity: 0.55 }}>ⓘ</span></div>
                 <div></div>
               </div>
               {plan.incomeStreams.length === 0 && (
@@ -307,6 +308,10 @@ export default function InputsPage() {
                   </div>
                   <div className="input-suffix-wrap">
                     <NumberInput value={s.growthPct} scale={100} digits={1} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { growthPct: v })} />
+                    <span className="input-suffix">%</span>
+                  </div>
+                  <div className="input-suffix-wrap">
+                    <NumberInput value={s.stateTaxablePct ?? 1} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { stateTaxablePct: v })} />
                     <span className="input-suffix">%</span>
                   </div>
                   <button className="remove-btn" onClick={() => removeIncomeStream(s.id)}>×</button>
@@ -485,7 +490,7 @@ function PortfolioPersonSection({ name, data, onChange, isRetired = false }: { n
   return (
     <div>
       <div className="subsection-label">{name} <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· {fmtK(data.taxable + data.traditional + data.roth)}</span></div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: data.taxable > 0 ? 4 : 16 }}>
         <div className="form-group">
           <label>Taxable</label>
           <div className="input-prefix-wrap"><span className="input-prefix">$</span>
@@ -505,6 +510,24 @@ function PortfolioPersonSection({ name, data, onChange, isRetired = false }: { n
           </div>
         </div>
       </div>
+      {data.taxable > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ color: 'var(--text-muted)' }}>↳ Taxable Basis</label>
+            <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+              <NumberInput
+                value={data.taxableBasis ?? data.taxable * 0.5}
+                min={0}
+                style={{ paddingLeft: 22 }}
+                onCommit={(v) => onChange({ taxableBasis: Math.min(v, data.taxable) })}
+              />
+            </div>
+            <div className="helper-text">
+              {Math.round(Math.max(0, (1 - (data.taxableBasis ?? data.taxable * 0.5) / data.taxable) * 100))}% unrealized gain
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
         <div className="form-group">
           <label>Annual contribution</label>
