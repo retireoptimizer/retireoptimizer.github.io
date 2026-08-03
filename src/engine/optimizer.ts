@@ -678,7 +678,9 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // The earliest age where neither condition fires is returned.
     const startAge = plan.personA.retirementAge;
     let bestFeasible: { age: number; inner: InnerEval } | null = null;
-    const minAge = 40;
+    // Floor: never suggest retiring before the person's current age.
+    const currentAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
+    const minAge = Math.max(currentAgeA, 40);
     const TOTAL = Math.max(1, startAge - minAge + 1);
     let step = 0;
     let stopReason: 'ran-out' | 'early-trad' | 'floor' = 'floor';
