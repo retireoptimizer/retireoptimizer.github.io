@@ -556,7 +556,7 @@ function setRetirementAge(plan: Plan, ageA: number): Plan {
     ...plan,
     personA: { ...plan.personA, retirementAge: ageA },
     personB: plan.personB
-      ? { ...plan.personB, retirementAge: Math.max(50, plan.personB.retirementAge + deltaA) }
+      ? { ...plan.personB, retirementAge: Math.max(40, plan.personB.retirementAge + deltaA) }
       : plan.personB,
   };
 }
@@ -672,23 +672,31 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
   }
 
   if (goal === 'min-retirement-age') {
-    // Decrement search on personA.retirementAge, starting from current down to 55.
+    // Walk personA's retirement age down until either:
+    //   (a) the plan runs out of money, or
+    //   (b) funding spending requires trad withdrawals before age 59 (10% penalty territory).
+    // The earliest age where neither condition fires is returned.
     const startAge = plan.personA.retirementAge;
     let bestFeasible: { age: number; inner: InnerEval } | null = null;
-    const minAge = 55;
+    const minAge = 40;
     const TOTAL = Math.max(1, startAge - minAge + 1);
     let step = 0;
+    let stopReason: 'ran-out' | 'early-trad' | 'floor' = 'floor';
 
-    // Try current age first (must be feasible to anchor), then walk down.
     for (let age = startAge; age >= minAge; age--) {
       opts.onProgress?.(step / TOTAL, `Testing retirement at age ${age}…`);
       step++;
       const trialPlan = setRetirementAge(plan, age);
       const inner = innerOptimize(trialPlan, opts, evalCounter);
-      if (!inner.ranOut) {
+      // Check whether the optimized plan needed trad withdrawals to cover actual spending
+      // before 59 (penalty zone). We exclude years with netSpend=0 so that purely
+      // elective Roth conversions (which create a tax bill funded partly by wdTrd) don't
+      // falsely trip the check — those conversions are penalty-free; only spending draws are not.
+      const needsEarlyTrad = inner.proj.rows.some(r => r.ageA < 59 && r.netSpend > 0 && r.wdTrd > 1);
+      if (!inner.ranOut && !needsEarlyTrad) {
         bestFeasible = { age, inner };
       } else {
-        // Once we hit infeasibility walking down, earlier ages will also be infeasible.
+        stopReason = inner.ranOut ? 'ran-out' : 'early-trad';
         break;
       }
     }
@@ -701,10 +709,14 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
         headlineLabel: 'Earliest feasible retirement',
       });
     }
+    const headlineLabel =
+      stopReason === 'early-trad' ? 'Earliest retirement on penalty-free assets' :
+      stopReason === 'floor'      ? `Earliest feasible retirement — age ${minAge} floor reached` :
+                                    'Earliest feasible retirement';
     return packageResult(bestFeasible.inner, goal, evalCounter.n, {
       solvedRetirementAge: bestFeasible.age,
       headline: `Age ${bestFeasible.age}`,
-      headlineLabel: 'Earliest feasible retirement',
+      headlineLabel,
     });
   }
 
