@@ -1,8 +1,10 @@
 export type FilingStatus = 'MFJ' | 'Single';
 
 /**
- * Per IRS: surviving spouse may file MFJ for year of death and the next 2 years,
- * then Single. If single in plan (no personB) → always Single.
+ * Per IRS: surviving spouse files MFJ for the year of death only, then Single.
+ * (Qualifying Surviving Spouse status that extends MFJ rates 2 more years requires
+ * a dependent child — not applicable for typical retirees.) Single in plan (no personB)
+ * → always Single.
  *
  * @param yearIndex 0..N — year offset from plan start
  * @param passingAgeA / passingAgeB — passing age in plan years (or undefined for survivors)
@@ -22,9 +24,7 @@ export function filingStatusForYear(
   const bAlive = ageB <= passingAgeB;
   if (aAlive && bAlive) return 'MFJ';
   if (!aAlive && !bAlive) return 'Single';
-  // One has passed. Determine the year of death and apply 2-year grace.
-  const deathOfA = !aAlive ? passingAgeA - startAgeA : Infinity;
-  const deathOfB = !bAlive ? passingAgeB - startAgeB : Infinity;
-  const deathYear = Math.min(deathOfA, deathOfB);
-  return yearIndex - deathYear <= 2 ? 'MFJ' : 'Single';
+  // One has passed. Death year is already MFJ via the "both alive" branch above
+  // (the deceased's age equals passingAge on that yearIndex). All subsequent years: Single.
+  return 'Single';
 }

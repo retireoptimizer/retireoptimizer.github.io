@@ -3,7 +3,7 @@ import { filingStatusForYear } from './filingStatus';
 
 describe('filingStatusForYear', () => {
   // Couple: A starts 52, dies at 88 (year 36). B starts 50, dies at 92.
-  // A dies in year 36. MFJ allowed for years 36, 37, 38. Single from 39 onward.
+  // A dies in year 36 — that year is MFJ (both-alive branch). Year 37+ → Single.
   it('both alive → MFJ', () => {
     expect(filingStatusForYear(0, 52, 88, 50, 92)).toBe('MFJ');
     expect(filingStatusForYear(35, 52, 88, 50, 92)).toBe('MFJ');
@@ -13,12 +13,12 @@ describe('filingStatusForYear', () => {
     expect(filingStatusForYear(36, 52, 88, 50, 92)).toBe('MFJ');
   });
 
-  it('2 years after death still MFJ', () => {
-    expect(filingStatusForYear(37, 52, 88, 50, 92)).toBe('MFJ');
-    expect(filingStatusForYear(38, 52, 88, 50, 92)).toBe('MFJ');
+  it('1 year after death → Single (no qualifying children assumed)', () => {
+    expect(filingStatusForYear(37, 52, 88, 50, 92)).toBe('Single');
+    expect(filingStatusForYear(38, 52, 88, 50, 92)).toBe('Single');
   });
 
-  it('3 years after death → Single', () => {
+  it('multiple years after death → Single', () => {
     expect(filingStatusForYear(39, 52, 88, 50, 92)).toBe('Single');
   });
 
