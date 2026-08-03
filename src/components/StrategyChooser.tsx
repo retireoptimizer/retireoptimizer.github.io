@@ -139,9 +139,12 @@ export default function StrategyChooser() {
       if (pendingConv) planForOptimize = { ...planForOptimize, conversion: { ...planForOptimize.conversion, ...pendingConv } };
       const goalToUse = (selectedGoal ?? activeGoal ?? 'max-end-balance') as UserGoal;
       const r = await worker.optimize(planForOptimize, goalToUse, { useNelderMead: true, thorough: true });
-      setPlanKey(planInputKey(planForOptimize));
+      const appliedPlan = applyResultToPlan(planForOptimize, r);
+      // Key must come from the applied plan — for min-retirement-age the optimizer mutates
+      // personA.retirementAge, so keying off planForOptimize would cause a mismatch on re-render.
+      setPlanKey(planInputKey(appliedPlan));
       setTabFreshEntry('none');
-      applyOptimizerResult(applyResultToPlan(planForOptimize, r));
+      applyOptimizerResult(appliedPlan);
       // Commit pending conv to the plan store now that the optimizer ran with it.
       if (pendingConv) { setConversion(pendingConv); setPendingConv(null); }
       const c = planForOptimize.conversion;

@@ -110,8 +110,9 @@ export default function InputsPage() {
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
       const result = await worker.optimize(plan, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
       setOptimizerResult(result);
-      setPlanKey(planInputKey(plan));
-      applyOptimizerResult(applyResultToPlan(plan, result));
+      const appliedPlan = applyResultToPlan(plan, result);
+      setPlanKey(planInputKey(appliedPlan));
+      applyOptimizerResult(appliedPlan);
       window.scrollTo(0, 0);
       navigate('/dashboard');
     } catch (err) {
