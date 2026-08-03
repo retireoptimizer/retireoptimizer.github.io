@@ -1,24 +1,16 @@
 import { usePlanStore } from '../../store/usePlanStore';
-import type { ConversionParams } from '../../schemas/plan';
 import { NumberInput } from '../inputs/NumberInput';
 import { fmtUSD } from '../../lib/format';
-import { rmdStartAgeForDob } from '../../engine/rmd';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants';
 
-/** 4-mode Roth conversion UI (Off / Fixed Amount / Bracket-Fill / Manual schedule).
- *  Extracted from the pre-refactor Strategy page so it can live inside the
- *  Dashboard "Customize" side sheet. Reads + writes plan.conversion via the store. */
-
-const CONV_MODES: Array<{ value: ConversionParams['mode']; title: string; description: string }> = [
-  { value: 'off', title: 'No Conversions', description: 'Baseline — no Roth conversions performed.' },
-  { value: 'auto-window', title: 'Fixed Amount', description: 'Convert a fixed $ amount each year in a window (today\'s $). Engine inflates.' },
-  { value: 'bracket-fill', title: 'Bracket Fill', description: 'Auto-convert to fill the chosen tax bracket each year. IRMAA-aware.' },
-  { value: 'manual', title: 'Manual Schedule', description: 'Per-year custom amounts in today\'s $. Matches Excel exactly.' },
-];
-
-export default function ConversionModePanel() {
+/** Data-entry detail for the active Roth conversion mode, shown inside the Dashboard side sheet.
+ *  Mode SELECTION lives inline as pills in StrategyChooser; this renders only the fields the chosen
+ *  mode needs — Fixed Amount (amount + window), Bracket-Fill (ceiling + window), Manual (per-year table).
+ *  For 'off' there's nothing to enter. Store-driven. */
+export default function ConversionDetail() {
   const plan = usePlanStore((s) => s.plan);
   const setConversion = usePlanStore((s) => s.setConversion);
+  const conv = plan.conversion;
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
   const convBracketOptions = brackets.slice(0, 4)
@@ -27,11 +19,10 @@ export default function ConversionModePanel() {
       value: top,
       label: `Top of ${Math.round(rate * 100)}% bracket ($${top.toLocaleString()})`,
     }));
-  const conv = plan.conversion;
 
   const startAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
   const manualAges: number[] = [];
-  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= rmdStartAgeForDob(plan.personA.dob); age++) manualAges.push(age);
+  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.personA.planToAge; age++) manualAges.push(age);
 
   const setManualForAge = (age: number, value: number) => {
     setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: value } });
@@ -44,36 +35,18 @@ export default function ConversionModePanel() {
   };
   const manualTotal = Object.values(conv.manualSchedule).reduce((s, v) => s + (v || 0), 0);
 
-  return (
-    <>
-      <div className="panel" style={{ marginBottom: 20 }}>
-        <div className="panel-header">
-          <div className="panel-title"><div className="panel-title-dot"></div>Roth Conversion Mode</div>
-        </div>
-        <div className="panel-body" style={{ padding: '16px 20px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-            {CONV_MODES.map((m) => {
-              const active = conv.mode === m.value;
-              return (
-                <label key={m.value} style={{
-                  display: 'flex', flexDirection: 'column', gap: 6, padding: 14, borderRadius: 10,
-                  border: active ? '2px solid var(--gold)' : '1px solid var(--border-light)',
-                  background: active ? 'rgba(201,168,76,0.04)' : 'transparent',
-                  cursor: 'pointer',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="radio" name="roth-mode" checked={active} onChange={() => setConversion({ mode: m.value })}
-                      style={{ accentColor: 'var(--gold)' }} />
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{m.title}</div>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{m.description}</div>
-                </label>
-              );
-            })}
-          </div>
+  if (conv.mode === 'off') {
+    return (
+      <div className="panel">
+        <div className="panel-body" style={{ padding: '16px 20px', fontSize: 13, color: 'var(--text-secondary)' }}>
+          No conversions are scheduled. Choose <strong>Bracket-Fill</strong>, <strong>Fixed Amount</strong>, or <strong>Manual</strong> on the dashboard to configure a strategy.
         </div>
       </div>
+    );
+  }
 
+  return (
+    <>
       {conv.mode === 'auto-window' && (
         <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Fixed Amount Settings</div></div>

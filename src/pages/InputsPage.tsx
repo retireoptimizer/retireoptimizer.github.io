@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlanStore } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { householdTotals } from '../schemas/plan';
-import type { IncomeStream, ExpenseStream, PersonPortfolio } from '../schemas/plan';
+import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio } from '../schemas/plan';
 import { NumberInput } from '../components/inputs/NumberInput';
 import { listStates } from '../engine/stateTax';
 import { fmtM, fmtK } from '../lib/format';
@@ -12,6 +12,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { INCOME_TEMPLATES, EXPENSE_TEMPLATES } from '../engine/streamTemplates';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
+import { planInputKey } from '../engine/planInputKey';
 import GoalSelectPanel from '../components/GoalSelectPanel';
 import type { UserGoal } from '../engine/recommender';
 
@@ -46,11 +47,15 @@ export default function InputsPage() {
   const addIncomeStream = usePlanStore((s) => s.addIncomeStream);
   const updateIncomeStream = usePlanStore((s) => s.updateIncomeStream);
   const removeIncomeStream = usePlanStore((s) => s.removeIncomeStream);
+  const addLumpSumEvent = usePlanStore((s) => s.addLumpSumEvent);
+  const updateLumpSumEvent = usePlanStore((s) => s.updateLumpSumEvent);
+  const removeLumpSumEvent = usePlanStore((s) => s.removeLumpSumEvent);
   const addExpenseStream = usePlanStore((s) => s.addExpenseStream);
   const updateExpenseStream = usePlanStore((s) => s.updateExpenseStream);
   const removeExpenseStream = usePlanStore((s) => s.removeExpenseStream);
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
+  const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
 
   const [selectedGoal, setSelectedGoal] = useState<UserGoal>(
     (plan.optimizedForGoal as UserGoal | undefined) ?? 'max-end-balance'
@@ -105,6 +110,7 @@ export default function InputsPage() {
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
       const result = await worker.optimize(plan, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
       setOptimizerResult(result);
+      setPlanKey(planInputKey(plan));
       applyOptimizerResult(applyResultToPlan(plan, result));
       window.scrollTo(0, 0);
       navigate('/dashboard');
@@ -319,6 +325,47 @@ export default function InputsPage() {
               ))}
             </div>
             <button className="add-row-btn" onClick={() => addIncomeFromTemplate('blank')}>+ Add income stream</button>
+
+            <div className="subsection-label" style={{ marginTop: 24 }}>One-Time Income Events</div>
+            <div className="stream-rows-scroll">
+              <div className="stream-row lumpsum-row" style={{ padding: '6px 0', borderBottom: '2px solid var(--border-light)' }}>
+                <div style={headerStyle}>Description</div>
+                <div style={headerStyle}>Whose</div>
+                <div style={headerStyle}>Account</div>
+                <div style={headerStyle}>At age</div>
+                <div style={headerStyle}>Amount (nominal $)</div>
+                <div></div>
+              </div>
+              {(plan.lumpSumEvents ?? []).length === 0 && (
+                <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                  No one-time events — click "+ Add" for inheritance, home sale, insurance payouts, etc.
+                </div>
+              )}
+              {(plan.lumpSumEvents ?? []).map((ev) => (
+                <div key={ev.id} className="stream-row lumpsum-row">
+                  <input type="text" value={ev.description} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { description: e.target.value })} />
+                  <select value={ev.whose} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { whose: e.target.value as LumpSumEvent['whose'] })}>
+                    <option value="A">{nameA}</option>
+                    <option value="B">{nameB}</option>
+                    <option value="Household">Household</option>
+                  </select>
+                  <select value={ev.bucket} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { bucket: e.target.value as LumpSumEvent['bucket'] })}>
+                    <option value="taxable">Taxable (brokerage)</option>
+                    <option value="trad">Pre-tax (trad IRA/401k)</option>
+                    <option value="roth">Roth</option>
+                  </select>
+                  <NumberInput value={ev.age} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateLumpSumEvent(ev.id, { age: Math.round(v) })} />
+                  <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+                    <NumberInput value={ev.amount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateLumpSumEvent(ev.id, { amount: v })} />
+                  </div>
+                  <button className="remove-btn" onClick={() => removeLumpSumEvent(ev.id)}>×</button>
+                </div>
+              ))}
+            </div>
+            <button className="add-row-btn" onClick={() => addLumpSumEvent({ id: `lump-${Date.now()}`, description: 'New Event', whose: 'Household', bucket: 'taxable', age: A.retirementAge, amount: 0 })}>+ Add one-time event</button>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+              Enter the actual dollar amount you expect to receive (nominal future dollars). In real-dollar view, the projection shows its NPV in today's purchasing power.
+            </div>
 
             <div className="subsection-label" style={{ marginTop: 24 }}>Expenses</div>
             <div className="stream-rows-scroll">

@@ -1,15 +1,17 @@
 import { useEffect } from 'react';
 import { useProjection } from '../../store/usePlanStore';
-import ConversionModePanel from './ConversionModePanel';
+import ConversionDetail from './ConversionDetail';
 import CustomBlendPanel from './CustomBlendPanel';
 import RothVsRmd from '../charts/RothVsRmd';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
-/** Right-drawer side sheet for strategy details. `mode` controls which panel is shown:
- *  'blend' → Custom Blend Editor; 'conversion' → Roth Conversion Mode + chart. */
-export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: 'blend' | 'conversion' }) {
-  const proj = useProjection();
+/** Right-drawer side sheet. `mode` controls which panel is shown:
+ *  'blend' → Custom Blend Editor; 'conversion' → the active conversion mode's detail fields;
+ *  'chart' → the Conversions-vs-RMD chart. Mode/preset selection lives inline in StrategyChooser. */
+export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: 'blend' | 'conversion' | 'chart' }) {
   const isMobile = useIsMobile();
+  const proj = useProjection();
+  const hasConvRmd = proj.rows.some((r) => r.rothConv > 0 || r.rmd > 0);
 
   useEffect(() => {
     if (!open) return;
@@ -39,7 +41,7 @@ export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: 
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: isMobile ? '100%' : mode === 'blend' ? 'min(800px, 100%)' : 'min(560px, 100%)',
+          width: isMobile ? '100%' : mode === 'blend' ? 'min(800px, 100%)' : mode === 'chart' ? 'min(680px, 100%)' : 'min(560px, 100%)',
           height: isMobile ? '85vh' : '100%',
           borderRadius: isMobile ? '20px 20px 0 0' : undefined,
           background: 'var(--bg-surface, #fff)',
@@ -62,7 +64,7 @@ export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: 
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Customize</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', fontFamily: "'Playfair Display', serif" }}>
-              {mode === 'blend' ? 'Custom Blend Editor' : 'Roth Conversion Mode'}
+              {mode === 'blend' ? 'Custom Blend Editor' : mode === 'chart' ? 'Conversions vs RMDs' : 'Conversion Details'}
             </div>
           </div>
           <button
@@ -80,16 +82,22 @@ export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: 
           >Close</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: isMobile ? 'calc(16px + env(safe-area-inset-bottom))' : 16 }}>
-          {mode === 'conversion' && (
-            <>
-              <ConversionModePanel />
-              <div className="panel" style={{ marginTop: 20 }}>
-                <div className="panel-header"><div className="panel-title"><div className="panel-title-dot"></div>Conversions vs RMDs</div></div>
-                <div className="panel-body"><RothVsRmd proj={proj} real height={240} /></div>
-              </div>
-            </>
-          )}
+          {mode === 'conversion' && <ConversionDetail />}
           {mode === 'blend' && <CustomBlendPanel />}
+          {mode === 'chart' && (
+            <div>
+              <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Voluntary Roth conversions (above zero) vs forced RMDs (below zero) by age.
+              </div>
+              {hasConvRmd ? (
+                <RothVsRmd proj={proj} real height={340} />
+              ) : (
+                <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border-light)', borderRadius: 10 }}>
+                  No Roth conversions or RMDs are projected for this plan yet.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

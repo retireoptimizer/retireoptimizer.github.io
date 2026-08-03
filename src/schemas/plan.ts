@@ -86,6 +86,16 @@ export const IncomeStreamSchema = z.object({
 });
 export type IncomeStream = z.infer<typeof IncomeStreamSchema>;
 
+export const LumpSumEventSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  whose: z.enum(['A', 'B', 'Household']),
+  bucket: z.enum(['taxable', 'trad', 'roth']),
+  age: z.number().int().min(0).max(115),
+  amount: z.number().nonnegative(),
+});
+export type LumpSumEvent = z.infer<typeof LumpSumEventSchema>;
+
 export const ExpenseStreamSchema = z.object({
   id: z.string(),
   description: z.string(),
@@ -120,6 +130,9 @@ export const ConversionParamsSchema = z.object({
   autoAmount: z.number().nonnegative().default(70000),
   bracketCeiling: z.number().nonnegative().default(BRACKET_12_TOP_MFJ),
   manualSchedule: z.record(z.string(), z.number()).default({}),
+  // When true (default), the optimizer freely searches Roth conversion amounts, overriding `mode`.
+  // When false, the optimizer leaves conversions to `mode` (skips the conversion search dimension).
+  optimize: z.boolean().default(true),
 });
 export type ConversionParams = z.infer<typeof ConversionParamsSchema>;
 
@@ -144,6 +157,7 @@ export const PlanSchema = z.object({
   assumptions: AssumptionsSchema,
   portfolio: PortfolioSchema,
   incomeStreams: z.array(IncomeStreamSchema).default([]),
+  lumpSumEvents: z.array(LumpSumEventSchema).default([]),
   expenseStreams: z.array(ExpenseStreamSchema).default([]),
   withdrawalStrategy: z.enum(['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill']),
   withdrawalBracketCeiling: z.number().nonnegative().default(BRACKET_12_TOP_MFJ),
@@ -205,6 +219,7 @@ export const defaultPlan = (): Plan => ({
   incomeStreams: [
     { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
   ],
+  lumpSumEvents: [],
   expenseStreams: [
     { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: 0.025 },
   ],
@@ -217,6 +232,7 @@ export const defaultPlan = (): Plan => ({
     autoAmount: 70000,
     bracketCeiling: BRACKET_12_TOP_MFJ,
     manualSchedule: {},
+    optimize: true,
   },
   state: 'NONE',
   goals: [],
@@ -273,6 +289,7 @@ export const samplePlan = (): Plan => ({
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
   },
+  lumpSumEvents: [],
   incomeStreams: [
     { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
     { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
@@ -290,6 +307,7 @@ export const samplePlan = (): Plan => ({
     autoAmount: 70000,
     bracketCeiling: BRACKET_12_TOP_MFJ,
     manualSchedule: {},
+    optimize: true,
   },
   state: 'IL',
   goals: [],

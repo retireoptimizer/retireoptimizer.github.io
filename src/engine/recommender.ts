@@ -19,7 +19,7 @@ export const REC_GOALS: Record<RecGoal, RecGoalSpec> = {
     label: 'Minimize Lifetime Taxes',
     description: 'Sum of federal + state + IRMAA across all years.',
     direction: 'min',
-    score: (r) => r.rows.reduce((s, x) => s + x.fedTax + x.stateTaxAmt + x.irmaa, 0),
+    score: (r) => r.rows.reduce((s, x) => s + x.fedTax + x.stateTaxAmt + x.irmaa + x.niit, 0),
     format: fmtK,
   },
   'max-end': {

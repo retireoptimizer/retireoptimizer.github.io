@@ -176,6 +176,81 @@ describe('Custom BlendPolicy ↔ Projection', () => {
   });
 });
 
+describe('conversion.optimize gate', () => {
+  it('mode=off, no policy → zero conversions everywhere (legacy path)', () => {
+    const plan = defaultPlan();
+    plan.conversion.mode = 'off';
+    const proj = runProjection(plan);
+    expect(proj.lifetimeConversion).toBe(0);
+    for (const r of proj.rows) expect(r.rothConv, `year ${r.year}`).toBe(0);
+  });
+
+  it('mode=bracket-fill, no policy → each in-window year respects bracketCeiling', () => {
+    const plan = defaultPlan();
+    plan.conversion.mode = 'bracket-fill';
+    const { startAge, endAge, bracketCeiling } = plan.conversion;
+    const proj = runProjection(plan);
+    expect(proj.lifetimeConversion).toBeGreaterThan(0);
+    for (const r of proj.rows) {
+      if (r.ageA < startAge || r.ageA > endAge) continue;
+      // rothConv (nominal) / inflationFactor is today's-$ conversion; must not exceed the ceiling.
+      expect(
+        r.rothConv / r.inflationFactor,
+        `year ${r.year} ageA=${r.ageA}: conv $${(r.rothConv / r.inflationFactor).toFixed(0)} exceeds ceiling $${bracketCeiling}`
+      ).toBeLessThanOrEqual(bracketCeiling + 1);
+    }
+  });
+
+  it('optimizeConversions=false, mode=off → optimizer leaves convAmt undefined and zero conversions', () => {
+    const plan = defaultPlan();
+    plan.conversion.mode = 'off';
+    plan.conversion.optimize = false;
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    // CRITICAL: no numeric convAmt written (undefined, not 0) — else it would override the mode.
+    for (const w of r.perYearPolicy.windows) {
+      expect(w.convAmt, `window ${w.fromAge}-${w.toAge} convAmt must be undefined`).toBeUndefined();
+    }
+    expect(r.projection.lifetimeConversion).toBe(0);
+  }, 60_000);
+
+  it('optimizeConversions=false, mode=bracket-fill → conversions follow the mode, ceiling respected', () => {
+    const plan = defaultPlan();
+    plan.conversion.mode = 'bracket-fill';
+    plan.conversion.optimize = false;
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    for (const w of r.perYearPolicy.windows) {
+      expect(w.convAmt, `window ${w.fromAge}-${w.toAge} convAmt must be undefined`).toBeUndefined();
+    }
+    expect(r.projection.lifetimeConversion).toBeGreaterThan(0);
+    const { startAge, endAge, bracketCeiling } = plan.conversion;
+    for (const row of r.projection.rows) {
+      if (row.ageA < startAge || row.ageA > endAge) continue;
+      expect(row.rothConv / row.inflationFactor).toBeLessThanOrEqual(bracketCeiling + 1);
+    }
+    // Withdrawals still optimized: end balance beats the all-taxable, mode-driven baseline.
+    const baseline = runProjection(plan); // no policy → all-taxable withdrawals + same mode conversions
+    expect(r.projection.endTotalReal).toBeGreaterThanOrEqual(baseline.endTotalReal - 1);
+  }, 60_000);
+
+  it('optimizeConversions=true (default) → optimizer populates numeric convAmt', () => {
+    const plan = defaultPlan();
+    plan.conversion.mode = 'off';
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    expect(r.perYearPolicy.windows.some((w) => w.convAmt != null)).toBe(true);
+  }, 60_000);
+
+  it('optimizeConversions=false round-trips: applied plan matches result.projection', () => {
+    const plan = defaultPlan();
+    plan.conversion.mode = 'bracket-fill';
+    plan.conversion.optimize = false;
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const applied = clone(plan);
+    applied.customPolicy = { ...r.perYearPolicy, source: 'optimizer' };
+    const verify = runProjection(applied, { policy: r.perYearPolicy });
+    expect(verify.endTotalReal).toBeCloseTo(r.projection.endTotalReal, 0);
+  }, 60_000);
+});
+
 describe('Monte Carlo basic sanity', () => {
   const plan = defaultPlan();
   const mc = runMonteCarlo(plan, { trials: 100, seed: 42 });

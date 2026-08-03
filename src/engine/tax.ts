@@ -44,8 +44,7 @@ export function standardDeduction(
     return (base + addons) * inflationFactor;
   }
   const base = STANDARD_DEDUCTION_SINGLE;
-  const survivorAge = ageA; // by construction, only the survivor's age matters
-  const addon = survivorAge >= 65 ? SENIOR_ADDON_SINGLE : 0;
+  const addon = ageA >= 65 ? SENIOR_ADDON_SINGLE : 0;
   return (base + addon) * inflationFactor;
 }
 

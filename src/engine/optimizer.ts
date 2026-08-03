@@ -120,10 +120,17 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
     throw new Error('Retirement age is after plan-to age.');
   }
 
-  // Initial per-year windows: 100% taxable, no conversion.
+  // When false, the optimizer does NOT search conversion amounts: it leaves every window's
+  // convAmt `undefined` so projection falls back to plan.conversion.mode (per year, path-dependent).
+  // CRITICAL: never write a numeric convAmt (0 included) in this mode — `0 != null` would take
+  // projection's policy path and override the user's chosen conversion mode.
+  const optimizeConversions = plan.conversion.optimize ?? true;
+
+  // Initial per-year windows: 100% taxable. convAmt starts at 0 (optimizer-owned) or undefined
+  // (mode-owned) depending on optimizeConversions.
   const startWindows: BlendWindow[] = [];
   for (let age = retireAge; age <= planToAge; age++) {
-    startWindows.push({ fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: 0 });
+    startWindows.push({ fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: optimizeConversions ? 0 : undefined });
   }
 
   let bestWindows: BlendWindow[] = startWindows.map((w) => ({ ...w }));
@@ -165,15 +172,23 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
       const cap = convCapAtYear(bestProj, yi);
       let cur: InnerEval = { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut };
 
+      // When conversions aren't optimized, collapse the conversion dimension to a single
+      // no-op pass (cf = null) and never write convAmt — only the withdrawal split varies.
+      const cfList: (number | null)[] = optimizeConversions ? convFractions : [null];
       for (const s of splits) {
-        for (const cf of convFractions) {
-          const newConv = cf * cap;
-          if (Math.abs(s.tax - baseW.pctTaxable) < 1e-4 &&
-              Math.abs(s.trad - baseW.pctTraditional) < 1e-4 &&
-              Math.abs(newConv - (baseW.convAmt ?? 0)) < 0.5) continue;
+        for (const cf of cfList) {
+          const newConv = cf == null ? undefined : cf * cap;
+          const sameSplit = Math.abs(s.tax - baseW.pctTaxable) < 1e-4 &&
+                            Math.abs(s.trad - baseW.pctTraditional) < 1e-4;
+          const sameConv = newConv == null || Math.abs(newConv - (baseW.convAmt ?? 0)) < 0.5;
+          if (sameSplit && sameConv) continue;
 
           const trial = bestWindows.map((w, idx) =>
-            idx === yi ? { ...w, pctTaxable: s.tax, pctTraditional: s.trad, pctRoth: s.roth, convAmt: newConv } : w
+            idx === yi
+              ? (newConv == null
+                  ? { ...w, pctTaxable: s.tax, pctTraditional: s.trad, pctRoth: s.roth }
+                  : { ...w, pctTaxable: s.tax, pctTraditional: s.trad, pctRoth: s.roth, convAmt: newConv })
+              : w
           );
           const trialPolicy: BlendPolicy = { windows: trial, source: 'optimizer' };
           const proj = runProjection(plan, { policy: trialPolicy });
@@ -216,7 +231,8 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
   // Accepts redistributions whose endBalance is within a tight tolerance — preserves
   // solution quality, removes visual bumpiness, and often finds strictly better solutions
   // because the tax cost of a smooth schedule is lower than a spiky one.
-  {
+  // Skipped entirely when conversions aren't optimized (convAmt stays undefined).
+  if (optimizeConversions) {
     const spec = REC_GOALS[innerGoalKey];
     // Tolerance: 0.1% of bestScore, floored at $1000. Small enough that the
     // user wouldn't notice the end-balance change; large enough to traverse
@@ -430,7 +446,9 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
       // and result.projection matches the re-projected applied plan exactly (round-trip).
       const r4 = (x: number) => Math.round(x * 10000) / 10000;
 
-      if (cap < 1) {
+      // 2-D withdrawal-only search when there's no conversion headroom (cap < 1) OR when
+      // conversions aren't optimized (convAmt must stay undefined — never write it here).
+      if (cap < 1 || !optimizeConversions) {
         const obj = (p: [number, number]): number => {
           const [tax, trad] = p;
           return nmObj(bestWindows.map((w, idx) =>

@@ -50,7 +50,7 @@ export default function Dashboard() {
   const planLasts = depAge === null;
 
   const lifetimeSS = proj.rows.reduce((s, r) => s + (real ? r.totalSS / r.inflationFactor : r.totalSS), 0);
-  const lifetimeAllInTax = proj.rows.reduce((s, r) => s + (real ? (r.fedTax + r.stateTaxAmt + r.irmaa) / r.inflationFactor : r.fedTax + r.stateTaxAmt + r.irmaa), 0);
+  const lifetimeAllInTax = proj.rows.reduce((s, r) => s + (real ? (r.fedTax + r.stateTaxAmt + r.irmaa + r.niit) / r.inflationFactor : r.fedTax + r.stateTaxAmt + r.irmaa + r.niit), 0);
   const lifetimeIRMAA = proj.rows.reduce((s, r) => s + (real ? r.irmaa / r.inflationFactor : r.irmaa), 0);
   const retirementYears = A.planToAge - A.retirementAge;
   const yearsFunded = planLasts ? retirementYears : (depAge ?? A.planToAge) - A.retirementAge;
@@ -105,7 +105,7 @@ export default function Dashboard() {
             <Divider />
             <HeroStat label="Lifetime SS" value={fmtM(lifetimeSS)} valueColor="#4ade80" sub={real ? "today's $" : 'nominal'} />
             <Divider />
-            <HeroStat label="All-in Tax" value={fmtM(lifetimeAllInTax)} valueColor="#f87171" sub={`fed + state + IRMAA · ${real ? "today's $" : 'nominal'}`} />
+            <HeroStat label="All-in Tax" value={fmtM(lifetimeAllInTax)} valueColor="#f87171" sub={`fed + state + IRMAA + NIIT · ${real ? "today's $" : 'nominal'}`} />
             <Divider />
             <HeroStat label="Lifetime IRMAA" value={fmtM(lifetimeIRMAA)} valueColor="#fb923c" sub={real ? "today's $" : 'Medicare surcharge'} />
             <Divider />
@@ -113,24 +113,24 @@ export default function Dashboard() {
             <Divider />
             <HeroStat label="Roth Converted" value={fmtM(real ? proj.lifetimeConversionReal : proj.lifetimeConversion)} valueColor="#c9a84c" sub={real ? "today's $" : 'lifetime'} />
           </div>
-        </div>
 
-        {/* Roth conversion benefit strip */}
-        <div style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 8, background: rothActive ? 'rgba(26,138,90,0.06)' : 'rgba(13,27,46,0.03)', border: '1px solid var(--border-light)' }}>
-          {rothActive ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--success)' }}>Roth Conversion Benefit</span>
-              <Benefit label="End balance" delta={cmpEndBalanceDelta} goodWhen="positive" />
-              <Benefit label="Lifetime tax" delta={cmpLifetimeTaxDelta} goodWhen="negative" />
-              <Benefit label="Lifetime RMDs" delta={cmpLifetimeRMDDelta} goodWhen="negative" />
-              <Benefit label="Roth legacy" delta={cmpEndRothDelta} goodWhen="positive" />
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs. no conversions ({real ? "today's $" : 'nominal'})</span>
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--text-secondary)' }}>No Roth conversions active.</strong> Model <strong>Bracket Fill</strong> on the ⚙ Customize sheet to see the lifetime tax, RMD, and tax-free-legacy trade-off.
-            </div>
-          )}
+          {/* Roth conversion benefit — integrated into Plan Summary banner */}
+          <div style={{ width: '100%', borderTop: '1px solid rgba(255,255,255,0.12)', marginTop: 14, paddingTop: 12 }}>
+            {rothActive ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#c9a84c' }}>Roth Conversion Benefit</span>
+                <BenefitDark label="End balance" delta={cmpEndBalanceDelta} goodWhen="positive" />
+                <BenefitDark label="Lifetime tax" delta={cmpLifetimeTaxDelta} goodWhen="negative" />
+                <BenefitDark label="Lifetime RMDs" delta={cmpLifetimeRMDDelta} goodWhen="negative" />
+                <BenefitDark label="Roth legacy" delta={cmpEndRothDelta} goodWhen="positive" />
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>vs. no conversions ({real ? "today's $" : 'nominal'})</span>
+              </div>
+            ) : (
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.38)' }}>
+                No Roth conversions active. Pick <strong style={{ color: 'rgba(255,255,255,0.55)' }}>Bracket-Fill</strong> under <strong style={{ color: 'rgba(255,255,255,0.55)' }}>Roth conversions</strong> in the Strategy panel to see the lifetime tax, RMD, and legacy trade-off.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Adjust Withdrawal Strategies */}
@@ -155,7 +155,7 @@ export default function Dashboard() {
             <span style={{ fontSize: 11, color: 'var(--text-muted)', position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)' }}>How Taxable / Pre-tax / Roth mix evolves year by year</span>
           </div>
           <div className="panel-body">
-            <BucketCompositionStacked proj={proj} height={240} />
+            <BucketCompositionStacked proj={proj} real={real} height={240} />
           </div>
         </div>
 
@@ -285,11 +285,11 @@ function HeroStat({ label, value, sub, valueColor }: { label: string; value: str
   );
 }
 
-function Benefit({ label, delta, goodWhen }: { label: string; delta: number; goodWhen: 'positive' | 'negative' }) {
+function BenefitDark({ label, delta, goodWhen }: { label: string; delta: number; goodWhen: 'positive' | 'negative' }) {
   const beneficial = goodWhen === 'positive' ? delta > 0 : delta < 0;
-  const color = Math.abs(delta) < 1000 ? 'var(--text-muted)' : beneficial ? 'var(--success)' : 'var(--danger)';
+  const color = Math.abs(delta) < 1000 ? 'rgba(255,255,255,0.35)' : beneficial ? '#4ade80' : '#f87171';
   return (
-    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
       {label} <strong style={{ color, fontFamily: "'DM Mono', monospace" }}>{fmtCompactWithSign(delta)}</strong>
     </span>
   );

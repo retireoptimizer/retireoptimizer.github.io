@@ -302,6 +302,53 @@ function GuideContent() {
         actual earnings history.
       </Tip>
 
+      <H3>State Taxable %</H3>
+      <P>
+        Each income stream has a <strong>State taxable %</strong> column (default 100%). It
+        controls what fraction of that stream counts toward your state income tax base. Use it
+        when your state exempts certain income types or only taxes a portion of them — for
+        example, a state that does not tax military pensions, or one that exempts annuity income.
+      </P>
+      <FieldTable rows={[
+        ["100%", "The full taxable amount of the stream is subject to state tax. Default for most income.", "Wages, rental income"],
+        ["0%", "The stream is completely excluded from state tax — as if it does not exist for state purposes.", "SS in a state that fully exempts SS income"],
+        ["50%", "Only half the stream counts toward state tax. Useful for states that partially exempt certain income.", "Military pension with 50% state exemption"],
+      ]} />
+
+      <H3>How it interacts with the State of Residence dropdown</H3>
+      <P>
+        The behavior of this field depends entirely on which state you have selected:
+      </P>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
+        <li>
+          <strong>Named states (IL, CA, NY, etc.)</strong> — these have built-in exemption rules
+          that the engine applies automatically. Illinois, for example, fully exempts all pension
+          and annuity distributions regardless of the State taxable % you enter. For these states,
+          the field has no effect on pension or annuity streams — the built-in profile takes
+          precedence. It does still apply to "Other" income types (wages, rental) in all named
+          states.
+        </li>
+        <li>
+          <strong>No state tax (TX, FL, WA, etc.)</strong> — the effective rate is 0%, so the
+          field has no effect regardless of what you enter.
+        </li>
+        <li>
+          <strong>Custom (flat rate)</strong> — the field is fully active. The flat rate is applied
+          to the portion of each stream you designate as state-taxable. This is the primary use
+          case for the field, since a custom flat rate has no built-in knowledge of what your
+          state exempts.
+        </li>
+      </ul>
+      <Tip>
+        <strong>Modeling a flat dollar exemption</strong> — some states exempt a fixed dollar
+        amount rather than a percentage (e.g., "first $20,000 of pension income is exempt").
+        The app does not have a dedicated dollar-exemption field, but you can achieve the same
+        result by splitting the stream into two rows: one row for the exempt portion at 0% State
+        taxable, and one for the remainder at 100%. For example, a $60,000 pension with a $20,000
+        state exemption becomes a $20,000 row at 0% + a $40,000 row at 100%. Both rows should
+        have the same growth rate, start age, and stop age.
+      </Tip>
+
       <H3>Expenses</H3>
       <P>
         Add one row per spending category. Click <strong>+ Add Expense</strong> to create a new
@@ -322,6 +369,60 @@ function GuideContent() {
         Many financial planners describe a spending "smile" in retirement: higher early on (travel,
         hobbies), a plateau through the middle years, and a late-life uptick for healthcare. You
         can model this by using multiple rows with different amounts and age ranges.
+      </Tip>
+
+      <H3>One-Time Lump Sum Events</H3>
+      <P>
+        Use this section to model a single cash injection into your portfolio at a specific age —
+        for example, an inheritance, a business sale, a large bonus, or any other one-time windfall.
+        Click <strong>+ Add One-Time Event</strong> in the Income &amp; Expenses section to create
+        a row.
+      </P>
+      <FieldTable rows={[
+        ["Description", "A label shown in tables. Has no effect on calculations.", '"Inheritance"'],
+        ["Whose", 'For couples, which person&apos;s age the event is anchored to. "Household" uses Person A&apos;s age.', "Household"],
+        ["Account", "Where the money lands — Taxable (brokerage), Pre-tax (Traditional), or Roth. Each type is treated differently.", "Taxable"],
+        ["At Age", "The age at which the injection occurs. Based on Person A's age.", "65"],
+        ["Amount", "The one-time amount in today's dollars.", "$200,000"],
+      ]} />
+
+      <H3>How the three account types are handled</H3>
+      <P>
+        The account you choose determines both the tax treatment and the downstream impact on your
+        plan:
+      </P>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
+        <li>
+          <strong>Taxable</strong> — deposited into your brokerage account at full cost basis (the
+          full amount is treated as basis, so no embedded capital gain). The injection is counted as
+          ordinary income in the year it arrives and is taxed accordingly. Use this for inheritances
+          deposited to a brokerage, business-sale proceeds, or large bonuses.
+        </li>
+        <li>
+          <strong>Pre-tax (Traditional)</strong> — added directly to your Traditional IRA or 401(k)
+          balance. No tax is due at the time of injection, but every dollar will eventually be taxed
+          as ordinary income when withdrawn — including as Required Minimum Distributions. Use this
+          for spousal IRA rollovers or deferred-compensation payouts directed to a pre-tax account.
+        </li>
+        <li>
+          <strong>Roth</strong> — added directly to your Roth balance. No tax at injection and no
+          tax on future qualified withdrawals. Use this for a Roth IRA inherited from a spouse or an
+          after-tax rollover into Roth.
+        </li>
+      </ul>
+      <Tip>
+        A <strong>taxable lump sum</strong> creates a spike in ordinary income in that year and can
+        push you into a higher bracket. The optimizer accounts for this — it typically reduces Roth
+        conversion amounts in the injection year to avoid bracket stacking. A{' '}
+        <strong>pre-tax lump sum</strong> increases your traditional balance, which means larger RMDs
+        starting at age 73; the optimizer may shift the conversion window to absorb some of that
+        balance before 73 kicks in.
+      </Tip>
+      <Tip>
+        Lump sum events change the optimal withdrawal and conversion strategy, so re-run the
+        optimizer after adding or modifying any event. If you change a lump sum amount or account
+        type and navigate away from Inputs, the nav bar will gate the output tabs and require you
+        to re-optimize before viewing results.
       </Tip>
 
       {/* ── Section 3: Portfolio ─────────────────────────────── */}
@@ -384,9 +485,10 @@ function GuideContent() {
       <H2 id="s4">Goals &amp; Build Plan</H2>
       <P>
         The fourth section of the Inputs page. Pick what you want the optimizer to solve for —
-        then click <strong>Build Plan &rarr;</strong>. The optimizer runs for a few seconds, finds
-        the best withdrawal and Roth conversion schedule for your goal, and takes you to the
-        Dashboard.
+        then click <strong>Build Plan &rarr;</strong>. The optimizer runs for a few seconds and
+        produces a custom per-age withdrawal blend policy — for example, 60% taxable / 30%
+        pre-tax / 10% Roth from age 62–70, then a different mix from 70 onward — along with a
+        Roth conversion schedule. It then takes you to the Dashboard.
       </P>
 
       <H3>What would you like to optimize for?</H3>
@@ -433,53 +535,97 @@ function GuideContent() {
         optimizer chose the withdrawal and conversion strategy it did.
       </P>
 
-      <H3>Roth Conversion Benefit strip</H3>
+      <H3>Roth Conversion Benefit</H3>
       <P>
-        Just below the Plan Summary banner, a strip shows what your active Roth conversion
-        strategy is doing compared to doing no conversions at all. It shows the impact in four
-        areas: <strong>End balance</strong>, <strong>Lifetime tax</strong>,{' '}
+        Inside the Plan Summary banner, below the headline numbers, a separator row shows what
+        your active Roth conversion strategy is doing compared to doing no conversions at all.
+        Four delta values appear: <strong>End balance</strong>, <strong>Lifetime tax</strong>,{' '}
         <strong>Lifetime RMDs</strong>, and <strong>Roth legacy</strong>. Green numbers mean the
-        conversion is helping; red means it is costing you on that dimension.
+        conversion is helping on that dimension; red means it is costing you. Values near zero
+        are shown in grey — the effect is negligible.
       </P>
       <P>
-        If no conversions are active, the strip prompts you to try Bracket Fill — click{' '}
-        <strong>&#9881; Roth Conversion Mode</strong> in the strategy panel below to configure it.
+        If no conversions are active, the row prompts you to try Bracket-Fill. Configure
+        conversions in the Strategy panel below using the <strong>Roth conversions</strong> pill row.
       </P>
 
-      <H3>Adjust Withdrawal Strategies panel</H3>
+      <H3>Strategy panel</H3>
       <P>
-        This panel has two rows of controls that update the projection instantly without
-        re-running the full optimizer.
+        Below the Plan Summary banner, the Strategy panel is the main control surface for how
+        your money is managed in retirement. It has two modes, selected by vertical tabs on the
+        left side of the panel.
       </P>
       <P>
-        <strong>Row 1 — Optimize For:</strong> Three goal chips (Max End Balance, Max Spending,
-        Earliest Retire) let you switch what you are optimizing for. Select one, then click{' '}
-        <strong>Re-optimize</strong> to run the optimizer for that goal. A checkmark shows the
-        goal the plan was last built for.
-      </P>
-      <P>
-        <strong>Row 2 — Withdrawal:</strong> Five preset chips plus a Custom option control which
-        accounts you draw from in retirement. Click any chip to switch immediately.
+        <strong>⚡ Optimize for me</strong> — the optimizer builds a custom per-age-window
+        withdrawal blend and sizes Roth conversions for you. Two pill rows appear:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li><strong>Taxable First</strong> — spend from your brokerage accounts first, letting your tax-advantaged accounts keep compounding untouched.</li>
-        <li><strong>Roth First</strong> — spend Roth money first, which shrinks future Required Minimum Distributions from your pre-tax accounts.</li>
-        <li><strong>Traditional First</strong> — spend pre-tax accounts first, also reducing RMDs but increasing your taxable income now.</li>
-        <li><strong>Proportional</strong> — draw from all three account types in proportion to their balances each year. Simple, but rarely the most tax-efficient.</li>
-        <li><strong>Bracket Fill</strong> — the Bracket Fill chip is a dropdown. Select which bracket ceiling to target: the engine pulls from traditional (pre-tax) accounts up to that ceiling each year, then covers any remaining spending need from Roth or taxable. Options are automatically sized for your household — MFJ ceilings for couples, Single ceilings for solo plans. Usually the most tax-efficient withdrawal approach over the long run.</li>
-        <li><strong>Custom</strong> — opens an editor where you can define your own withdrawal blend by age window. For example: Taxable First from 62 to 70, then Bracket Fill from 70 onward. Click the Custom chip to open the editor.</li>
+        <li><strong>Goal</strong> — pick what to optimize for: Max End Balance, Max Spending, or Earliest Retire. A ✓ marks the goal the plan was last built for. Selecting a different goal highlights it but does not run the optimizer yet.</li>
+        <li><strong>Roth conversions</strong> — five pills let you constrain how the optimizer handles conversions: <em>Optimizer decides</em> (the optimizer searches for the best amount), <em>None</em>, <em>Bracket-Fill</em>, <em>Fixed Amount</em>, or <em>Manual</em>. Picking any conversion pill turns it amber — a "pending" state. The charts do not change yet.</li>
       </ul>
       <P>
-        At the end of Row 2, the <strong>&#9881; Roth Conversion Mode</strong> button opens a
-        sheet to configure whether and how the plan converts pre-tax money to Roth each year.
-        The conversion ceiling is always capped at or below the withdrawal Bracket Fill ceiling
-        — the dropdown enforces this automatically.
+        The <strong>↗ Re-optimize</strong> button in the top-right of the panel applies your
+        selections. When a pending conversion pill is waiting, the button shows a dot and reads
+        "Re-optimize · Apply" — a reminder that the charts still reflect the previous run.
+        Click it to run the optimizer with your new goal and conversion choice; the charts update
+        only after it completes. A small hint "Takes effect when you re-optimize" appears below
+        the conversion pills while a selection is pending.
       </P>
+      <P>
+        The <strong>📊 Conversions vs RMDs</strong> link opens a chart showing voluntary Roth
+        conversions (above zero) versus forced RMDs (below zero) by age — useful for seeing when
+        and by how much conversions move the needle.
+      </P>
+      <Tip>
+        In <em>Optimize for me</em> mode, selecting a conversion pill does not immediately change
+        the charts — that is intentional. The optimizer needs to run with the new constraint
+        before the result is meaningful. Click Re-optimize to commit.
+      </Tip>
+
+      <P>
+        <strong>✎ Set it myself</strong> — you pick the withdrawal strategy and conversion mode
+        directly. Changes apply instantly without re-optimizing. Two pill rows appear:
+      </P>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
+        <li><strong>Withdrawal order</strong> — five presets plus a Custom blend option control which accounts you draw from each year:
+          <ul style={{ marginTop: 4, lineHeight: 1.9 }}>
+            <li><strong>Taxable First</strong> — spend from your brokerage accounts first, letting tax-advantaged accounts compound untouched.</li>
+            <li><strong>Roth First</strong> — spend Roth money first, shrinking future Required Minimum Distributions.</li>
+            <li><strong>Traditional First</strong> — spend pre-tax accounts first, also reducing RMDs but increasing current taxable income.</li>
+            <li><strong>Proportional</strong> — draw from all three account types in proportion to their balances. Simple but rarely the most tax-efficient.</li>
+            <li><strong>Bracket-Fill</strong> — a dropdown that lets you pick a bracket ceiling. The engine pulls from traditional (pre-tax) accounts up to that ceiling each year, then covers remaining spending from Roth or taxable. Usually the most tax-efficient withdrawal approach over the long run.</li>
+            <li><strong>✎ Custom blend</strong> — opens an editor to define your own per-age-window blend. When the optimizer builds your plan, this is automatically active and reflects the optimizer's output.</li>
+          </ul>
+        </li>
+        <li><strong>Roth conversions · instant</strong> — four pills (None, Bracket-Fill, Fixed Amount, Manual) switch the active conversion mode immediately. Bracket-Fill and Fixed Amount show an "Edit details →" link to configure the window and amount; Manual opens a per-year schedule editor.</li>
+      </ul>
+      <Tip>
+        <strong>Switching to any named preset replaces the optimizer&apos;s custom policy.</strong>{' '}
+        The moment you click Taxable First, Proportional, Bracket-Fill, or any other named preset
+        in the Set it myself tab, the optimizer output is erased. You will need to re-optimize to
+        get it back. If you want to explore a preset without losing the optimized plan, note your
+        key Dashboard numbers first.
+      </Tip>
+
+      <H3>How withdrawal ordering and conversion mode interact</H3>
+      <P>
+        These are two completely independent controls. Changing the conversion mode never affects
+        withdrawal ordering, and changing the withdrawal preset never affects conversion settings.
+        You can freely mix any combination — for example, the optimizer&apos;s custom withdrawal
+        blend with Bracket-Fill conversions, or Proportional withdrawals with a Manual schedule.
+      </P>
+      <P>
+        Within conversion mode, switching pills only changes which mode is active. Settings for
+        every other mode — amounts, age windows, ceilings, manual schedule entries — are preserved
+        but dormant. If you configure a Manual Schedule, switch to Bracket-Fill to compare, then
+        switch back, your entries are still there.
+      </P>
+
       <FieldTable rows={[
-        ["No Conversions", "Leave pre-tax money where it is. RMDs starting at age 73 may push you into higher brackets in later years.", "—"],
-        ["Fixed Amount", "Convert a set dollar amount each year within an age window you define. Good if you have a specific amount in mind.", "$30,000/yr, ages 60–70"],
-        ["Bracket Fill", "Convert enough each year to fill the bracket up to a chosen ceiling. Options are capped at the withdrawal Bracket Fill ceiling so conversions never overshoot the withdrawal target.", "Top of 12% bracket"],
-        ["Manual Schedule", "Enter a custom conversion amount for each specific age. Maximum control for those with a detailed plan.", "$50k at 62, $40k at 63"],
+        ["None", "Leave pre-tax money where it is. RMDs starting at age 73 may push you into higher brackets in later years.", "—"],
+        ["Fixed Amount", "Convert a set dollar amount each year within an age window you define.", "$30,000/yr, ages 60–70"],
+        ["Bracket-Fill", "Convert enough each year to fill the chosen bracket. Ceiling is automatically capped at or below the withdrawal Bracket-Fill ceiling.", "Top of 12% bracket"],
+        ["Manual", "Enter a custom conversion amount for each specific age. Maximum control.", "$50k at 62, $40k at 63"],
       ]} />
 
       <H3>How the two Bracket Fill controls interact</H3>
@@ -642,8 +788,13 @@ function GuideContent() {
       </ul>
       <Tip>
         If a Roth conversion would push your income just over an IRMAA tier, the two-year-later
-        surcharge may wipe out the tax savings. The Bracket Fill conversion mode takes the IRMAA
-        thresholds into account automatically when it sizes conversions.
+        surcharge may wipe out the tax savings. IRMAA is measured against your gross income (MAGI)
+        before the standard deduction, while the Bracket Fill ceiling is set in taxable-income
+        terms (after the standard deduction) — so the ceiling alone does not guarantee you stay
+        below an IRMAA tier. After building your plan, check the IRMAA tab to confirm your
+        projected income stays below the dashed tier lines. Also note that Bracket Fill ceilings
+        automatically step down from MFJ to Single values in the year your filing status changes —
+        so survivor years are sized correctly without manual adjustment.
       </Tip>
 
       <H3>Roth Conversion comparison charts</H3>

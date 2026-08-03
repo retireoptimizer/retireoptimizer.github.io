@@ -31,6 +31,7 @@ function goldenBase(): Plan {
     portfolio: {
       personA: {
         taxable: 240000,
+        taxableBasis: 120000,
         traditional: 420000,
         roth: 110000,
         annualContribution: 23000,
@@ -39,6 +40,7 @@ function goldenBase(): Plan {
       },
       personB: {
         taxable: 180000,
+        taxableBasis: 90000,
         traditional: 260000,
         roth: 75000,
         annualContribution: 18000,
@@ -82,6 +84,7 @@ export function planB_largeTradSingle(): Plan {
     portfolio: {
       personA: {
         taxable: 200000,
+        taxableBasis: 100000,
         traditional: 1_400_000,
         roth: 100000,
         annualContribution: 18000,
@@ -107,6 +110,7 @@ export function planC_bracketFillConv(): Plan {
     portfolio: {
       personA: {
         taxable: 350000,
+        taxableBasis: 175000,
         traditional: 700000,
         roth: 150000,
         annualContribution: p.portfolio.personA.annualContribution,
@@ -115,6 +119,7 @@ export function planC_bracketFillConv(): Plan {
       },
       personB: {
         taxable: 250000,
+        taxableBasis: 125000,
         traditional: 500000,
         roth: 100000,
         annualContribution: p.portfolio.personB?.annualContribution ?? 0,
@@ -140,6 +145,7 @@ export function planD_singleFIRE(): Plan {
     portfolio: {
       personA: {
         taxable: 800000,
+        taxableBasis: 400000,
         traditional: 250000,
         roth: 150000,
         annualContribution: 60000,
@@ -222,8 +228,8 @@ export function planG_californiaCouple(): Plan {
   return {
     ...p,
     portfolio: {
-      personA: { taxable: 400000, traditional: 800000, roth: 200000, annualContribution: 23000, contribGrowth: 0.03, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
-      personB: { taxable: 300000, traditional: 500000, roth: 120000, annualContribution: 18000, contribGrowth: 0.03, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
+      personA: { taxable: 400000, taxableBasis: 200000, traditional: 800000, roth: 200000, annualContribution: 23000, contribGrowth: 0.03, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
+      personB: { taxable: 300000, taxableBasis: 150000, traditional: 500000, roth: 120000, annualContribution: 18000, contribGrowth: 0.03, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
     },
     conversion: { mode: 'bracket-fill', startAge: 65, endAge: 73, autoAmount: 60000, bracketCeiling: 100800, manualSchedule: {} },
     withdrawalStrategy: 'taxfirst',
@@ -240,8 +246,8 @@ export function planH_survivorMidPlan(): Plan {
     personA: { ...p.personA, planToAge: 95, passingAge: 92 },
     personB: { ...p.personB!, planToAge: 95, passingAge: 75 },
     portfolio: {
-      personA: { taxable: 300000, traditional: 500000, roth: 150000, annualContribution: 23000, contribGrowth: 0.03, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
-      personB: { taxable: 200000, traditional: 300000, roth: 100000, annualContribution: 18000, contribGrowth: 0.03, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+      personA: { taxable: 300000, taxableBasis: 150000, traditional: 500000, roth: 150000, annualContribution: 23000, contribGrowth: 0.03, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+      personB: { taxable: 200000, taxableBasis: 100000, traditional: 300000, roth: 100000, annualContribution: 18000, contribGrowth: 0.03, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
     },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
@@ -275,8 +281,8 @@ export function planJ_personBZeroBalance(): Plan {
     personB: { ...p.personB!, dob: '1977-08-26', retirementAge: 55, planToAge: 100, passingAge: 92, ssPIA: 28000, ssClaimAge: 62 },
     assumptions: { ...p.assumptions, taxableReturn: 0.08, tradReturn: 0.08, rothReturn: 0.08, inflation: 0.025 },
     portfolio: {
-      personA: { taxable: 585000, traditional: 885000, roth: 615000, annualContribution: 60000, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
-      personB: { taxable: 0, traditional: 0, roth: 0, annualContribution: 40000, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+      personA: { taxable: 585000, taxableBasis: 292500, traditional: 885000, roth: 615000, annualContribution: 60000, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+      personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 40000, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
     },
     expenseStreams: [
       { id: 'core', description: 'Core', whose: 'Household', startAge: 59, stopAge: 100, annualAmount: 150000, inflationPct: 0.025 },

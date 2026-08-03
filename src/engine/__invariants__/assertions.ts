@@ -51,15 +51,15 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   // 2. MASS BALANCE: end-of-year balance must match the bucket-update arithmetic
   //    when no clamping occurred. Pinpoints both subtle update bugs and validates
   //    that the conversion symmetry (trad - conv = -delta, roth + conv = +delta) holds.
-  const expectedEndTrad = Math.max(0, r.begTraditional * (1 + gRateTrad) + contribToTrad - r.wdTrd - r.rmd - r.rothConv);
+  const expectedEndTrad = Math.max(0, r.begTraditional * (1 + gRateTrad) + contribToTrad - r.wdTrd - r.rmd - r.rothConv) + (r.lumpSumInjectTrad ?? 0);
   if (Math.abs(r.endTraditional - expectedEndTrad) > tol) {
     out.push(`Trad MASS BALANCE: endTraditional $${r.endTraditional.toFixed(2)} != expected $${expectedEndTrad.toFixed(2)} (delta $${(r.endTraditional - expectedEndTrad).toFixed(2)})`);
   }
-  const expectedEndRoth = Math.max(0, r.begRoth * (1 + gRateRoth) + contribToRoth - r.wdRth + r.rothConv);
+  const expectedEndRoth = Math.max(0, r.begRoth * (1 + gRateRoth) + contribToRoth - r.wdRth + r.rothConv) + (r.lumpSumInjectRoth ?? 0);
   if (Math.abs(r.endRoth - expectedEndRoth) > tol) {
     out.push(`Roth MASS BALANCE: endRoth $${r.endRoth.toFixed(2)} != expected $${expectedEndRoth.toFixed(2)}`);
   }
-  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax);
+  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax) + (r.lumpSumInjectTaxable ?? 0) + (r.cashSurplus ?? 0);
   if (Math.abs(r.endTaxable - expectedEndTax) > tol) {
     out.push(`Taxable MASS BALANCE: endTaxable $${r.endTaxable.toFixed(2)} != expected $${expectedEndTax.toFixed(2)}`);
   }

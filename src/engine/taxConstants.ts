@@ -47,7 +47,14 @@ export const LTCG_BRACKETS_SINGLE: ReadonlyArray<readonly [number, number]> = [
 ];
 
 // Taxable basis assumption for taxable-account withdrawals (50% basis / 50% gain).
+// Retained for reference; no longer used in projection.ts (superseded by per-plan taxableBasis tracking).
 export const TAXABLE_BASIS_PCT = 0.5;
+
+// NIIT (IRC §1411) — 3.8% on lesser of NII or MAGI above threshold.
+// Thresholds are NOT inflation-indexed (frozen since 2013, like SS provisional thresholds).
+export const NIIT_RATE = 0.038;
+export const NIIT_THRESHOLD_MFJ = 250_000;
+export const NIIT_THRESHOLD_SINGLE = 200_000;
 
 // SS taxability — 85% flat (legacy constant; used only for withdrawal-sizing in applyWithdrawalOrder).
 // Actual taxable fraction is computed per-year via taxableSocialSecurity() in tax.ts.

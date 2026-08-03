@@ -128,6 +128,13 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
       },
       {
         type: 'bar',
+        label: 'One-Time Events',
+        data: rows.map((r) => scale((r.lumpSumInjectTaxable ?? 0) + (r.lumpSumInjectTrad ?? 0) + (r.lumpSumInjectRoth ?? 0), r.inflationFactor)),
+        backgroundColor: palette.gold,
+        stack: 'in',
+      },
+      {
+        type: 'bar',
         label: 'Portfolio Withdrawals',
         data: rows.map((r) => scale(r.totalWD, r.inflationFactor)),
         backgroundColor: palette.navy,
@@ -165,8 +172,8 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
       },
       {
         type: 'bar',
-        label: 'State Tax + IRMAA',
-        data: rows.map((r) => -scale(r.stateTaxAmt + r.irmaa, r.inflationFactor)),
+        label: 'State + IRMAA + NIIT',
+        data: rows.map((r) => -scale(r.stateTaxAmt + r.irmaa + r.niit, r.inflationFactor)),
         backgroundColor: palette.taxOther,
         stack: 'out',
       },

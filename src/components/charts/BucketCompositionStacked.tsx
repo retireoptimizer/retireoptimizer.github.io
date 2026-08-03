@@ -6,20 +6,22 @@ import { fmtM } from '../../lib/format';
 
 interface Props {
   proj: ProjectionResult;
+  real?: boolean;
   height?: number;
 }
 
 /** 100%-stacked area showing how the bucket MIX evolves over time. */
-export default function BucketCompositionStacked({ proj, height = 220 }: Props) {
+export default function BucketCompositionStacked({ proj, real = true, height = 220 }: Props) {
   const rows = proj.rows;
   const labels = rows.map((r) => r.ageA);
   const pct = (n: number, total: number) => (total > 0 ? (n / total) * 100 : 0);
+  const scale = (n: number, inf: number) => (real ? n / inf : n);
 
   const dollars = {
-    taxable: rows.map((r) => r.endTaxable),
-    traditional: rows.map((r) => r.endTraditional),
-    roth: rows.map((r) => r.endRoth),
-    total: rows.map((r) => r.endTotal),
+    taxable: rows.map((r) => scale(r.endTaxable, r.inflationFactor)),
+    traditional: rows.map((r) => scale(r.endTraditional, r.inflationFactor)),
+    roth: rows.map((r) => scale(r.endRoth, r.inflationFactor)),
+    total: rows.map((r) => scale(r.endTotal, r.inflationFactor)),
   };
 
   const data: ChartData<'line'> = {

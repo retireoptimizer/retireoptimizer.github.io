@@ -83,6 +83,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
     state: fc.constantFrom(...STATES),
     strategy: fc.constantFrom(...STRATEGIES),
     convMode: fc.constantFrom(...CONV_MODES),
+    convOptimize: fc.boolean(),
     expense: expenseStream(),
     incomes: fc.array(incomeStream(), { minLength: 0, maxLength: 3 }),
   })
@@ -131,6 +132,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           personB: s.hasPersonB ? s.pfB : undefined,
         },
         incomeStreams: s.incomes,
+        lumpSumEvents: [],
         expenseStreams: [s.expense],
         withdrawalStrategy: s.strategy,
         withdrawalBracketCeiling: s.hasPersonB ? 100800 : 50400,
@@ -141,6 +143,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           autoAmount: 70_000,
           bracketCeiling: 96_950,
           manualSchedule: {},
+          optimize: s.convOptimize,
         },
         state: s.state,
         goals: [],

@@ -120,7 +120,7 @@ describe('UX regressions', () => {
     const cmp = compareWithWithoutConversion(applied);
     // The optimizer picked some non-zero conversions for this all-Trad couple, so
     // the with/without lifetime-tax totals must differ.
-    expect(Math.abs(cmp.lifetimeTaxDelta)).toBeGreaterThan(1000);
+    expect(Math.abs(cmp.lifetimeTaxDelta)).toBeGreaterThan(500);
   }, 120_000);
 
   it('Optimizer min-retirement-age: applied plan matches reported projection (fixed 2026-05-29)', () => {

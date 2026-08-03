@@ -47,10 +47,10 @@ export function compareWithWithoutConversion(plan: Plan): ComparisonResult {
   const n = Math.min(withConv.rows.length, noConv.rows.length);
   for (let i = 0; i < n; i++) {
     const rw = withConv.rows[i], rn = noConv.rows[i];
-    cw  += rw.fedTax / rw.inflationFactor;
-    cn  += rn.fedTax / rn.inflationFactor;
-    cwn += rw.fedTax;
-    cnn += rn.fedTax;
+    cw  += (rw.fedTax + rw.niit) / rw.inflationFactor;
+    cn  += (rn.fedTax + rn.niit) / rn.inflationFactor;
+    cwn += rw.fedTax + rw.niit;
+    cnn += rn.fedTax + rn.niit;
     cumulativeTaxWith.push(cw);
     cumulativeTaxNo.push(cn);
     cumulativeTaxWithNom.push(cwn);

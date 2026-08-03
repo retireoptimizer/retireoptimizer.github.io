@@ -23,6 +23,7 @@ export default function CashFlowSankey({ row, real = true, height = 320 }: Props
     { id: 'wdRth', label: 'Withdrawal · Roth', value: scale(row.wdRth), color: palette.gold },
     { id: 'ss',    label: 'Social Security', value: scale(row.totalSS), color: palette.goldLight },
     { id: 'oth',   label: 'Other Income', value: scale(row.otherIncome), color: palette.incomeOther },
+    { id: 'lump',  label: 'One-Time Events', value: scale((row.lumpSumInjectTaxable ?? 0) + (row.lumpSumInjectTrad ?? 0) + (row.lumpSumInjectRoth ?? 0)), color: palette.gold },
   ].filter((n) => n.value > 0);
 
   const totalIn = inflows.reduce((s, n) => s + n.value, 0);
@@ -30,8 +31,9 @@ export default function CashFlowSankey({ row, real = true, height = 320 }: Props
   const fedTax = scale(row.fedTax);
   const stateTax = scale(row.stateTaxAmt);
   const irmaa = scale(row.irmaa);
+  const niit = scale(row.niit);
   const spending = scale(row.netSpend);
-  const savings = Math.max(0, totalIn - spending - fedTax - stateTax - irmaa);
+  const savings = Math.max(0, totalIn - spending - fedTax - stateTax - irmaa - niit);
   // Only show Net Savings when it's meaningful (≥2% of inflows) to avoid a tiny
   // flickering bar that overlaps Federal Tax as the age slider moves.
   const savingsThreshold = totalIn * 0.02;
@@ -39,7 +41,7 @@ export default function CashFlowSankey({ row, real = true, height = 320 }: Props
   const outflows: Node[] = [
     { id: 'spend',  label: 'Net Spending', value: spending, color: palette.danger },
     { id: 'fed',    label: 'Federal Tax', value: fedTax, color: palette.warning },
-    { id: 'state',  label: 'State + IRMAA', value: stateTax + irmaa, color: palette.taxOther },
+    { id: 'state',  label: 'State + IRMAA + NIIT', value: stateTax + irmaa + niit, color: palette.taxOther },
     { id: 'save',   label: 'Net Savings', value: savings >= savingsThreshold ? savings : 0, color: palette.success },
   ].filter((n) => n.value > 0);
 

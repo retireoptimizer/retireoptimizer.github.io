@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { FED_BRACKETS_MFJ } from '../engine/taxConstants';
-import type { Plan, Person, Assumptions, PersonPortfolio, IncomeStream, ExpenseStream, ConversionParams, Goal } from '../schemas/plan';
+import type { Plan, Person, Assumptions, PersonPortfolio, IncomeStream, ExpenseStream, LumpSumEvent, ConversionParams, Goal } from '../schemas/plan';
 import type { BlendPolicy } from '../engine/blendPolicy';
 import { defaultPlan } from '../schemas/plan';
 import { runProjection, type ProjectionResult } from '../engine/projection';
@@ -32,6 +32,9 @@ interface PlanState {
   addIncomeStream: (s: IncomeStream) => void;
   updateIncomeStream: (id: string, patch: Partial<IncomeStream>) => void;
   removeIncomeStream: (id: string) => void;
+  addLumpSumEvent: (e: LumpSumEvent) => void;
+  updateLumpSumEvent: (id: string, patch: Partial<LumpSumEvent>) => void;
+  removeLumpSumEvent: (id: string) => void;
   setExpenseStreams: (streams: ExpenseStream[]) => void;
   addExpenseStream: (s: ExpenseStream) => void;
   updateExpenseStream: (id: string, patch: Partial<ExpenseStream>) => void;
@@ -92,6 +95,9 @@ export const usePlanStore = create<PlanState>()(
         plan: { ...s.plan, incomeStreams: s.plan.incomeStreams.map(x => x.id === id ? { ...x, ...patch } : x) },
       })),
       removeIncomeStream: (id) => set((s) => ({ plan: { ...s.plan, incomeStreams: s.plan.incomeStreams.filter(x => x.id !== id) } })),
+      addLumpSumEvent: (e) => set((s) => ({ plan: { ...s.plan, lumpSumEvents: [...(s.plan.lumpSumEvents ?? []), e] } })),
+      updateLumpSumEvent: (id, patch) => set((s) => ({ plan: { ...s.plan, lumpSumEvents: (s.plan.lumpSumEvents ?? []).map(x => x.id === id ? { ...x, ...patch } : x) } })),
+      removeLumpSumEvent: (id) => set((s) => ({ plan: { ...s.plan, lumpSumEvents: (s.plan.lumpSumEvents ?? []).filter(x => x.id !== id) } })),
       setExpenseStreams: (expenseStreams) => set((s) => ({ plan: { ...s.plan, expenseStreams, baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
       addExpenseStream: (stream) => set((s) => ({ plan: { ...s.plan, expenseStreams: [...s.plan.expenseStreams, stream], baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
       updateExpenseStream: (id, patch) => set((s) => ({
@@ -121,10 +127,21 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 12,
+      version: 14,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v14: add lumpSumEvents array to plan.
+        if (fromVersion < 14 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          if (!Array.isArray(planObj.lumpSumEvents)) planObj.lumpSumEvents = [];
+        }
+        // v13: backfill conversion.optimize = true (preserves prior optimizer-decides-conversions behavior).
+        if (fromVersion < 13 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const conv = planObj.conversion as Record<string, unknown> | undefined;
+          if (conv && typeof conv === 'object' && conv.optimize == null) conv.optimize = true;
+        }
         // v12: backfill stateTaxablePct = 1 on existing income streams.
         if (fromVersion < 12 && ps.plan && typeof ps.plan === 'object') {
           const planObj = ps.plan as Record<string, unknown>;

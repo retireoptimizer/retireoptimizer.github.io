@@ -1,9 +1,10 @@
-import type { Plan, IncomeStream, ExpenseStream } from '../schemas/plan';
+import type { Plan, IncomeStream, ExpenseStream, LumpSumEvent } from '../schemas/plan';
 import { householdTotals } from '../schemas/plan';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity } from './tax';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from './taxConstants';
 import { rothConversion } from './conversion';
 import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
@@ -49,6 +50,11 @@ export interface ProjectionRow {
   stdDeduction: number;
   magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; used for IRMAA/ACA)
   acaPremium: number;    // net ACA premium after APTC (0 when modelACA=false or post-Medicare)
+  // One-time events & surplus
+  lumpSumInjectTaxable: number; // direct account injections from lump-sum events (taxable bucket)
+  lumpSumInjectTrad: number;
+  lumpSumInjectRoth: number;
+  cashSurplus: number;          // after-tax income surplus swept to taxable
   // Balances
   begTaxable: number;
   begTraditional: number;
@@ -163,6 +169,14 @@ export interface ProjectionOptions {
   inflationOverrides?: number[];
 }
 
+/** Map a stored MFJ bracket-fill ceiling to its Single equivalent by bracket index. */
+function effectiveBracketCeiling(mfjCeiling: number, fs: FilingStatus): number {
+  if (fs === 'MFJ') return mfjCeiling;
+  const idx = FED_BRACKETS_MFJ.findIndex(([top]) => top >= mfjCeiling);
+  if (idx < 0) return FED_BRACKETS_SINGLE[FED_BRACKETS_SINGLE.length - 1][0];
+  return FED_BRACKETS_SINGLE[Math.min(idx, FED_BRACKETS_SINGLE.length - 1)][0];
+}
+
 export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionResult {
   const activePolicy: BlendPolicy | undefined = opts?.policy ?? (plan.customPolicy as BlendPolicy | undefined);
   const startYear = new Date().getFullYear();
@@ -186,8 +200,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
   let lifetimeFedTaxReal = 0, lifetimeRMDReal = 0, lifetimeConversionReal = 0;
   let ranOut = false;
-  // Per-year final MAGI history for IRMAA 2-year lookback (year t's IRMAA uses magi[t-2]).
+  // Per-year MAGI + filing-status history for IRMAA 2-year lookback.
   const magiHistory: number[] = [];
+  const filingStatusHistory: FilingStatus[] = [];
 
   const maxYears = Math.min(75, planToAge - startAgeA + 1);
   const rmdStartAge = rmdStartAgeForDob(plan.personA.dob);
@@ -256,8 +271,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     lifetimeRMD += rmdAmt;
     lifetimeRMDReal += rmdAmt / inflationFactor;
 
-    // Standard deduction this year
-    const stdD = standardDeduction(filingStatus, ageA, ageB, inflationFactor);
+    // Standard deduction this year. For Single filers where B is the survivor, use B's age.
+    const filerAge = (filingStatus === 'Single' && !aliveA && aliveB && ageB !== undefined) ? ageB : ageA;
+    const stdD = standardDeduction(filingStatus, filerAge, ageB, inflationFactor);
 
     // Roth conversion (BEFORE withdrawals — increases ord income for the year).
     // If the active blend policy's window has an explicit convAmt (including 0), that is
@@ -287,7 +303,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       conv = Math.min(maxConv, policyConv * inflationFactor);
     } else {
       conv = rothConversion({
-        params: plan.conversion,
+        params: { ...plan.conversion, bracketCeiling: effectiveBracketCeiling(plan.conversion.bracketCeiling, filingStatus) },
         ageA,
         retired: eitherRetired,
         inflationFactor,
@@ -346,7 +362,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
             strategy: plan.withdrawalStrategy,
             gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail,
             rmd: rmdAmt, baseOrdinaryIncome: baseOrdIncForWd,
-            bracketCeiling: plan.withdrawalBracketCeiling,
+            bracketCeiling: effectiveBracketCeiling(plan.withdrawalBracketCeiling, filingStatus),
             stdD, inflationFactor,
           });
       wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;
@@ -369,7 +385,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // IRMAA 2-year lookback: year i's surcharge is based on MAGI from year i-2.
       // For the first two years, fall back to the current year's MAGI.
       const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
-      irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus, filingStatus) : 0;
+      const irmaaFS = i >= 2 ? filingStatusHistory[i - 2] : filingStatus;
+      irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus, irmaaFS) : 0;
       niit = annualNIIT(magi, ltcg, filingStatus);
 
       // Refine state tax to include retirement distributions for states that tax them.
@@ -420,6 +437,25 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     roth    = Math.max(0, roth    * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
     taxableBasis = Math.max(0, taxableBasis + contribToTax - wdTax * (1 - gainFraction));
 
+    // One-time income events: inject directly into target account.
+    // Amount is stored in plan-start-year (today's) dollars — inflate to nominal at event year,
+    // consistent with how income stream annualAmounts are treated. Taxable bucket gets full
+    // stepped-up basis; trad/roth are balance-only transfers.
+    let lumpSumInjectTaxable = 0, lumpSumInjectTrad = 0, lumpSumInjectRoth = 0;
+    for (const ev of (plan.lumpSumEvents ?? []) as LumpSumEvent[]) {
+      const personAge = ev.whose === 'A' ? ageA : ev.whose === 'B' ? (ageB ?? -1) : ageA;
+      const personAlive = ev.whose === 'A' ? aliveA : ev.whose === 'B' ? aliveB : (aliveA || aliveB);
+      if (!personAlive || personAge !== ev.age) continue;
+      if (ev.bucket === 'taxable') { taxable += ev.amount; taxableBasis += ev.amount; lumpSumInjectTaxable += ev.amount; }
+      else if (ev.bucket === 'trad') { trad += ev.amount; lumpSumInjectTrad += ev.amount; }
+      else { roth += ev.amount; lumpSumInjectRoth += ev.amount; }
+    }
+
+    // Surplus sweep: when SS + other income + RMD exceed spending + all taxes, the leftover
+    // cash is already received and taxed — sweep it into the taxable account at full basis.
+    const cashSurplus = Math.max(0, ss.total + other.taxableAmt + rmdAmt - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear);
+    if (cashSurplus > 0) { taxable += cashSurplus; taxableBasis += cashSurplus; }
+
     const endTotal = taxable + trad + roth;
     // Depletion is "could not fund the year's spending need from the portfolio", NOT just
     // "endTotal reached exactly zero". Each bucket's update is max(0, bal*g - wd), and wd is
@@ -435,6 +471,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     lifetimeFedTax += fedTax;
     lifetimeFedTaxReal += fedTax / inflationFactor;
     magiHistory.push(ordIncomeFinal + ltcgFinal);
+    filingStatusHistory.push(filingStatus);
 
     // Advance the running inflation factor for the next year.
     runningInflationFactor *= (1 + (opts?.inflationOverrides?.[i] ?? plan.assumptions.inflation));
@@ -464,6 +501,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       stdDeduction: stdD,
       magi: ordIncomeFinal + ltcgFinal,
       acaPremium: acaPremiumYear,
+      lumpSumInjectTaxable, lumpSumInjectTrad, lumpSumInjectRoth,
+      cashSurplus,
       begTaxable, begTraditional: begTrad, begRoth,
       endTaxable: taxable, endTraditional: trad, endRoth: roth,
       endTotal,
