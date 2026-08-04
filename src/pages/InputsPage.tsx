@@ -3,8 +3,8 @@ import * as Comlink from 'comlink';
 import { useNavigate } from 'react-router-dom';
 import { usePlanStore } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
-import { householdTotals } from '../schemas/plan';
-import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio } from '../schemas/plan';
+import { householdTotals, resolveGrowthRate } from '../schemas/plan';
+import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio, GrowthRate } from '../schemas/plan';
 import { NumberInput } from '../components/inputs/NumberInput';
 import { listStates } from '../engine/stateTax';
 import { fmtM, fmtK } from '../lib/format';
@@ -17,6 +17,82 @@ import GoalSelectPanel from '../components/GoalSelectPanel';
 import type { UserGoal } from '../engine/recommender';
 
 const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', whiteSpace: 'nowrap' };
+
+const stepperBtnStyle: React.CSSProperties = {
+  width: 22, height: 32, border: 'none', background: 'rgba(13,27,46,0.06)',
+  color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1,
+  cursor: 'pointer', userSelect: 'none', flexShrink: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+function GrowthRateInput({ value, inflation, onChange, disabled }: {
+  value: GrowthRate;
+  inflation: number;
+  onChange: (gr: GrowthRate) => void;
+  disabled?: boolean;
+}) {
+  const resolved = resolveGrowthRate(value, inflation);
+
+  const handleMode = (mode: GrowthRate['mode']) => {
+    if (mode === 'cpi') onChange({ mode: 'cpi' });
+    else if (mode === 'offset') onChange({ mode: 'offset', delta: 0 });
+    else onChange({ mode: 'fixed', rate: parseFloat(resolved.toFixed(3)) });
+  };
+
+  const nudge = (dir: 1 | -1) => {
+    if (value.mode !== 'offset') return;
+    onChange({ mode: 'offset', delta: parseFloat((value.delta + dir * 0.001).toFixed(3)) });
+  };
+
+  const selectFlex = value.mode === 'cpi' ? '1 1 auto' : '0 0 66px';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      <select
+        value={value.mode}
+        disabled={disabled}
+        onChange={(e) => handleMode(e.target.value as GrowthRate['mode'])}
+        style={{ fontSize: 11, height: 32, flex: selectFlex, minWidth: 0, paddingLeft: 4, paddingRight: 2 }}
+      >
+        <option value="cpi">Tracks CPI</option>
+        <option value="offset">CPI ± Adjust</option>
+        <option value="fixed">Fixed Rate</option>
+      </select>
+
+      {value.mode === 'offset' && (
+        <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-light)', borderRadius: 6, overflow: 'hidden', height: 32, flexShrink: 0 }}>
+          <button style={stepperBtnStyle} onClick={() => nudge(-1)} disabled={disabled}>−</button>
+          <div style={{ position: 'relative', width: 44 }}>
+            <NumberInput
+              value={value.delta}
+              scale={100}
+              digits={1}
+              style={{ fontSize: 12, textAlign: 'center', padding: '0 12px 0 4px', border: 'none', borderRadius: 0, height: 32 }}
+              disabled={disabled}
+              onCommit={(v) => onChange({ mode: 'offset', delta: v })}
+            />
+            <span style={{ position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', pointerEvents: 'none' }}>%</span>
+          </div>
+          <button style={stepperBtnStyle} onClick={() => nudge(1)} disabled={disabled}>+</button>
+        </div>
+      )}
+
+      {value.mode === 'fixed' && (
+        <div className="input-suffix-wrap" style={{ flex: 1, minWidth: 0 }}>
+          <NumberInput
+            value={value.rate}
+            scale={100}
+            digits={1}
+            style={{ fontSize: 13 }}
+            disabled={disabled}
+            onCommit={(v) => onChange({ mode: 'fixed', rate: v })}
+          />
+          <span className="input-suffix">%</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ageFromDob = (iso: string): number => {
   if (!iso || iso.length < 4) return 0;
@@ -313,10 +389,11 @@ export default function InputsPage() {
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                     <NumberInput value={s.annualAmount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateIncomeStream(s.id, { annualAmount: v })} />
                   </div>
-                  <div className="input-suffix-wrap">
-                    <NumberInput value={s.growthPct} scale={100} digits={1} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { growthPct: v })} />
-                    <span className="input-suffix">%</span>
-                  </div>
+                  <GrowthRateInput
+                    value={s.growthPct}
+                    inflation={asm.inflation}
+                    onChange={(gr) => updateIncomeStream(s.id, { growthPct: gr })}
+                  />
                   <div className="input-suffix-wrap">
                     <NumberInput value={s.stateTaxablePct ?? 1} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { stateTaxablePct: v })} />
                     <span className="input-suffix">%</span>
@@ -328,6 +405,9 @@ export default function InputsPage() {
             <button className="add-row-btn" onClick={() => addIncomeFromTemplate('blank')}>+ Add income stream</button>
 
             <div className="subsection-label" style={{ marginTop: 24 }}>One-Time Income Events</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+              Enter the nominal amount you expect to receive. For inherited IRAs and Roth accounts, the balance is added to your pre-tax or Roth portfolio and forced out over 10 years per SECURE Act rules — the optimizer decides timing to minimize taxes within that constraint. Inherited HSAs are fully taxable as ordinary income in the year received.
+            </div>
             <div className="stream-rows-scroll">
               <div className="stream-row lumpsum-row" style={{ padding: '6px 0', borderBottom: '2px solid var(--border-light)' }}>
                 <div style={headerStyle}>Description</div>
@@ -339,11 +419,11 @@ export default function InputsPage() {
               </div>
               {(plan.lumpSumEvents ?? []).length === 0 && (
                 <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  No one-time events — click "+ Add" for inheritance, home sale, insurance payouts, etc.
+                  No one-time events — click "+ Add" for home sale, insurance payouts, inherited IRA/HSA, etc.
                 </div>
               )}
               {(plan.lumpSumEvents ?? []).map((ev) => (
-                <div key={ev.id} className="stream-row lumpsum-row">
+                <div key={ev.id} className="stream-row lumpsum-row" style={{ flexWrap: 'wrap' }}>
                   <input type="text" value={ev.description} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { description: e.target.value })} />
                   <select value={ev.whose} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { whose: e.target.value as LumpSumEvent['whose'] })}>
                     <option value="A">{nameA}</option>
@@ -351,9 +431,10 @@ export default function InputsPage() {
                     <option value="Household">Household</option>
                   </select>
                   <select value={ev.bucket} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { bucket: e.target.value as LumpSumEvent['bucket'] })}>
-                    <option value="taxable">Taxable (brokerage)</option>
-                    <option value="trad">Pre-tax (trad IRA/401k)</option>
-                    <option value="roth">Roth</option>
+                    <option value="taxable">Taxable (home sale, insurance, etc.)</option>
+                    <option value="inheritedPreTaxIRA">Inherited Pre-Tax IRA</option>
+                    <option value="inheritedRoth">Inherited Roth IRA</option>
+                    <option value="inheritedHSA">Inherited HSA</option>
                   </select>
                   <NumberInput value={ev.age} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateLumpSumEvent(ev.id, { age: Math.round(v) })} />
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
@@ -364,9 +445,6 @@ export default function InputsPage() {
               ))}
             </div>
             <button className="add-row-btn" onClick={() => addLumpSumEvent({ id: `lump-${Date.now()}`, description: 'New Event', whose: 'Household', bucket: 'taxable', age: A.retirementAge, amount: 0 })}>+ Add one-time event</button>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-              Enter the actual dollar amount you expect to receive (nominal future dollars). In real-dollar view, the projection shows its NPV in today's purchasing power.
-            </div>
 
             <div className="subsection-label" style={{ marginTop: 24 }}>Expenses</div>
             <div className="stream-rows-scroll">
@@ -392,10 +470,11 @@ export default function InputsPage() {
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                     <NumberInput value={s.annualAmount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: v })} />
                   </div>
-                  <div className="input-suffix-wrap">
-                    <NumberInput value={s.inflationPct} scale={100} digits={1} style={{ fontSize: 13, paddingRight: 22 }} onCommit={(v) => updateExpenseStream(s.id, { inflationPct: v })} />
-                    <span className="input-suffix">%</span>
-                  </div>
+                  <GrowthRateInput
+                    value={s.inflationPct}
+                    inflation={asm.inflation}
+                    onChange={(gr) => updateExpenseStream(s.id, { inflationPct: gr })}
+                  />
                   <button className="remove-btn" onClick={() => removeExpenseStream(s.id)}>×</button>
                 </div>
               ))}
@@ -453,11 +532,11 @@ export default function InputsPage() {
             {/* Person A + B bucket panels */}
             <div className="two-col" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 16, gap: 0 }}>
               <div style={{ paddingRight: 24, borderRight: '2px solid rgba(13,27,46,0.18)' }}>
-                <PortfolioPersonSection name={nameA} data={pf.personA} onChange={setPersonAPortfolio} isRetired={isRetiredA} />
+                <PortfolioPersonSection name={nameA} data={pf.personA} onChange={setPersonAPortfolio} isRetired={isRetiredA} inflation={asm.inflation} />
               </div>
               {pf.personB ? (
                 <div style={{ paddingLeft: 24 }}>
-                  <PortfolioPersonSection name={nameB} data={pf.personB} onChange={setPersonBPortfolio} isRetired={isRetiredB} />
+                  <PortfolioPersonSection name={nameB} data={pf.personB} onChange={setPersonBPortfolio} isRetired={isRetiredB} inflation={asm.inflation} />
                 </div>
               ) : (
                 <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 16 }}>No second person on this plan.</div>
@@ -505,7 +584,7 @@ export default function InputsPage() {
   );
 }
 
-function PortfolioPersonSection({ name, data, onChange, isRetired = false }: { name: string; data: PersonPortfolio; onChange: (patch: Partial<PersonPortfolio>) => void; isRetired?: boolean }) {
+function PortfolioPersonSection({ name, data, onChange, isRetired = false, inflation }: { name: string; data: PersonPortfolio; onChange: (patch: Partial<PersonPortfolio>) => void; isRetired?: boolean; inflation: number }) {
   const split = data.contribSplit;
   const splitPct = Math.round((split.taxable + split.traditional + split.roth) * 100);
 
@@ -586,10 +665,10 @@ function PortfolioPersonSection({ name, data, onChange, isRetired = false }: { n
         </div>
         <div className="form-group">
           <label>Contribution growth</label>
-          <div className="input-suffix-wrap">
-            <NumberInput value={isRetired ? 0 : data.contribGrowth} scale={100} digits={1} min={0} disabled={isRetired} onCommit={(v) => onChange({ contribGrowth: v })} />
-            <span className="input-suffix">%</span>
-          </div>
+          {isRetired
+            ? <div className="input-suffix-wrap"><input type="number" value="0" disabled style={{}} /><span className="input-suffix">%</span></div>
+            : <GrowthRateInput value={data.contribGrowth} inflation={inflation} onChange={(gr) => onChange({ contribGrowth: gr })} />
+          }
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>

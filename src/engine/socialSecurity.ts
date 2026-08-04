@@ -1,5 +1,6 @@
 import { annualSSBenefit } from './ssActuarial';
 import type { IncomeStream } from '../schemas/plan';
+import { resolveGrowthRate } from '../schemas/plan';
 
 interface SSInput {
   piaA: number;
@@ -11,6 +12,7 @@ interface SSInput {
   ageB?: number;
   aliveB?: boolean;
   inflationFactor: number; // (1+infl)^yearIndex applied to nominal benefit (COLA proxy)
+  inflation: number;      // plan baseline inflation, used to resolve SS stream growthPct
   // Optional per-person SS overrides from `incomeStreams` with type='SS'.
   // When present, these supersede the PIA × claim-age actuarial calculation for
   // that person/year, because the user has explicitly modeled their expected SS.
@@ -29,7 +31,7 @@ interface SSOutput {
 /** Sum of all active SS-typed streams for one person at one age, grown by each
  *  stream's growthPct over yearIndex years. Returns 0 if no stream applies — the
  *  caller falls back to the PIA-based actuarial calculation. */
-function ssFromStreams(streams: IncomeStream[], whose: 'A' | 'B', personAge: number, yearIndex: number): number {
+function ssFromStreams(streams: IncomeStream[], whose: 'A' | 'B', personAge: number, yearIndex: number, inflation: number): number {
   let total = 0;
   for (const s of streams) {
     if (s.type !== 'SS') continue;
@@ -37,7 +39,7 @@ function ssFromStreams(streams: IncomeStream[], whose: 'A' | 'B', personAge: num
     const matchWhose = s.whose === whose || (whose === 'A' && s.whose === 'Household');
     if (!matchWhose) continue;
     if (personAge < s.startAge || personAge > s.stopAge) continue;
-    total += s.annualAmount * Math.pow(1 + s.growthPct, yearIndex);
+    total += s.annualAmount * Math.pow(1 + resolveGrowthRate(s.growthPct, inflation), yearIndex);
   }
   return total;
 }
@@ -53,7 +55,7 @@ export function householdSS(input: SSInput): SSOutput {
   const streams = input.ssStreams ?? [];
   const yi = input.yearIndex ?? 0;
 
-  const streamA = input.aliveA ? ssFromStreams(streams, 'A', input.ageA, yi) : 0;
+  const streamA = input.aliveA ? ssFromStreams(streams, 'A', input.ageA, yi, input.inflation) : 0;
   const benefitA = !input.aliveA
     ? 0
     : streamA > 0
@@ -62,7 +64,7 @@ export function householdSS(input: SSInput): SSOutput {
 
   const hasB = input.piaB !== undefined && input.claimAgeB !== undefined && input.ageB !== undefined;
   const streamB = hasB && input.aliveB && input.ageB !== undefined
-    ? ssFromStreams(streams, 'B', input.ageB, yi)
+    ? ssFromStreams(streams, 'B', input.ageB, yi, input.inflation)
     : 0;
   const benefitB = !hasB || !input.aliveB
     ? 0

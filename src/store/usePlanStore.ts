@@ -76,7 +76,7 @@ export const usePlanStore = create<PlanState>()(
         plan: {
           ...s.plan,
           personB: { name: 'Person B', dob: '1975-01-01', retirementAge: 65, planToAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
-          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: 0, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
+          portfolio: { ...s.plan.portfolio, personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: { mode: 'cpi' }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
         },
       })),
       removePersonB: () => set((s) => ({
@@ -127,10 +127,42 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 14,
+      version: 16,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v16: convert growthPct/inflationPct/contribGrowth from number to GrowthRate object.
+        if (fromVersion < 16 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const incomes = planObj.incomeStreams as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(incomes)) {
+            for (const s of incomes) {
+              if (typeof s.growthPct === 'number') s.growthPct = { mode: 'fixed', rate: s.growthPct };
+            }
+          }
+          const expenses = planObj.expenseStreams as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(expenses)) {
+            for (const e of expenses) {
+              if (typeof e.inflationPct === 'number') e.inflationPct = { mode: 'fixed', rate: e.inflationPct };
+            }
+          }
+          const pf = planObj.portfolio as Record<string, unknown> | undefined;
+          const pA = pf?.personA as Record<string, unknown> | undefined;
+          const pB = pf?.personB as Record<string, unknown> | undefined;
+          if (pA && typeof pA.contribGrowth === 'number') pA.contribGrowth = { mode: 'fixed', rate: pA.contribGrowth };
+          if (pB && typeof pB.contribGrowth === 'number') pB.contribGrowth = { mode: 'fixed', rate: pB.contribGrowth };
+        }
+        // v15: rename legacy bucket values 'trad'→'inheritedPreTaxIRA', 'roth'→'inheritedRoth'.
+        if (fromVersion < 15 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const events = planObj.lumpSumEvents as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(events)) {
+            for (const ev of events) {
+              if (ev.bucket === 'trad') ev.bucket = 'inheritedPreTaxIRA';
+              else if (ev.bucket === 'roth') ev.bucket = 'inheritedRoth';
+            }
+          }
+        }
         // v14: add lumpSumEvents array to plan.
         if (fromVersion < 14 && ps.plan && typeof ps.plan === 'object') {
           const planObj = ps.plan as Record<string, unknown>;

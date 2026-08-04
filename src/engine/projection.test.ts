@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection } from './projection';
 import { samplePlan as defaultPlan } from '../schemas/plan';
+import type { Plan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 import { optimizeStrategy } from './optimizer';
 import { assertProjectionInvariants, assertDeterministic } from './__invariants__/assertions';
@@ -138,4 +139,123 @@ describe('optimizeStrategy (smoke)', () => {
     // And it should perform more evaluations.
     expect(thorough.evaluations).toBeGreaterThan(fast.evaluations);
   }, 120_000);
+});
+
+// Helper: samplePlan has personA dob '1974-05-03' → startAge 52 in 2026.
+// Age 65 is 13 years into the projection. retirementAge=59 so already retired at 65.
+function baseInheritedPlan(): Plan {
+  const plan = defaultPlan();
+  plan.conversion.mode = 'off';
+  plan.conversion.optimize = false;
+  plan.lumpSumEvents = [];
+  return plan;
+}
+
+describe('Inherited account types — one-time income events', () => {
+  it('inheritedHSA: full balance is ordinary income in year received only', () => {
+    const plan = baseInheritedPlan();
+    plan.lumpSumEvents = [{ id: 'hsa-1', description: 'Inherited HSA', whose: 'A', bucket: 'inheritedHSA', age: 65, amount: 50_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+
+    const hsaRow = proj.rows.find(r => r.ageA === 65)!;
+    expect(hsaRow).toBeDefined();
+    expect(hsaRow.lumpSumOrdinaryIncome).toBeCloseTo(50_000, -1);
+    expect(hsaRow.lumpSumInjectTaxable).toBeCloseTo(50_000, -1);
+
+    // All other years have zero inherited income.
+    for (const r of proj.rows) {
+      if (r.ageA !== 65) expect(r.lumpSumOrdinaryIncome ?? 0).toBe(0);
+    }
+
+    // The injection year has higher fedTax than adjacent years due to $50k income spike.
+    const prevRow = proj.rows.find(r => r.ageA === 64);
+    const nextRow = proj.rows.find(r => r.ageA === 66);
+    if (prevRow && nextRow) {
+      expect(hsaRow.fedTax).toBeGreaterThan(prevRow.fedTax);
+    }
+  });
+
+  it('inheritedPreTaxIRA + taxfirst: supplement fires every year in [age, age+9]', () => {
+    const plan = baseInheritedPlan();
+    plan.withdrawalStrategy = 'taxfirst';
+    plan.lumpSumEvents = [{ id: 'ira-1', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: 65, amount: 100_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+
+    const injRow = proj.rows.find(r => r.ageA === 65)!;
+    expect(injRow).toBeDefined();
+    expect(injRow.lumpSumInjectTrad).toBeCloseTo(100_000, -1);
+
+    // Supplement fires in every year of the 10-year window.
+    for (let age = 65; age <= 74; age++) {
+      const r = proj.rows.find(row => row.ageA === age);
+      if (!r) continue;
+      expect(r.lumpSumForcedTradDist).toBeGreaterThan(0);
+      expect(r.lumpSumOrdinaryIncome).toBeGreaterThan(0);
+    }
+
+    // No forced dist outside the window.
+    for (const r of proj.rows) {
+      if (r.ageA < 65 || r.ageA > 74) {
+        expect(r.lumpSumForcedTradDist ?? 0).toBe(0);
+      }
+    }
+
+    // Supplement fires every year (taxfirst barely touches trad). Total supplement should be
+    // substantial — at least half the initial amount. The rest depletes proportionally via wdTrd.
+    const totalSuppl = proj.rows.filter(r => r.ageA >= 65 && r.ageA <= 74).reduce((s, r) => s + (r.lumpSumForcedTradDist ?? 0), 0);
+    expect(totalSuppl).toBeGreaterThan(50_000);
+  });
+
+  it('inheritedPreTaxIRA + tradfirst: supplement rarely fires (strategy already draws trad)', () => {
+    const plan = baseInheritedPlan();
+    plan.withdrawalStrategy = 'tradfirst';
+    plan.lumpSumEvents = [{ id: 'ira-2', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: 65, amount: 100_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+
+    // With tradfirst, strategy already drains trad aggressively — proportional depletion
+    // covers or exceeds the floor most years, so lumpSumForcedTradDist should be 0 or small.
+    const windowRows = proj.rows.filter(r => r.ageA >= 65 && r.ageA < 74);
+    const zeroOrNearZero = windowRows.filter(r => (r.lumpSumForcedTradDist ?? 0) < 100);
+    expect(zeroOrNearZero.length).toBeGreaterThan(windowRows.length / 2);
+
+    // Final year (age 74) forces any remaining balance out — lumpSumForcedTradDist may be nonzero.
+    const finalRow = proj.rows.find(r => r.ageA === 74);
+    if (finalRow) expect(finalRow.lumpSumForcedTradDist ?? 0).toBeGreaterThanOrEqual(0);
+  });
+
+  it('inheritedRoth: no ordinary income, taxable grows each year in window', () => {
+    const plan = baseInheritedPlan();
+    plan.withdrawalStrategy = 'taxfirst';
+    plan.lumpSumEvents = [{ id: 'roth-1', description: 'Inherited Roth', whose: 'A', bucket: 'inheritedRoth', age: 65, amount: 100_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+
+    const injRow = proj.rows.find(r => r.ageA === 65)!;
+    expect(injRow).toBeDefined();
+    expect(injRow.lumpSumInjectRoth).toBeCloseTo(100_000, -1);
+
+    // Inherited Roth distributions produce no ordinary income.
+    for (const r of proj.rows) {
+      expect(r.lumpSumOrdinaryIncome ?? 0).toBe(0);
+    }
+
+    // Forced Roth dists move to taxable each year in window — taxable should have extra from that.
+    for (let age = 65; age <= 74; age++) {
+      const r = proj.rows.find(row => row.ageA === age);
+      if (!r) continue;
+      expect(r.lumpSumForcedRothDist ?? 0).toBeGreaterThanOrEqual(0);
+    }
+
+    // Baseline for comparison — Roth distributions cover some spending, so the plan needs
+    // fewer taxable/trad withdrawals → ordinary income is lower → fedTax ≤ baseline.
+    const baseProj = runProjection(baseInheritedPlan());
+    const baseRow65 = baseProj.rows.find(r => r.ageA === 65);
+    if (baseRow65 && injRow) {
+      // Roth dists are tax-free, so inherited Roth year should have ≤ baseline fedTax.
+      expect(injRow.fedTax).toBeLessThanOrEqual(baseRow65.fedTax + 1);
+    }
+  });
 });

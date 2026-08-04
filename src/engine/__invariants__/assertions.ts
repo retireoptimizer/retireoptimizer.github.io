@@ -35,13 +35,14 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   // 1. NO-OVERDRAW: total outflow per bucket must not exceed what's available (growth + contrib).
   //    Catches phantom withdrawals — bucket-A drained while withdrawal still claimed cash.
   const tradAvail = r.begTraditional * (1 + gRateTrad) + contribToTrad;
-  const tradOutflow = r.wdTrd + r.rmd + r.rothConv;
+  const tradOutflow = r.wdTrd + r.rmd + r.rothConv + (r.lumpSumForcedTradDist ?? 0);
   if (tradOutflow > tradAvail + tol) {
-    out.push(`Trad OVERDRAW: outflow $${tradOutflow.toFixed(2)} > available $${tradAvail.toFixed(2)} (wdTrd=${r.wdTrd.toFixed(2)} + rmd=${r.rmd.toFixed(2)} + conv=${r.rothConv.toFixed(2)} vs begTrad*(1+g)+contribTrad)`);
+    out.push(`Trad OVERDRAW: outflow $${tradOutflow.toFixed(2)} > available $${tradAvail.toFixed(2)} (wdTrd=${r.wdTrd.toFixed(2)} + rmd=${r.rmd.toFixed(2)} + conv=${r.rothConv.toFixed(2)} + forcedTrad=${(r.lumpSumForcedTradDist ?? 0).toFixed(2)} vs begTrad*(1+g)+contribTrad)`);
   }
   const rothAvail = r.begRoth * (1 + gRateRoth) + contribToRoth + r.rothConv;
-  if (r.wdRth > rothAvail + tol) {
-    out.push(`Roth OVERDRAW: wdRth $${r.wdRth.toFixed(2)} > available $${rothAvail.toFixed(2)}`);
+  const rothOutflow = r.wdRth + (r.lumpSumForcedRothDist ?? 0);
+  if (rothOutflow > rothAvail + tol) {
+    out.push(`Roth OVERDRAW: outflow $${rothOutflow.toFixed(2)} > available $${rothAvail.toFixed(2)} (wdRth=${r.wdRth.toFixed(2)} + forcedRoth=${(r.lumpSumForcedRothDist ?? 0).toFixed(2)})`);
   }
   const taxAvail = r.begTaxable * (1 + gRateTax) + contribToTax;
   if (r.wdTax > taxAvail + tol) {
@@ -51,15 +52,15 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   // 2. MASS BALANCE: end-of-year balance must match the bucket-update arithmetic
   //    when no clamping occurred. Pinpoints both subtle update bugs and validates
   //    that the conversion symmetry (trad - conv = -delta, roth + conv = +delta) holds.
-  const expectedEndTrad = Math.max(0, r.begTraditional * (1 + gRateTrad) + contribToTrad - r.wdTrd - r.rmd - r.rothConv) + (r.lumpSumInjectTrad ?? 0);
+  const expectedEndTrad = Math.max(0, r.begTraditional * (1 + gRateTrad) + contribToTrad - r.wdTrd - r.rmd - r.rothConv) + (r.lumpSumInjectTrad ?? 0) - (r.lumpSumForcedTradDist ?? 0);
   if (Math.abs(r.endTraditional - expectedEndTrad) > tol) {
     out.push(`Trad MASS BALANCE: endTraditional $${r.endTraditional.toFixed(2)} != expected $${expectedEndTrad.toFixed(2)} (delta $${(r.endTraditional - expectedEndTrad).toFixed(2)})`);
   }
-  const expectedEndRoth = Math.max(0, r.begRoth * (1 + gRateRoth) + contribToRoth - r.wdRth + r.rothConv) + (r.lumpSumInjectRoth ?? 0);
+  const expectedEndRoth = Math.max(0, r.begRoth * (1 + gRateRoth) + contribToRoth - r.wdRth + r.rothConv) + (r.lumpSumInjectRoth ?? 0) - (r.lumpSumForcedRothDist ?? 0);
   if (Math.abs(r.endRoth - expectedEndRoth) > tol) {
     out.push(`Roth MASS BALANCE: endRoth $${r.endRoth.toFixed(2)} != expected $${expectedEndRoth.toFixed(2)}`);
   }
-  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax) + (r.lumpSumInjectTaxable ?? 0) + (r.cashSurplus ?? 0);
+  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax) + (r.lumpSumInjectTaxable ?? 0) + (r.cashSurplus ?? 0) + (r.lumpSumForcedTradDist ?? 0) + (r.lumpSumForcedRothDist ?? 0);
   if (Math.abs(r.endTaxable - expectedEndTax) > tol) {
     out.push(`Taxable MASS BALANCE: endTaxable $${r.endTaxable.toFixed(2)} != expected $${expectedEndTax.toFixed(2)}`);
   }
@@ -93,7 +94,7 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   //    In SemiRetire, working person's contributions offset expense draws, so the coverage
   //    check still holds. Allow 5% slack for gross-up convergence drift.
   if (semiRetired && r.endTotal > 1 && !opts.skipSpendingCoverage) {
-    const cashIn = r.wdTax + r.wdTrd + r.wdRth + r.totalSS + r.otherIncome + r.rmd;
+    const cashIn = r.wdTax + r.wdTrd + r.wdRth + r.totalSS + r.otherIncome + r.rmd + (r.lumpSumOrdinaryIncome ?? 0) + (r.lumpSumForcedRothDist ?? 0);
     const cashOut = r.netSpend + r.fedTax + r.stateTaxAmt + r.irmaa;
     // 5% slack: pathological first-retirement-year scenarios (high marginal-bracket
     // crossings combined with low starting balance) can have gross-up convergence

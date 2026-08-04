@@ -707,7 +707,7 @@ input:disabled, select:disabled, textarea:disabled {
 .input-prefix-wrap input { padding-left: 28px; }
 .input-suffix {
   position: absolute;
-  right: 14px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 13px;
@@ -715,7 +715,7 @@ input:disabled, select:disabled, textarea:disabled {
   pointer-events: none;
 }
 .input-suffix-wrap { position: relative; }
-.input-suffix-wrap input { padding-right: 36px; }
+.input-suffix-wrap input { padding-right: 28px; }
 .helper-text { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 
 /* ─── TOGGLE GROUP ───────────────────────── */
@@ -786,17 +786,17 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .stream-row {
   display: grid;
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 6px 0;
   animation: rowIn 0.2s ease;
 }
 @keyframes rowIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
-.stream-row.income-row { grid-template-columns: 1.4fr 1fr 1fr 0.7fr 0.7fr 0.7fr 0.7fr 0.7fr 28px; }
-.stream-row.expense-row { grid-template-columns: 2fr 1fr 0.7fr 0.7fr 0.9fr 0.8fr 28px; }
+.stream-row.income-row { grid-template-columns: 1.1fr 0.7fr 0.7fr 0.5fr 0.5fr 0.8fr 1.2fr 0.6fr 28px; }
+.stream-row.expense-row { grid-template-columns: 1.4fr 0.7fr 0.5fr 0.5fr 0.8fr 1.2fr 28px; }
 .stream-row.lumpsum-row { grid-template-columns: 1.6fr 0.9fr 1.2fr 0.6fr 0.9fr 28px; }
 /* Inputs and dropdowns in a stream row share one fixed height so the selects
    line up with the number boxes. */
-.stream-row select, .stream-row input { height: 38px; }
+.stream-row select, .stream-row input { height: 32px; }
 .remove-btn {
   width: 24px;
   height: 24px;
@@ -1348,8 +1348,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
   /* CashFlow stream rows — horizontal scroll container */
   .stream-rows-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .stream-row.income-row { min-width: 640px; }
-  .stream-row.expense-row { min-width: 540px; }
+  .stream-row.income-row { min-width: 700px; }
+  .stream-row.expense-row { min-width: 580px; }
   .stream-row.lumpsum-row { min-width: 520px; }
 
   /* CashFlowTable — make outer wrapper scroll horizontally */

@@ -80,24 +80,6 @@ export function evaluateScenario(base: Plan, scenario: Scenario): ScenarioResult
     };
   }
 
-  // When the inflation assumption changes, update any CPI-indexed streams (those whose rate was
-  // set to match the baseline inflation) so spending and income track the new rate.
-  const inflationChanged = scenario.overrides.assumptions?.inflation !== undefined
-    && scenario.overrides.assumptions.inflation !== base.assumptions.inflation;
-  if (inflationChanged) {
-    const oldRate = base.assumptions.inflation;
-    const newRate = effectivePlan.assumptions.inflation;
-    effectivePlan = {
-      ...effectivePlan,
-      expenseStreams: effectivePlan.expenseStreams.map((s) =>
-        Math.abs(s.inflationPct - oldRate) < 1e-9 ? { ...s, inflationPct: newRate } : s
-      ),
-      incomeStreams: effectivePlan.incomeStreams.map((s) =>
-        Math.abs(s.growthPct - oldRate) < 1e-9 ? { ...s, growthPct: newRate } : s
-      ),
-    };
-  }
-
   const projection = runProjection(effectivePlan);
   return { id: scenario.id, name: scenario.name, effectivePlan, projection };
 }

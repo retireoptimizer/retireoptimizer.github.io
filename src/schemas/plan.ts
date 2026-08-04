@@ -3,6 +3,19 @@ import { FED_BRACKETS_MFJ } from '../engine/taxConstants';
 
 const BRACKET_12_TOP_MFJ = FED_BRACKETS_MFJ[1][0];
 
+export const GrowthRateSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('cpi') }),
+  z.object({ mode: z.literal('offset'), delta: z.number() }),
+  z.object({ mode: z.literal('fixed'), rate: z.number() }),
+]);
+export type GrowthRate = z.infer<typeof GrowthRateSchema>;
+
+export function resolveGrowthRate(gr: GrowthRate, inflation: number): number {
+  if (gr.mode === 'cpi') return inflation;
+  if (gr.mode === 'offset') return inflation + gr.delta;
+  return gr.rate;
+}
+
 export const PersonSchema = z.object({
   name: z.string().min(1),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -42,8 +55,7 @@ export const PersonPortfolioSchema = z.object({
   roth: z.number().nonnegative(),
   annualContribution: z.number().nonnegative(),
   // Annual % growth of this person's contribution while still working (e.g. 0.03 = +3%/yr).
-  // Defaulted so plans persisted before contribGrowth moved here keep parsing.
-  contribGrowth: z.number().default(0),
+  contribGrowth: GrowthRateSchema.default({ mode: 'cpi' }),
   // How each year's contribution splits across buckets for this person (must sum to ~1)
   contribSplit: z.object({
     taxable: z.number().min(0).max(1),
@@ -80,7 +92,7 @@ export const IncomeStreamSchema = z.object({
   startAge: z.number().int().min(0).max(110),
   stopAge: z.number().int().min(0).max(115),
   annualAmount: z.number().nonnegative(),
-  growthPct: z.number().min(-0.1).max(0.2),
+  growthPct: GrowthRateSchema,
   taxablePct: z.number().min(0).max(1),
   stateTaxablePct: z.number().min(0).max(1).default(1),
 });
@@ -90,7 +102,7 @@ export const LumpSumEventSchema = z.object({
   id: z.string(),
   description: z.string(),
   whose: z.enum(['A', 'B', 'Household']),
-  bucket: z.enum(['taxable', 'trad', 'roth']),
+  bucket: z.enum(['taxable', 'inheritedPreTaxIRA', 'inheritedRoth', 'inheritedHSA']),
   age: z.number().int().min(0).max(115),
   amount: z.number().nonnegative(),
 });
@@ -103,7 +115,7 @@ export const ExpenseStreamSchema = z.object({
   startAge: z.number().int().min(0).max(110),
   stopAge: z.number().int().min(0).max(115),
   annualAmount: z.number().nonnegative(),
-  inflationPct: z.number(),
+  inflationPct: GrowthRateSchema,
 });
 export type ExpenseStream = z.infer<typeof ExpenseStreamSchema>;
 
@@ -211,17 +223,17 @@ export const defaultPlan = (): Plan => ({
       traditional: 0,
       roth: 0,
       annualContribution: 0,
-      contribGrowth: 0,
+      contribGrowth: { mode: 'cpi' },
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
     personB: undefined,
   },
   incomeStreams: [
-    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
   ],
   lumpSumEvents: [],
   expenseStreams: [
-    { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: 0.025 },
+    { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: { mode: 'cpi' } },
   ],
   withdrawalStrategy: 'taxfirst',
   withdrawalBracketCeiling: BRACKET_12_TOP_MFJ,
@@ -276,7 +288,7 @@ export const samplePlan = (): Plan => ({
       traditional: 779000,
       roth: 441000,
       annualContribution: 60000,
-      contribGrowth: 0,
+      contribGrowth: { mode: 'cpi' },
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
     personB: {
@@ -285,18 +297,18 @@ export const samplePlan = (): Plan => ({
       traditional: 106000,
       roth: 171000,
       annualContribution: 40000,
-      contribGrowth: 0,
+      contribGrowth: { mode: 'cpi' },
       contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 },
     },
   },
   lumpSumEvents: [],
   incomeStreams: [
-    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
-    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
-    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
   ],
   expenseStreams: [
-    { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: 0.025 },
+    { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: { mode: 'cpi' } },
   ],
   withdrawalStrategy: 'taxfirst',
   withdrawalBracketCeiling: BRACKET_12_TOP_MFJ,

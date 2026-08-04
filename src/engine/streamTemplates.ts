@@ -30,9 +30,9 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
     label: 'Blank stream',
     hint: 'Empty row — fill in everything yourself',
     make: () => ({
-      id: nid('stream'), description: 'New Income Stream',
+      id: nid('stream'), description: 'Description',
       whose: 'Household', type: 'Other',
-      startAge: 65, stopAge: 90, annualAmount: 0, growthPct: 0.025, taxablePct: 1, stateTaxablePct: 1,
+      startAge: 65, stopAge: 90, annualAmount: 0, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1,
     }),
   },
   {
@@ -43,7 +43,7 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
       id: nid('stream'), description: 'Pension',
       whose: 'Household', type: 'Pension',
       startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 30000, growthPct: 0.02, taxablePct: 1, stateTaxablePct: 1,
+      annualAmount: 30000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1, stateTaxablePct: 1,
     }),
   },
   {
@@ -54,7 +54,7 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
       id: nid('stream'), description: 'Annuity',
       whose: 'Household', type: 'Annuity',
       startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 18000, growthPct: 0, taxablePct: 0.7, stateTaxablePct: 1,
+      annualAmount: 18000, growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0.7, stateTaxablePct: 1,
     }),
   },
 ];
@@ -65,9 +65,9 @@ export const EXPENSE_TEMPLATES: ExpenseTemplate[] = [
     label: 'Blank expense',
     hint: 'Empty row',
     make: ({ retirementAge, planToAge }) => ({
-      id: nid('expense'), description: 'New Expense',
+      id: nid('expense'), description: 'Description',
       whose: 'Household', startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 0, inflationPct: 0.025,
+      annualAmount: 0, inflationPct: { mode: 'cpi' },
     }),
   },
   {
@@ -77,7 +77,7 @@ export const EXPENSE_TEMPLATES: ExpenseTemplate[] = [
     make: ({ retirementAge, planToAge }) => ({
       id: nid('expense'), description: 'Healthcare',
       whose: 'Household', startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 18000, inflationPct: 0.055,
+      annualAmount: 18000, inflationPct: { mode: 'fixed', rate: 0.055 },
     }),
   },
   {
@@ -87,7 +87,7 @@ export const EXPENSE_TEMPLATES: ExpenseTemplate[] = [
     make: ({ retirementAge }) => ({
       id: nid('expense'), description: 'Travel',
       whose: 'Household', startAge: retirementAge, stopAge: 80,
-      annualAmount: 15000, inflationPct: 0.025,
+      annualAmount: 15000, inflationPct: { mode: 'cpi' },
     }),
   },
   {
@@ -97,7 +97,7 @@ export const EXPENSE_TEMPLATES: ExpenseTemplate[] = [
     make: ({ retirementAge }) => ({
       id: nid('expense'), description: 'Mortgage',
       whose: 'Household', startAge: retirementAge, stopAge: 70,
-      annualAmount: 24000, inflationPct: 0,
+      annualAmount: 24000, inflationPct: { mode: 'fixed', rate: 0 },
     }),
   },
   {
@@ -107,7 +107,7 @@ export const EXPENSE_TEMPLATES: ExpenseTemplate[] = [
     make: ({ retirementAge, planToAge }) => ({
       id: nid('expense'), description: 'Core Household Spending',
       whose: 'Household', startAge: retirementAge, stopAge: planToAge,
-      annualAmount: 80000, inflationPct: 0.025,
+      annualAmount: 80000, inflationPct: { mode: 'cpi' },
     }),
   },
 ];

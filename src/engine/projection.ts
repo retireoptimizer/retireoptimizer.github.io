@@ -1,5 +1,5 @@
 import type { Plan, IncomeStream, ExpenseStream, LumpSumEvent } from '../schemas/plan';
-import { householdTotals } from '../schemas/plan';
+import { householdTotals, resolveGrowthRate } from '../schemas/plan';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
@@ -54,6 +54,9 @@ export interface ProjectionRow {
   lumpSumInjectTaxable: number; // direct account injections from lump-sum events (taxable bucket)
   lumpSumInjectTrad: number;
   lumpSumInjectRoth: number;
+  lumpSumOrdinaryIncome: number;   // ordinary income from inheritedPreTaxIRA dists + inheritedHSA
+  lumpSumForcedTradDist: number;   // supplemental forced dists from inheritedPreTaxIRA
+  lumpSumForcedRothDist: number;   // supplemental forced dists from inheritedRoth
   cashSurplus: number;          // after-tax income surplus swept to taxable
   // Balances
   begTaxable: number;
@@ -92,6 +95,7 @@ const sumIncomeStreams = (
   aliveA: boolean,
   aliveB: boolean,
   yearIndex: number,
+  inflation: number,
 ): { taxableAmt: number; nonExempt: number; pensionAmt: number } => {
   let taxableAmt = 0, nonExempt = 0, pensionAmt = 0;
   for (const s of streams) {
@@ -100,7 +104,7 @@ const sumIncomeStreams = (
     const personAlive = s.whose === 'A' ? aliveA : s.whose === 'B' ? aliveB : (aliveA || aliveB);
     if (!personAlive) continue;
     if (personAge < s.startAge || personAge > s.stopAge) continue;
-    const amount = s.annualAmount * Math.pow(1 + s.growthPct, yearIndex);
+    const amount = s.annualAmount * Math.pow(1 + resolveGrowthRate(s.growthPct, inflation), yearIndex);
     const taxablePortion = amount * s.taxablePct;
     taxableAmt += taxablePortion;
     const stf = s.stateTaxablePct ?? 1;
@@ -133,16 +137,13 @@ const sumExpenseStreams = (
     if (!eligible) continue;
     const personAge = e.whose === 'A' ? ageA : e.whose === 'B' ? (ageB ?? -1) : ageA;
     if (personAge < e.startAge || personAge > e.stopAge) continue;
-    // When actual per-year CPI overrides are active, streams whose inflationPct matches the
-    // plan's baseline inflation are treated as CPI-indexed (lifestyle spending). Substitute
-    // the actual cumulative inflation factor so these streams track historical CPI rather
-    // than the fixed planning rate. All other rates (0%, healthcare premium, etc.) compound
-    // at their own specified rate as before.
-    const isCpiIndexed = cumulativeInflationFactor !== undefined
-      && Math.abs(e.inflationPct - planInflation) < 1e-9;
+    // CPI-mode streams (mode:'cpi') use the actual cumulative inflation factor in Monte Carlo
+    // so they track stochastic CPI rather than the fixed planning rate. All other modes
+    // compound at their own resolved rate as before.
+    const isCpiIndexed = cumulativeInflationFactor !== undefined && e.inflationPct.mode === 'cpi';
     const growthFactor = isCpiIndexed
       ? cumulativeInflationFactor
-      : Math.pow(1 + e.inflationPct, yearIndex);
+      : Math.pow(1 + resolveGrowthRate(e.inflationPct, planInflation), yearIndex);
     total += e.annualAmount * growthFactor;
   }
   return total;
@@ -160,8 +161,8 @@ export interface ProjectionOptions {
   /**
    * Per-year CPI inflation rate overrides (same length as returnOverrides). When provided:
    * - The inflation factor (deflator) compounds these rates rather than plan.assumptions.inflation.
-   * - Expense streams whose inflationPct equals plan.assumptions.inflation (CPI-indexed lifestyle
-   *   spending) track actual CPI instead of the fixed planning rate.
+   * - Expense streams with inflationPct.mode === 'cpi' (CPI-indexed lifestyle spending) track
+   *   actual CPI instead of the fixed planning rate.
    * - All other scalars that use inflationFactor (SS, std deduction, IRMAA, ACA, conversions)
    *   automatically follow the stochastic path via the updated inflationFactor.
    * Omit for deterministic projections and the parametric MC model.
@@ -200,12 +201,18 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
   let lifetimeFedTaxReal = 0, lifetimeRMDReal = 0, lifetimeConversionReal = 0;
   let ranOut = false;
+
+  const inheritedState: Array<{ ev: LumpSumEvent; remainingBal: number; injected: boolean }> =
+    (plan.lumpSumEvents ?? [])
+      .filter(ev => ev.bucket === 'inheritedPreTaxIRA' || ev.bucket === 'inheritedRoth')
+      .map(ev => ({ ev, remainingBal: 0, injected: false }));
   // Per-year MAGI + filing-status history for IRMAA 2-year lookback.
   const magiHistory: number[] = [];
   const filingStatusHistory: FilingStatus[] = [];
 
   const maxYears = Math.min(75, planToAge - startAgeA + 1);
   const rmdStartAge = rmdStartAgeForDob(plan.personA.dob);
+  const planInflation = plan.assumptions.inflation;
   // Running inflation factor — compounded from per-year CPI overrides when provided,
   // otherwise from the plan's fixed inflation rate. Year 0 is always 1 (base year).
   let runningInflationFactor = 1;
@@ -231,9 +238,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     else phase = 'Accum.';
 
     // Contributions during working years — each person's contribution grows at their
-    // own rate (contribGrowth now lives on the per-person portfolio, not assumptions).
-    const cgFactorA = Math.pow(1 + (pfA.contribGrowth ?? 0), i);
-    const cgFactorB = pfB ? Math.pow(1 + (pfB.contribGrowth ?? 0), i) : 1;
+    // own rate (contribGrowth lives on the per-person portfolio).
+    const cgFactorA = Math.pow(1 + resolveGrowthRate(pfA.contribGrowth, planInflation), i);
+    const cgFactorB = pfB ? Math.pow(1 + resolveGrowthRate(pfB.contribGrowth, planInflation), i) : 1;
     const contribA = (!retiredA && aliveA) ? pfA.annualContribution * cgFactorA : 0;
     const contribB = (!retiredB && aliveB && plan.personB && pfB) ? pfB.annualContribution * cgFactorB : 0;
 
@@ -248,12 +255,13 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       claimAgeB: plan.personB?.ssClaimAge,
       ageB, aliveB,
       inflationFactor,
+      inflation: planInflation,
       ssStreams: plan.incomeStreams,
       yearIndex: i,
     });
 
     // Other income streams
-    const other = sumIncomeStreams(plan.incomeStreams, ageA, ageB, aliveA, aliveB, i);
+    const other = sumIncomeStreams(plan.incomeStreams, ageA, ageB, aliveA, aliveB, i, planInflation);
 
     // Expenses start when either person retires (semi-retirement or full retirement).
     // Per-whose gate inside sumExpenseStreams: A-tagged on retiredA, B-tagged on retiredB,
@@ -315,10 +323,36 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     lifetimeConversion += conv;
     lifetimeConversionReal += conv / inflationFactor;
 
+    // Pre-estimate inherited account income for gross-up loop sizing.
+    // HSA: deterministic (event amount, no circularity). InheritedPreTaxIRA/Roth: use floor
+    // from prior-year remainingBal (or ev.amount in the injection year) — overestimates in
+    // tradfirst (strategy draws more than floor, supplement = 0) but exact in taxfirst.
+    let lumpSumHSAIncomeEst = 0, lumpSumForcedTradDistEst = 0, lumpSumTaxFreeEst = 0;
+    for (const ev of (plan.lumpSumEvents ?? []) as LumpSumEvent[]) {
+      const evAge = ev.whose === 'A' ? ageA : ev.whose === 'B' ? (ageB ?? -1) : ageA;
+      const evAlive = ev.whose === 'A' ? aliveA : ev.whose === 'B' ? aliveB : (aliveA || aliveB);
+      if (!evAlive) continue;
+      if (ev.bucket === 'inheritedHSA' && evAge === ev.age) lumpSumHSAIncomeEst += ev.amount;
+    }
+    for (const s of inheritedState) {
+      const evAge = s.ev.whose === 'A' ? ageA : s.ev.whose === 'B' ? (ageB ?? -1) : ageA;
+      const evAlive = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
+      if (!evAlive) continue;
+      const yearsElapsedEst = evAge - s.ev.age;
+      if (yearsElapsedEst < 0 || yearsElapsedEst >= 10) continue;
+      const balEst = s.injected ? s.remainingBal : (evAge === s.ev.age ? s.ev.amount : 0);
+      if (balEst <= 0) continue;
+      const gRateEst = s.ev.bucket === 'inheritedPreTaxIRA' ? gRateTradYear : gRateRothYear;
+      const floorEst = balEst * (1 + gRateEst) / (10 - yearsElapsedEst);
+      if (s.ev.bucket === 'inheritedPreTaxIRA') lumpSumForcedTradDistEst += floorEst;
+      else lumpSumTaxFreeEst += floorEst;
+    }
+    const lumpSumOrdIncomeEst = lumpSumHSAIncomeEst + lumpSumForcedTradDistEst;
+
     // Base ordinary income for withdrawal bracket-fill sizing (conv now known; wdTrd unknown).
-    const piForWd = other.taxableAmt + rmdAmt + conv + 0.5 * ss.total;
+    const piForWd = other.taxableAmt + rmdAmt + conv + lumpSumOrdIncomeEst + 0.5 * ss.total;
     const taxableSSForWd = taxableSocialSecurity(piForWd, ss.total, filingStatus);
-    const baseOrdIncForWd = taxableSSForWd + rmdAmt + conv + other.taxableAmt;
+    const baseOrdIncForWd = taxableSSForWd + rmdAmt + conv + other.taxableAmt + lumpSumOrdIncomeEst;
 
     // Per-bucket "available to withdraw" caps. All three buckets are debited by the
     // end-of-year update `bucket = max(0, bucket*(1+g) + contrib +/- credits - withdrawal)`,
@@ -349,13 +383,13 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // For CA/NY: retirement withdrawals + conversions are also taxable.
     // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
     const numPersons = (aliveA ? 1 : 0) + (aliveB ? 1 : 0);
-    let stateAmt = stateTax(plan.state, other.nonExempt, other.pensionAmt, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate); // initial pass; ltcg unknown until loop iter 1
+    let stateAmt = stateTax(plan.state, other.nonExempt + lumpSumHSAIncomeEst, other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate); // initial pass; ltcg unknown until loop iter 1
 
     // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
     for (let iter = 0; iter < 16; iter++) {
-      // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other (which arrive as cash).
-      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt + prevTax + stateAmt + prevIRMAA + prevNIIT + prevACA);
+      // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other/inherited-dist cash.
+      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + prevTax + stateAmt + prevIRMAA + prevNIIT + prevACA);
       const w = activePolicy
         ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail })
         : applyWithdrawalOrder({
@@ -369,9 +403,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
       const ltcg = wdTax * gainFraction;
       // SS taxability via IRC §86 provisional-income tiers (replaces flat 0.85).
-      const provisionalIncome = other.taxableAmt + wdTrd + rmdAmt + conv + 0.5 * ss.total;
+      const provisionalIncome = other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst + 0.5 * ss.total;
       const taxableSS = taxableSocialSecurity(provisionalIncome, ss.total, filingStatus);
-      const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv;
+      const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst;
       const t = yearFederalTax({
         filingStatus,
         inflationFactor,
@@ -395,7 +429,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
       // ltcg goes into nonExemptOrdinaryIncome so IL (retirementExempt:true) still taxes it —
       // IL exempts retirement distributions but NOT capital gains.
-      stateAmt = stateTax(plan.state, other.nonExempt + ltcg, wdTrd + rmdAmt + conv + other.pensionAmt, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate);
+      stateAmt = stateTax(plan.state, other.nonExempt + ltcg + lumpSumHSAIncomeEst, wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate);
 
       // ACA marketplace premium (pre-Medicare years when the user has opted in).
       acaPremiumYear = 0;
@@ -440,15 +474,92 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // One-time income events: inject directly into target account.
     // Amount is stored in plan-start-year (today's) dollars — inflate to nominal at event year,
     // consistent with how income stream annualAmounts are treated. Taxable bucket gets full
-    // stepped-up basis; trad/roth are balance-only transfers.
+    // stepped-up basis; inherited IRA types seed per-event depletion tracking.
     let lumpSumInjectTaxable = 0, lumpSumInjectTrad = 0, lumpSumInjectRoth = 0;
+    let lumpSumHSAIncome = 0;
     for (const ev of (plan.lumpSumEvents ?? []) as LumpSumEvent[]) {
       const personAge = ev.whose === 'A' ? ageA : ev.whose === 'B' ? (ageB ?? -1) : ageA;
       const personAlive = ev.whose === 'A' ? aliveA : ev.whose === 'B' ? aliveB : (aliveA || aliveB);
       if (!personAlive || personAge !== ev.age) continue;
-      if (ev.bucket === 'taxable') { taxable += ev.amount; taxableBasis += ev.amount; lumpSumInjectTaxable += ev.amount; }
-      else if (ev.bucket === 'trad') { trad += ev.amount; lumpSumInjectTrad += ev.amount; }
-      else { roth += ev.amount; lumpSumInjectRoth += ev.amount; }
+      if (ev.bucket === 'taxable') {
+        taxable += ev.amount; taxableBasis += ev.amount; lumpSumInjectTaxable += ev.amount;
+      } else if (ev.bucket === 'inheritedHSA') {
+        taxable += ev.amount; taxableBasis += ev.amount;
+        lumpSumInjectTaxable += ev.amount;
+        lumpSumHSAIncome += ev.amount;
+      } else if (ev.bucket === 'inheritedPreTaxIRA') {
+        trad += ev.amount; lumpSumInjectTrad += ev.amount;
+        const s = inheritedState.find(s => s.ev.id === ev.id);
+        if (s) { s.remainingBal = ev.amount; s.injected = true; }
+      } else if (ev.bucket === 'inheritedRoth') {
+        roth += ev.amount; lumpSumInjectRoth += ev.amount;
+        const s = inheritedState.find(s => s.ev.id === ev.id);
+        if (s) { s.remainingBal = ev.amount; s.injected = true; }
+      }
+    }
+
+    // Inherited IRA/Roth 10-year depletion (SECURE Act). Runs after withdrawal balances are
+    // updated so proportional-credit uses current-year host balance post-strategy.
+    let lumpSumForcedTradDist = 0;
+    let lumpSumForcedRothDist = 0;
+    for (const s of inheritedState) {
+      if (!s.injected || s.remainingBal <= 0) continue;
+      const personAge = s.ev.whose === 'A' ? ageA : s.ev.whose === 'B' ? (ageB ?? -1) : ageA;
+      const personAlive = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
+      if (!personAlive) continue;
+      const yearsElapsed = personAge - s.ev.age;
+      if (yearsElapsed < 0 || yearsElapsed >= 10) continue;
+
+      const gRate = s.ev.bucket === 'inheritedPreTaxIRA' ? gRateTradYear : gRateRothYear;
+      s.remainingBal *= (1 + gRate);
+
+      const yearsRemaining = 10 - yearsElapsed;
+      const floor = s.remainingBal / yearsRemaining;
+
+      const hostBal = s.ev.bucket === 'inheritedPreTaxIRA' ? trad : roth;
+      const wdFromHost = s.ev.bucket === 'inheritedPreTaxIRA' ? wdTrd : wdRth;
+      const proportionalDepleted = hostBal > 0
+        ? Math.min(s.remainingBal, wdFromHost * (s.remainingBal / hostBal))
+        : 0;
+      s.remainingBal -= proportionalDepleted;
+
+      const supplement = yearsRemaining === 1
+        ? s.remainingBal
+        : Math.max(0, floor - proportionalDepleted);
+      s.remainingBal = Math.max(0, s.remainingBal - supplement);
+
+      if (s.ev.bucket === 'inheritedPreTaxIRA') lumpSumForcedTradDist += supplement;
+      else lumpSumForcedRothDist += supplement;
+    }
+
+    const lumpSumOrdIncome = lumpSumHSAIncome + lumpSumForcedTradDist;
+    const lumpSumTaxFreeCash = lumpSumForcedRothDist;
+
+    // Correct ordIncome/tax/state for cases where actual != estimate (e.g. tradfirst zeroed supplement).
+    if (lumpSumOrdIncome !== lumpSumOrdIncomeEst || lumpSumTaxFreeCash !== lumpSumTaxFreeEst) {
+      const ordIncomeActual = ordIncomeFinal - lumpSumOrdIncomeEst + lumpSumOrdIncome;
+      const tCorrected = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeActual, ltcgIncome: ltcgFinal, standardDeduction: stdD });
+      fedTax = tCorrected.fedTax;
+      ordIncomeFinal = ordIncomeActual;
+      effRate = tCorrected.effRate;
+      stateAmt = stateTax(
+        plan.state,
+        other.nonExempt + ltcgFinal + lumpSumHSAIncome,
+        wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDist,
+        numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate,
+      );
+    }
+
+    // Move supplemental forced dist cash from host account to taxable.
+    if (lumpSumForcedTradDist > 0) {
+      trad    = Math.max(0, trad - lumpSumForcedTradDist);
+      taxable += lumpSumForcedTradDist;
+      taxableBasis += lumpSumForcedTradDist;
+    }
+    if (lumpSumTaxFreeCash > 0) {
+      roth    = Math.max(0, roth - lumpSumTaxFreeCash);
+      taxable += lumpSumTaxFreeCash;
+      taxableBasis += lumpSumTaxFreeCash;
     }
 
     // Surplus sweep: when SS + other income + RMD exceed spending + all taxes, the leftover
@@ -470,7 +581,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
     lifetimeFedTax += fedTax;
     lifetimeFedTaxReal += fedTax / inflationFactor;
-    magiHistory.push(ordIncomeFinal + ltcgFinal);
+    magiHistory.push(ordIncomeFinal + ltcgFinal);  // ordIncomeFinal includes lumpSumOrdIncome for IRMAA lookback
     filingStatusHistory.push(filingStatus);
 
     // Advance the running inflation factor for the next year.
@@ -502,6 +613,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       magi: ordIncomeFinal + ltcgFinal,
       acaPremium: acaPremiumYear,
       lumpSumInjectTaxable, lumpSumInjectTrad, lumpSumInjectRoth,
+      lumpSumOrdinaryIncome: lumpSumOrdIncome,
+      lumpSumForcedTradDist,
+      lumpSumForcedRothDist,
       cashSurplus,
       begTaxable, begTraditional: begTrad, begRoth,
       endTaxable: taxable, endTraditional: trad, endRoth: roth,

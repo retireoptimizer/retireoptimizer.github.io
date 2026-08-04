@@ -31,7 +31,7 @@ const personPortfolio = () =>
     traditional: fc.integer({ min: 0, max: 3_000_000 }),
     roth: fc.integer({ min: 0, max: 2_000_000 }),
     annualContribution: fc.integer({ min: 0, max: 75_000 }),
-    contribGrowth: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }),
+    contribGrowth: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }).map((rate) => ({ mode: 'fixed' as const, rate })),
     contribSplit: contribSplit(),
   });
 
@@ -44,7 +44,7 @@ const incomeStream = () =>
     startAge: fc.integer({ min: 50, max: 75 }),
     stopAge: fc.integer({ min: 70, max: 100 }),
     annualAmount: fc.integer({ min: 0, max: 80_000 }),
-    growthPct: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }),
+    growthPct: fc.double({ min: 0, max: 0.04, noNaN: true, noDefaultInfinity: true }).map((rate) => ({ mode: 'fixed' as const, rate })),
     taxablePct: fc.double({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
     stateTaxablePct: fc.double({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
   })
@@ -58,7 +58,7 @@ const expenseStream = () =>
     startAge: fc.integer({ min: 45, max: 80 }),
     stopAge: fc.integer({ min: 75, max: 105 }),
     annualAmount: fc.integer({ min: 20_000, max: 200_000 }),
-    inflationPct: fc.double({ min: 0, max: 0.05, noNaN: true, noDefaultInfinity: true }),
+    inflationPct: fc.double({ min: 0, max: 0.05, noNaN: true, noDefaultInfinity: true }).map((rate) => ({ mode: 'fixed' as const, rate })),
   })
     .filter((e) => e.stopAge > e.startAge);
 

@@ -1,7 +1,7 @@
 import { Line } from 'react-chartjs-2';
-import type { ChartOptions, ChartData, Plugin } from 'chart.js';
+import type { ChartOptions, ChartData } from 'chart.js';
 import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
-import { IRMAA_TIERS_MFJ } from '../../engine/taxConstants';
+import { IRMAA_TIERS_MFJ, IRMAA_TIERS_SINGLE } from '../../engine/taxConstants';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -11,39 +11,27 @@ interface Props {
   real?: boolean;
 }
 
-const tierBandsPlugin: Plugin<'line'> = {
-  id: 'irmaaTierBands',
-  beforeDatasetsDraw: (chart) => {
-    const { ctx, chartArea, scales } = chart;
-    if (!chartArea || !scales.y) return;
-    const yScale = scales.y;
-    // Render the first 3 tier ceilings as horizontal threshold lines (in today's $)
-    const tiers = IRMAA_TIERS_MFJ.slice(0, 3);
-    const colors = [palette.warning, palette.danger, '#7a1d12'];
-    ctx.save();
-    ctx.lineWidth = 1;
-    ctx.setLineDash([6, 4]);
-    ctx.font = "10px 'DM Sans', sans-serif";
-    ctx.textAlign = 'right';
-    tiers.forEach((t, i) => {
-      const y = yScale.getPixelForValue(t.magiTop);
-      if (y < chartArea.top || y > chartArea.bottom) return;
-      ctx.strokeStyle = colors[i];
-      ctx.fillStyle = colors[i];
-      ctx.beginPath();
-      ctx.moveTo(chartArea.left, y);
-      ctx.lineTo(chartArea.right, y);
-      ctx.stroke();
-      ctx.fillText(`Tier ${i + 1}: ${fmtCompact(t.magiTop)}`, chartArea.right - 6, y - 4);
-    });
-    ctx.restore();
-  },
-};
+const TIER_COLORS = [palette.warning, palette.danger, '#7a1d12'];
 
 export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props) {
   const rows = proj.rows.filter((r) => r.ageA >= 60);
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
+
+  const tierDatasets = [0, 1, 2].map((i) => ({
+    label: `IRMAA Tier ${i + 1}`,
+    data: rows.map((r) => {
+      const tiers = r.filingStatus === 'MFJ' ? IRMAA_TIERS_MFJ : IRMAA_TIERS_SINGLE;
+      const threshold = tiers[i].magiTop;
+      return real ? threshold : threshold * r.inflationFactor;
+    }),
+    borderColor: TIER_COLORS[i],
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderDash: [6, 4],
+    pointRadius: 0,
+    tension: 0,
+  }));
 
   const data: ChartData<'line'> = {
     labels,
@@ -58,6 +46,7 @@ export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props
         borderWidth: 2,
         tension: 0.25,
       },
+      ...tierDatasets,
     ],
   };
 
@@ -70,7 +59,10 @@ export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props
       tooltip: {
         callbacks: {
           title: ageTooltipTitle,
-          label: (item) => `MAGI: ${fmtFull(item.parsed.y ?? 0)}`,
+          label: (item) => {
+            const label = item.dataset.label ?? '';
+            return `${label}: ${fmtFull(item.parsed.y ?? 0)}`;
+          },
         },
       },
     },
@@ -85,7 +77,7 @@ export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} plugins={[tierBandsPlugin]} />
+      <Line data={data} options={options} />
     </div>
   );
 }

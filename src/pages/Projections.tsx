@@ -46,6 +46,7 @@ const COLUMNS: Column[] = [
   { key: 'totalSS', label: 'Total SS', group: 'income', essential: true, fmt: 'money', get: (r) => r.totalSS, bg: 'rgba(26,138,90,0.1)' },
   { key: 'otherIncome', label: 'Other Inc', group: 'income', essential: true, fmt: 'money', get: (r) => r.otherIncome, bg: 'rgba(26,138,90,0.1)' },
   { key: 'lumpSumInject', label: 'Lump Sum', group: 'income', essential: true, fmt: 'money', get: (r) => (r.lumpSumInjectTaxable ?? 0) + (r.lumpSumInjectTrad ?? 0) + (r.lumpSumInjectRoth ?? 0), bg: 'rgba(26,138,90,0.1)' },
+  { key: 'lumpSumOrdinaryIncome', label: 'Inherited Income', group: 'income', essential: false, fmt: 'money', get: (r) => r.lumpSumOrdinaryIncome ?? 0, bg: 'rgba(26,138,90,0.1)' },
   { key: 'cashSurplus', label: 'Cash Surplus', group: 'income', essential: false, fmt: 'money', get: (r) => r.cashSurplus ?? 0, bg: 'rgba(26,138,90,0.1)' },
   { key: 'totalWD', label: 'Total WD', group: 'income', essential: true, fmt: 'money', get: (r) => r.totalWD, bg: 'rgba(192,57,43,0.08)' },
   { key: 'wdTax', label: 'WD Tax', group: 'income', essential: false, fmt: 'money', get: (r) => r.wdTax, bg: 'rgba(192,57,43,0.08)' },

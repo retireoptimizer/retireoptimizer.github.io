@@ -120,10 +120,10 @@ export default function TaxPlanning() {
             <div className="panel" style={{ marginBottom: 20 }}>
               <div className="panel-header">
                 <div className="panel-title"><div className="panel-title-dot"></div>Projected MAGI vs IRMAA Thresholds</div>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Threshold lines are 2025 tiers in today's $</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>2026 tier ceilings in {dollarLabel}</span>
               </div>
               <div className="panel-body">
-                <ChartFrame caption="The dashed horizontal lines are the 2025 IRMAA tier ceilings. Where your MAGI line crosses one, your Medicare premiums step up two years later.">
+                <ChartFrame caption={`Dashed lines are 2026 IRMAA tier ceilings in ${dollarLabel}. Where your MAGI line crosses one, Medicare premiums step up two years later.`}>
                   <IrmaaMagiLine proj={proj} real={real} height={320} />
                 </ChartFrame>
               </div>
