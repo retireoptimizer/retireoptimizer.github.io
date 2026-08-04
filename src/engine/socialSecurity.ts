@@ -81,7 +81,7 @@ export function householdSS(input: SSInput): SSOutput {
   // stream's value at the deceased spouse's current age; else use PIA.
   if (hasB) {
     if (input.aliveA && !input.aliveB) {
-      const bStream = ssFromStreams(streams, 'B', input.ageB!, yi);
+      const bStream = ssFromStreams(streams, 'B', input.ageB!, yi, input.inflation);
       const bAtDeath = bStream > 0
         ? bStream
         : annualSSBenefit(input.piaB!, input.claimAgeB!, input.ageB!) * input.inflationFactor;
@@ -89,7 +89,7 @@ export function householdSS(input: SSInput): SSOutput {
       return { ssA: surv, ssB: 0, total: surv };
     }
     if (!input.aliveA && input.aliveB) {
-      const aStream = ssFromStreams(streams, 'A', input.ageA, yi);
+      const aStream = ssFromStreams(streams, 'A', input.ageA, yi, input.inflation);
       const aAtDeath = aStream > 0
         ? aStream
         : annualSSBenefit(input.piaA, input.claimAgeA, input.ageA) * input.inflationFactor;
