@@ -373,56 +373,67 @@ function GuideContent() {
 
       <H3>One-Time Lump Sum Events</H3>
       <P>
-        Use this section to model a single cash injection into your portfolio at a specific age —
-        for example, an inheritance, a business sale, a large bonus, or any other one-time windfall.
-        Click <strong>+ Add One-Time Event</strong> in the Income &amp; Expenses section to create
-        a row.
+        Use this section to model a single cash event at a specific age — an inheritance, a
+        business sale, a large bonus, or an inherited retirement account. Click{' '}
+        <strong>+ Add One-Time Event</strong> in the Income &amp; Expenses section to create a row.
       </P>
       <FieldTable rows={[
-        ["Description", "A label shown in tables. Has no effect on calculations.", '"Inheritance"'],
+        ["Description", "A label shown in tables. Has no effect on calculations.", '"Inherited IRA"'],
         ["Whose", 'For couples, which person&apos;s age the event is anchored to. "Household" uses Person A&apos;s age.', "Household"],
-        ["Account", "Where the money lands — Taxable (brokerage), Pre-tax (Traditional), or Roth. Each type is treated differently.", "Taxable"],
-        ["At Age", "The age at which the injection occurs. Based on Person A's age.", "65"],
-        ["Amount", "The one-time amount in today's dollars.", "$200,000"],
+        ["Account", "The account type determines tax treatment and depletion rules. Four options are available.", "Inherited Pre-Tax IRA"],
+        ["At Age", "The age at which the account is received. Based on the selected person's age.", "65"],
+        ["Amount", "The account balance at the time of inheritance, in today's dollars.", "$250,000"],
       ]} />
 
-      <H3>How the three account types are handled</H3>
+      <H3>How the four account types are handled</H3>
       <P>
-        The account you choose determines both the tax treatment and the downstream impact on your
-        plan:
+        The account type you choose determines both the tax treatment and how the engine models
+        required withdrawals:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
         <li>
-          <strong>Taxable</strong> — deposited into your brokerage account at full cost basis (the
-          full amount is treated as basis, so no embedded capital gain). The injection is counted as
-          ordinary income in the year it arrives and is taxed accordingly. Use this for inheritances
-          deposited to a brokerage, business-sale proceeds, or large bonuses.
+          <strong>Taxable (home sale, insurance, etc.)</strong> — deposited into your brokerage at
+          full cost basis (no embedded capital gain). The engine includes the amount as ordinary
+          income in the year it arrives. Use this for cash inheritances, business-sale proceeds, or
+          large bonuses.
         </li>
         <li>
-          <strong>Pre-tax (Traditional)</strong> — added directly to your Traditional IRA or 401(k)
-          balance. No tax is due at the time of injection, but every dollar will eventually be taxed
-          as ordinary income when withdrawn — including as Required Minimum Distributions. Use this
-          for spousal IRA rollovers or deferred-compensation payouts directed to a pre-tax account.
+          <strong>Inherited Pre-Tax IRA</strong> — models the SECURE Act 10-year rule for a
+          non-spouse beneficiary. The balance is added to your Traditional IRA at the age you enter.
+          Each subsequent year the engine computes a floor distribution (remaining balance ÷ years
+          left in the 10-year window) and forces enough out to meet it, counting those distributions
+          as ordinary income. Strategy withdrawals from your traditional account proportionally
+          reduce the required supplement — so if your withdrawal plan already draws heavily from
+          pre-tax, the forced add-on shrinks accordingly. Any balance still in the account at the
+          end of year 10 is fully distributed. Use this for a traditional IRA or 401(k) inherited
+          from a non-spouse.
         </li>
         <li>
-          <strong>Roth</strong> — added directly to your Roth balance. No tax at injection and no
-          tax on future qualified withdrawals. Use this for a Roth IRA inherited from a spouse or an
-          after-tax rollover into Roth.
+          <strong>Inherited Roth IRA</strong> — same SECURE Act 10-year mechanics as above, but
+          distributions are tax-free. The balance is added to your Roth account and a proportional
+          annual floor is forced out over the 10-year window. Those distributions generate no
+          ordinary income and reduce your need for taxable or traditional withdrawals in those years.
+          Use this for a Roth IRA inherited from a non-spouse.
+        </li>
+        <li>
+          <strong>Inherited HSA</strong> — under IRS rules, a non-spouse HSA beneficiary must
+          include the full fair-market value as ordinary income in the year the account is received.
+          The engine deposits the full amount into your taxable brokerage (at cost basis) and counts
+          the entire amount as ordinary income that year — a one-time spike. No deferred depletion
+          schedule applies. Use this for an HSA inherited from anyone other than a surviving spouse.
         </li>
       </ul>
       <Tip>
-        A <strong>taxable lump sum</strong> creates a spike in ordinary income in that year and can
-        push you into a higher bracket. The optimizer accounts for this — it typically reduces Roth
-        conversion amounts in the injection year to avoid bracket stacking. A{' '}
-        <strong>pre-tax lump sum</strong> increases your traditional balance, which means larger RMDs
-        starting at age 73; the optimizer may shift the conversion window to absorb some of that
-        balance before 73 kicks in.
+        <strong>Inherited Pre-Tax IRA example:</strong> You inherit $250,000 at age 65. In year 1,
+        the floor is $250,000 ÷ 10 = $25,000. If your withdrawal strategy already pulls $15,000
+        of traditional proportionally, the engine only forces an additional $10,000 supplement. By
+        year 10 (age 74) any remaining balance is fully distributed. All distributions are ordinary
+        income and appear in the "Inherited Income" column on the Projections page.
       </Tip>
       <Tip>
-        Lump sum events change the optimal withdrawal and conversion strategy, so re-run the
-        optimizer after adding or modifying any event. If you change a lump sum amount or account
-        type and navigate away from Inputs, the nav bar will gate the output tabs and require you
-        to re-optimize before viewing results.
+        Inherited account events change the optimal withdrawal and conversion strategy, so re-run
+        the optimizer after adding or modifying any event. The nav bar will prompt you to
+        re-optimize if you navigate away from Inputs after changing a lump sum event.
       </Tip>
 
       {/* ── Section 3: Portfolio ─────────────────────────────── */}
