@@ -290,16 +290,35 @@ function GuideContent() {
         Common types and how to enter them:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li><strong>Social Security</strong> — enter your estimated annual benefit at the age you plan to claim it. Set growth to 0%; the model applies cost-of-living adjustments internally.</li>
-        <li><strong>Pension</strong> — enter the annual payout. Set growth to 0% if it has no COLA, or to your pension&apos;s actual annual increase rate.</li>
-        <li><strong>Part-time work</strong> — set the Start Age to your retirement age and a Stop Age for when you expect to fully stop working.</li>
-        <li><strong>Rental income</strong> — enter annual net rent after expenses. Set growth to match your expected rent increases.</li>
-        <li><strong>Annuity</strong> — enter the annual payout with its guaranteed growth rate.</li>
+        <li><strong>Social Security</strong> — enter your estimated annual benefit at the age you plan to claim it. Leave growth as <em>Tracks CPI</em>; the model applies cost-of-living adjustments using your plan-wide inflation assumption.</li>
+        <li><strong>Pension</strong> — enter the annual payout. Use <em>Fixed Rate 0%</em> if it has no COLA, or a fixed rate matching your pension&apos;s guaranteed annual increase (e.g., 2%).</li>
+        <li><strong>Part-time work</strong> — set the Start Age to your retirement age and a Stop Age for when you expect to fully stop working. Use <em>Tracks CPI</em> for modest wage growth, or <em>Fixed Rate</em> for a known salary.</li>
+        <li><strong>Rental income</strong> — enter annual net rent after expenses. Use <em>CPI ± Adjust</em> if rents in your market consistently run above or below general inflation.</li>
+        <li><strong>Annuity</strong> — enter the annual payout. Use <em>Fixed Rate</em> with the contractual COLA (often 0% or 1–2%).</li>
       </ul>
       <Tip>
         Not sure what your Social Security benefit will be? Visit ssa.gov and use the "my Social
         Security" portal — it shows your projected benefit at age 62, 67, and 70 based on your
         actual earnings history.
+      </Tip>
+
+      <H3>Growth rate</H3>
+      <P>
+        Each income stream has a <strong>Growth %</strong> column that controls how the annual
+        amount increases over time. Three modes are available — select the one that best matches
+        the source:
+      </P>
+      <FieldTable rows={[
+        ["Tracks CPI", "The stream grows at exactly your plan’s inflation assumption each year. Select this when the income is fully indexed to CPI — the display stays clean with no extra fields.", "Most wage-replacement income"],
+        ["CPI ± Adjust", "Grows at CPI plus or minus an offset you set in 0.1% increments. Use this when the stream tracks inflation but with a known premium or discount.", "Healthcare at CPI+2.5%, conservative SS COLA at CPI−0.5%"],
+        ["Fixed Rate", "Grows at a fixed percentage you enter, regardless of what inflation does. The effective purchasing power changes over time if inflation differs from your assumption.", "Pension with a guaranteed 2% COLA, annuity at 0%"],
+      ]} />
+      <Tip>
+        <strong>CPI ± vs. Fixed:</strong> the difference matters when you later change your
+        inflation assumption. A stream set to <em>CPI ± 0%</em> automatically adjusts its
+        effective growth rate to match the new assumption; a stream set to <em>Fixed 3%</em> stays
+        at 3% regardless. Use CPI ± when you want the stream to stay in sync with inflation;
+        use Fixed when the rate is contractually set and independent of CPI.
       </Tip>
 
       <H3>State Taxable %</H3>
@@ -356,9 +375,20 @@ function GuideContent() {
         categories: housing, food, transportation, healthcare, travel, and entertainment.
       </P>
       <P>
-        Each expense can have a start age, a stop age, and its own inflation rate. If you leave
-        inflation blank, the plan&apos;s global rate is used. This lets you model things like a
-        mortgage that ends at age 72, or travel spending that tapers off in your late 70s.
+        Each expense has a start age, a stop age, and its own <strong>Infl %</strong> column —
+        the same three-mode control as income growth. The default is <em>Tracks CPI</em>, which
+        means the expense rises with your plan-wide inflation assumption each year. Override it
+        per row when a specific category inflates differently:
+      </P>
+      <FieldTable rows={[
+        ["Tracks CPI", "The expense grows at your plan's inflation assumption. Appropriate for most household spending.", "Food, utilities, entertainment"],
+        ["CPI ± Adjust", "Grows at CPI plus an offset. Use when a category consistently outpaces general inflation.", "Healthcare at CPI+2.5%"],
+        ["Fixed Rate", "Grows at a locked percentage independent of the inflation assumption.", "Mortgage at 0% (fixed payment), parking at 3%"],
+      ]} />
+      <P>
+        This lets you model things like a mortgage that ends at age 72 with 0% inflation, or
+        travel spending that tapers off in your late 70s, or healthcare that inflates faster than
+        the rest of your budget.
       </P>
       <P>
         <strong>Example:</strong> Create an "Active Travel" row from age 62 to 75 at $15,000/yr.
