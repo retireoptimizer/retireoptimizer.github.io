@@ -219,7 +219,14 @@ export default function StrategyChooser() {
       }
     };
 
-    const editLink = (label: string) => <button style={editLinkStyle} onClick={() => setSheetMode('conversion')}>{label} →</button>;
+    const editLink = (label: string) => (
+      <button style={editLinkStyle} onClick={() => {
+        // Commit pending conv selection so ConversionDetail reads real store state.
+        // convModeDrifted will still mark the optimizer stale → re-run button stays active.
+        if (tab === 'optimize' && pendingConv) { setConversion(pendingConv); setPendingConv(null); }
+        setSheetMode('conversion');
+      }}>{label} →</button>
+    );
     const col = (key: string, pill: React.ReactNode, link?: React.ReactNode) => (
       <div key={key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>{pill}{link}</div>
     );

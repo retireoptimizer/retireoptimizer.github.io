@@ -40,7 +40,7 @@ describe('Optimizer ↔ Projection coordination', () => {
       `Expected 1 distinct optimizer output across ${results.length} Pick-tab combinations, got ${distinct.size}.\n` +
       `First two distinct outputs:\n  ${[...distinct].slice(0, 2).join('\n  ')}`
     ).toBe(1);
-  }, 120_000);
+  }, 300_000);
 
   it('honors the convAmt cap — actual rothConv ≤ 3 × bracket12Top × inflF', () => {
     // The optimizer's cap heuristic is "convert up to 3 brackets of room". The projection

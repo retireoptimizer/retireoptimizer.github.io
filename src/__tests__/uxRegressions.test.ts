@@ -67,7 +67,7 @@ describe('UX regressions', () => {
       incomeStreams: [
         ...plan.incomeStreams,
         { id: 'ss-test', description: 'SS A', whose: 'A', type: 'SS',
-          startAge: 70, stopAge: 95, annualAmount: 40_000, growthPct: 0.025, taxablePct: 1 } satisfies IncomeStream,
+          startAge: 70, stopAge: 95, annualAmount: 40_000, growthPct: { mode: 'fixed', rate: 0.025 }, taxablePct: 1 } satisfies IncomeStream,
       ],
     };
     const baseEnd = runProjection(plan).endTotalReal;
@@ -114,14 +114,22 @@ describe('UX regressions', () => {
     // projections ran the SAME conversions → identical lines.
     // Fix: noConv also zeroes every convAmt while preserving the blend so the
     // delta isolates the conversion effect, not the withdrawal-strategy effect.
+    //
+    // Test uses a manually-set conversion policy rather than the optimizer, because
+    // whether the optimizer picks conversions for a given plan depends on whether they
+    // genuinely improve endTotalReal — not something the stripping test should require.
     const plan = planF_allTradCouple();
-    const result = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: false });
-    const applied = applyResultToPlan(plan, result);
-    const cmp = compareWithWithoutConversion(applied);
-    // The optimizer picked some non-zero conversions for this all-Trad couple, so
-    // the with/without lifetime-tax totals must differ.
+    const appliedPlan = {
+      ...plan,
+      customPolicy: {
+        windows: [{ fromAge: 65, toAge: 74, pctTaxable: 0, pctTraditional: 1, pctRoth: 0, convAmt: 30_000 }],
+        source: 'optimizer' as const,
+      },
+    };
+    const cmp = compareWithWithoutConversion(appliedPlan);
+    // With $30K/yr convAmt set, the with/without lifetime-tax totals must differ.
     expect(Math.abs(cmp.lifetimeTaxDelta)).toBeGreaterThan(500);
-  }, 120_000);
+  });
 
   it('Optimizer min-retirement-age: applied plan matches reported projection (fixed 2026-05-29)', () => {
     // Bug: optimizer searched on lowered retirementAge but the apply handler

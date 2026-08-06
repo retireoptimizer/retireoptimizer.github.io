@@ -257,7 +257,7 @@ describe('CPI-indexed expense growth', () => {
     const BASE_SPEND = 50_000;
     plan.expenseStreams = [{
       id: 'core', description: 'Core spending', whose: 'A',
-      startAge: 50, stopAge: 54, annualAmount: BASE_SPEND, inflationPct: 0.025, // CPI-indexed
+      startAge: 50, stopAge: 54, annualAmount: BASE_SPEND, inflationPct: { mode: 'cpi' }, // CPI-indexed
     }];
 
     const cpis = [0.07, 0.06, -0.02, 0.04, 0.03];
@@ -293,7 +293,7 @@ describe('CPI-indexed expense growth', () => {
     const BASE_SPEND = 40_000;
     plan.expenseStreams = [{
       id: 'fixed', description: 'Fixed expense', whose: 'A',
-      startAge: 50, stopAge: 53, annualAmount: BASE_SPEND, inflationPct: 0, // fixed nominal
+      startAge: 50, stopAge: 53, annualAmount: BASE_SPEND, inflationPct: { mode: 'fixed', rate: 0 }, // fixed nominal
     }];
 
     const proj = runProjection(plan, {

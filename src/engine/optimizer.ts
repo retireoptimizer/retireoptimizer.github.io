@@ -13,6 +13,8 @@ const CONV_FINE = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 
 // 12% bracket top (today's $) — MFJ upper bound of the second bracket.
 const BRACKET_12_TOP = FED_BRACKETS_MFJ[1][0];
+// Scale for normalising convAmt deltas to the same magnitude as split-fraction deltas (both ≈ [0,1]).
+const CONV_PENALTY_SCALE = 3 * BRACKET_12_TOP;
 
 interface Split { tax: number; trad: number; roth: number; }
 
@@ -105,12 +107,70 @@ interface InnerEval {
   ranOut: boolean;
 }
 
+/** Total-variation penalty on split fractions and (normalised) convAmt.
+ *  Purely ordinal — only used to break ties within the flat-ridge tolerance.
+ *  Never appears in the reported metric or projection, so end-balance is never
+ *  sacrificed for smoothness. */
+const policyPenalty = (windows: BlendWindow[]): number => {
+  let tv = 0;
+  for (let i = 1; i < windows.length; i++) {
+    tv += Math.abs(windows[i].pctTaxable - windows[i - 1].pctTaxable);
+    tv += Math.abs(windows[i].pctTraditional - windows[i - 1].pctTraditional);
+    tv += Math.abs((windows[i].convAmt ?? 0) - (windows[i - 1].convAmt ?? 0)) / CONV_PENALTY_SCALE;
+  }
+  return tv;
+};
+
+/** Compare two evaluations. Depletion-first; then within `tol` of each other prefer
+ *  the smoother policy (lower TV penalty); otherwise prefer the higher score.
+ *  `tol` defaults to 0 so callers that want strict score ordering get it without
+ *  changing behaviour — only sweep and NM pass the flat-ridge tolerance. */
+const isBetter = (a: InnerEval, b: InnerEval, tol = 0): boolean => {
+  if (a.ranOut !== b.ranOut) return !a.ranOut;
+  const diff = a.score - b.score;
+  if (Math.abs(diff) > tol) return diff > 0;
+  return policyPenalty(a.policy.windows) < policyPenalty(b.policy.windows);
+};
+
+// Build a flat per-year window array for retireAge..planToAge with a constant split.
+// Respects the optimizeConversions flag: convAmt=0 when optimizer owns conversions,
+// undefined when the plan's conversion mode owns them (CRITICAL — never write 0 in mode-owned mode).
+const buildConstantSeed = (
+  retireAge: number,
+  planToAge: number,
+  split: { tax: number; trad: number; roth: number },
+  optimizeConversions: boolean,
+): BlendWindow[] => {
+  const windows: BlendWindow[] = [];
+  for (let age = retireAge; age <= planToAge; age++) {
+    windows.push({
+      fromAge: age, toAge: age,
+      pctTaxable: split.tax, pctTraditional: split.trad, pctRoth: split.roth,
+      convAmt: optimizeConversions ? 0 : undefined,
+    });
+  }
+  return windows;
+};
+
 /**
  * Inner optimizer. Scoring: max endTotalReal (inflation-adjusted), with ranOut
  * strictly worse than any non-depleting plan. Used as the per-evaluation goal
  * for all three user-facing outer goals.
+ *
+ * seedWindows: optional starting per-year policy. Each window is matched by fromAge;
+ *   ages not covered fall back to the cold-start (taxable-first). Allows warm-starting
+ *   from a nearby feasible solution to stay in the same objective basin.
+ * screenOnly: skip thorough passes, smoothing, and Nelder-Mead — run coarse+fine only.
+ *   Used to cheaply rank candidate seeds before committing to a full refinement.
  */
-function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: number }, outerProgress?: () => void): InnerEval {
+function innerOptimize(
+  plan: Plan,
+  opts: OptimizeOptions,
+  evalCounter: { n: number },
+  outerProgress?: () => void,
+  seedWindows?: BlendWindow[],
+  screenOnly?: boolean,
+): InnerEval {
   const innerGoalKey: RecGoal = 'max-end';
   const spec = REC_GOALS[innerGoalKey];
   const retireAge = plan.personA.retirementAge;
@@ -126,11 +186,22 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
   // projection's policy path and override the user's chosen conversion mode.
   const optimizeConversions = plan.conversion.optimize ?? true;
 
-  // Initial per-year windows: 100% taxable. convAmt starts at 0 (optimizer-owned) or undefined
-  // (mode-owned) depending on optimizeConversions.
+  // Build per-year start windows. For each age, prefer the matching seed window (by fromAge);
+  // fall back to taxable-first cold start for any age not covered by the seed.
   const startWindows: BlendWindow[] = [];
   for (let age = retireAge; age <= planToAge; age++) {
-    startWindows.push({ fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: optimizeConversions ? 0 : undefined });
+    // Range match: handles both per-year seeds (fromAge===toAge===age, produced by innerOptimize
+    // warm-starts) and compacted seeds (fromAge..toAge spans multiple years, produced by
+    // applyResultToPlan storing result.policy). fromAge===age matching would only seed the first
+    // year of each compacted window, leaving all other years in the range at cold-start.
+    const seeded = seedWindows?.find((w) => age >= w.fromAge && age <= w.toAge);
+    if (seeded) {
+      // Copy verbatim. If optimizeConversions is false, preserve whatever convAmt the seed has
+      // (could be undefined) — do NOT normalise to 0, which would violate the mode-owned invariant.
+      startWindows.push({ ...seeded, toAge: age });
+    } else {
+      startWindows.push({ fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: optimizeConversions ? 0 : undefined });
+    }
   }
 
   let bestWindows: BlendWindow[] = startWindows.map((w) => ({ ...w }));
@@ -155,12 +226,8 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
     return Math.max(0, Math.min(tradReal, ceiling));
   };
 
-  const isBetter = (a: InnerEval, b: InnerEval): boolean => {
-    if (a.ranOut !== b.ranOut) return !a.ranOut;
-    return a.score > b.score;
-  };
-
-  /** Sweep returns true if any year's decision improved during the sweep. */
+  /** Per-year coordinate descent over (splits × convFractions).
+   *  When optimizeConversions is false, convFractions is ignored and convAmt stays undefined. */
   const sweep = (splits: Split[], convFractions: number[], direction: 'forward' | 'backward' = 'forward'): boolean => {
     let improvedAny = false;
     const total = bestWindows.length;
@@ -169,27 +236,26 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
       : Array.from({ length: total }, (_, i) => total - 1 - i);
     for (const yi of order) {
       const baseW = bestWindows[yi];
-      const cap = convCapAtYear(bestProj, yi);
+      const cap = optimizeConversions ? convCapAtYear(bestProj, yi) : 0;
+      const cfs: (number | null)[] = optimizeConversions && cap >= 1 ? convFractions : [null];
       let cur: InnerEval = { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut };
 
-      // When conversions aren't optimized, collapse the conversion dimension to a single
-      // no-op pass (cf = null) and never write convAmt — only the withdrawal split varies.
-      const cfList: (number | null)[] = optimizeConversions ? convFractions : [null];
       for (const s of splits) {
-        for (const cf of cfList) {
-          const newConv = cf == null ? undefined : cf * cap;
+        for (const cf of cfs) {
+          const newConvAmt = cf !== null ? Math.round(cf * cap) : undefined;
           const sameSplit = Math.abs(s.tax - baseW.pctTaxable) < 1e-4 &&
                             Math.abs(s.trad - baseW.pctTraditional) < 1e-4;
-          const sameConv = newConv == null || Math.abs(newConv - (baseW.convAmt ?? 0)) < 0.5;
+          const sameConv = newConvAmt === undefined
+            ? true
+            : Math.abs(newConvAmt - (baseW.convAmt ?? 0)) < 0.5;
           if (sameSplit && sameConv) continue;
 
-          const trial = bestWindows.map((w, idx) =>
-            idx === yi
-              ? (newConv == null
-                  ? { ...w, pctTaxable: s.tax, pctTraditional: s.trad, pctRoth: s.roth }
-                  : { ...w, pctTaxable: s.tax, pctTraditional: s.trad, pctRoth: s.roth, convAmt: newConv })
-              : w
-          );
+          const trial = bestWindows.map((w, idx) => {
+            if (idx !== yi) return w;
+            const updated: BlendWindow = { ...w, pctTaxable: s.tax, pctTraditional: s.trad, pctRoth: s.roth };
+            if (optimizeConversions) updated.convAmt = newConvAmt;
+            return updated;
+          });
           const trialPolicy: BlendPolicy = { windows: trial, source: 'optimizer' };
           const proj = runProjection(plan, { policy: trialPolicy });
           const score = spec.score(proj);
@@ -214,15 +280,16 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
   sweep(COARSE_SPLITS, CONV_COARSE, 'forward');
   sweep(FINE_SPLITS, CONV_FINE, 'forward');
 
-  // Thorough mode: alternate backward / forward refinement passes until no year improves.
-  // Forward-greedy locks year N's decision before seeing year N+1..end; conversion in particular
-  // has long forward dependencies (RMD reductions kick in 10+ years later) that benefit from this.
-  // Capped at 3 extra passes; in practice converges in 1–2.
+  // screenOnly: stop here — coarse+fine grid is sufficient for basin ranking.
+  if (screenOnly) {
+    return { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut };
+  }
+
+  // Thorough mode: alternate backward / forward passes until no improvement.
   if (opts.thorough) {
     for (let pass = 0; pass < 3; pass++) {
       const direction = pass % 2 === 0 ? 'backward' : 'forward';
-      const improved = sweep(FINE_SPLITS, CONV_FINE, direction);
-      if (!improved) break;
+      if (!sweep(FINE_SPLITS, CONV_FINE, direction)) break;
     }
   }
 
@@ -485,9 +552,10 @@ function innerOptimize(plan: Plan, opts: OptimizeOptions, evalCounter: { n: numb
       const proj = runProjection(plan, { policy: trialPolicy });
       evalCounter.n++;
       const candidate: InnerEval = { policy: trialPolicy, proj, score: spec.score(proj), ranOut: proj.ranOut };
+      const nmTol = Math.max(1000, Math.abs(bestScore) * 0.001);
       const accept = mcPaths
         ? !candidate.ranOut
-        : isBetter(candidate, { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut });
+        : isBetter(candidate, { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut }, nmTol);
       if (accept) {
         bestWindows = newWindows;
         bestPolicy = trialPolicy;
@@ -586,12 +654,55 @@ function packageResult(
   };
 }
 
+// ─── MULTI-START INNER (max-end-balance) ──────────────────────────────────────
+// Screens 3 diverse constant seeds (taxable-first, traditional-first, roth-first) with a
+// cheap coarse+fine pass, fully refines the top-2, then compares against a direct full
+// refinement of any prior cross-goal customPolicy. Evaluation counter is shared.
+//
+// customPolicy is NOT screened: screening runs coordinate descent from the seed and can
+// wander into a different basin, destroying the previously-found feasible solution.
+// A proven policy (e.g. from max-sustainable-spending) goes straight to full refinement
+// so the coordinate descent refines *within* that basin rather than escaping it.
+function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: number }, outerProgress?: () => void): InnerEval {
+  const retireAge = plan.personA.retirementAge;
+  const planToAge = plan.personA.planToAge;
+  const optimizeConversions = plan.conversion.optimize ?? true;
+
+  const constantSeeds: BlendWindow[][] = [
+    buildConstantSeed(retireAge, planToAge, { tax: 1, trad: 0, roth: 0 }, optimizeConversions), // taxable-first
+    buildConstantSeed(retireAge, planToAge, { tax: 0, trad: 1, roth: 0 }, optimizeConversions), // traditional-first
+    buildConstantSeed(retireAge, planToAge, { tax: 0, trad: 0, roth: 1 }, optimizeConversions), // roth-first
+  ];
+
+  // Screen constant seeds with coarse+fine only, refine top-2.
+  const screened = constantSeeds.map((seed) =>
+    innerOptimize(plan, opts, evalCounter, outerProgress, seed, true)
+  );
+  screened.sort((a, b) => isBetter(a, b) ? -1 : isBetter(b, a) ? 1 : 0);
+  const refined = screened.slice(0, 2).map((s) =>
+    innerOptimize(plan, opts, evalCounter, outerProgress, s.policy.windows)
+  );
+  let best = isBetter(refined[0], refined[1]) ? refined[0] : refined[1];
+
+  // If the plan has a proven policy from a DIFFERENT goal, fully refine from it directly
+  // (no screening — screening corrupts a refined policy by escaping its basin).
+  // Same-goal customPolicy is excluded to avoid feedback-loop drift on repeated runs.
+  if (plan.customPolicy?.windows?.length && plan.customPolicy.goal !== 'max-end-balance') {
+    const priorRefined = innerOptimize(plan, opts, evalCounter, outerProgress, plan.customPolicy.windows);
+    if (isBetter(priorRefined, best)) best = priorRefined;
+  }
+
+  return best;
+}
+
 export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptions = {}): OptimizeResult {
   const evalCounter = { n: 0 };
 
   if (goal === 'max-end-balance') {
     opts.onProgress?.(0, 'Optimizing withdrawals and conversions…');
-    const inner = innerOptimize(plan, opts, evalCounter);
+    // Multi-start: screen 3 diverse seeds, fully refine top-2, take the best.
+    // Prevents coordinate descent from being stuck in a single local basin.
+    const inner = multiStartInner(plan, opts, evalCounter);
     opts.onProgress?.(1, 'Done');
     const endReal = inner.proj.endTotalReal;
     return packageResult(inner, goal, evalCounter.n, {
@@ -605,10 +716,16 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     //  1. Doubling search from s=1.0 to find a feasible/infeasible pair (avoids wasting bisection
     //     steps on impossibly-high multipliers when the true answer is near 1.0).
     //  2. Bisection inside the bracket to pin the boundary.
+    // Warm-start: every probe is seeded from bestFeasible's per-year windows so the search
+    // stays in the same objective basin. A feasible policy at spending ≤ probe is always a
+    // valid starting point; a genuinely-feasible level can no longer be mislabelled infeasible.
+    // Cross-goal seed: use customPolicy from a different goal as first-probe fallback.
+    // Excluded when customPolicy is from this same goal to prevent feedback-loop drift.
+    const priorSeedMSS = plan.customPolicy?.goal !== 'max-sustainable-spending' ? plan.customPolicy?.windows : undefined;
     let bestFeasible: { s: number; inner: InnerEval } | null = null;
     const tryAt = (s: number, label: string): InnerEval => {
       opts.onProgress?.(0, label);
-      return innerOptimize(scaleExpenses(plan, s), opts, evalCounter);
+      return innerOptimize(scaleExpenses(plan, s), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows ?? priorSeedMSS);
     };
 
     // Probe s=1.0 first
@@ -676,7 +793,11 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     //   (a) the plan runs out of money, or
     //   (b) funding spending requires trad withdrawals before age 59 (10% penalty territory).
     // The earliest age where neither condition fires is returned.
+    // Warm-start: each step seeds from the previous (older) age's feasible policy. The shared
+    // years inherit a tested solution; the new younger year at the front defaults to taxable-first.
     const startAge = plan.personA.retirementAge;
+    // Cross-goal seed: use customPolicy from a different goal as first-step fallback.
+    const priorSeedMRA = plan.customPolicy?.goal !== 'min-retirement-age' ? plan.customPolicy?.windows : undefined;
     let bestFeasible: { age: number; inner: InnerEval } | null = null;
     // Floor: never suggest retiring before the person's current age.
     const currentAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
@@ -689,7 +810,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       opts.onProgress?.(step / TOTAL, `Testing retirement at age ${age}…`);
       step++;
       const trialPlan = setRetirementAge(plan, age);
-      const inner = innerOptimize(trialPlan, opts, evalCounter);
+      const inner = innerOptimize(trialPlan, opts, evalCounter, undefined, bestFeasible?.inner.policy.windows ?? priorSeedMRA);
       // Check whether the optimized plan needed trad withdrawals to cover actual spending
       // before 59 (penalty zone). We exclude years with netSpend=0 so that purely
       // elective Roth conversions (which create a tax bill funded partly by wdTrd) don't

@@ -26,7 +26,7 @@ export function survivorRule(ctx: InsightContext): Insight | null {
 
   return {
     id: 'survivorCliff',
-    surfaces: ['dashboard', 'taxes'],
+    surfaces: ['dashboard', 'taxes', 'strategy'],
     severity: 'caution',
     priority: 65,
     title: `Survivor tax cliff after ${passingName} passes`,

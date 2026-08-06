@@ -72,7 +72,7 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
       personA: { ...next.personA, retirementAge: targetA },
     };
     if (next.personB) {
-      const targetB = Math.max(50, next.personB.retirementAge + deltaA);
+      const targetB = Math.max(40, next.personB.retirementAge + deltaA);
       next = { ...next, personB: { ...next.personB, retirementAge: targetB } };
     }
   }

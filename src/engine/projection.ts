@@ -191,7 +191,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
   const totals = householdTotals(plan.portfolio);
   let taxable = totals.taxable;
-  let trad = totals.traditional;
+  let tradA = plan.portfolio.personA.traditional;
+  let tradB = plan.portfolio.personB?.traditional ?? 0;
   let roth = totals.roth;
   const pfA = plan.portfolio.personA;
   const pfB = plan.portfolio.personB;
@@ -211,7 +212,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const filingStatusHistory: FilingStatus[] = [];
 
   const maxYears = Math.min(75, planToAge - startAgeA + 1);
-  const rmdStartAge = rmdStartAgeForDob(plan.personA.dob);
+  const rmdStartAgeA = rmdStartAgeForDob(plan.personA.dob);
+  const rmdStartAgeB = plan.personB ? rmdStartAgeForDob(plan.personB.dob) : rmdStartAgeA;
   const planInflation = plan.assumptions.inflation;
   // Running inflation factor — compounded from per-year CPI overrides when provided,
   // otherwise from the plan's fixed inflation rate. Year 0 is always 1 (base year).
@@ -273,9 +275,17 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       retiredA, retiredB,
     ) : 0;
 
-    // RMD on traditional balance (only if owner alive)
-    const rmd = aliveA ? Math.max(0, trad) / rmdDivisor(ageA) : 0;
-    const rmdAmt = ageA >= rmdStartAge && aliveA ? rmd : 0;
+    // Spousal rollover: merge deceased person's traditional balance into the survivor's IRA.
+    // Handles both death orders. Self-extinguishing once the balance reaches zero.
+    if (!aliveA && tradA > 0) { tradB += tradA; tradA = 0; }
+    if (plan.personB && !aliveB && tradB > 0) { tradA += tradB; tradB = 0; }
+    const trad = tradA + tradB;
+
+    // Per-person RMD — each governed by their own age and SECURE 2.0 start age.
+    const rmdA = (aliveA && ageA >= rmdStartAgeA) ? Math.max(0, tradA) / rmdDivisor(ageA) : 0;
+    const rmdB = (aliveB && ageB !== undefined && ageB >= rmdStartAgeB)
+      ? Math.max(0, tradB) / rmdDivisor(ageB) : 0;
+    const rmdAmt = rmdA + rmdB;
     lifetimeRMD += rmdAmt;
     lifetimeRMDReal += rmdAmt / inflationFactor;
 
@@ -463,12 +473,20 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const splitAtoTax = pfA.contribSplit.taxable, splitAtoTrad = pfA.contribSplit.traditional, splitAtoRoth = pfA.contribSplit.roth;
     const splitBtoTax = pfB?.contribSplit.taxable ?? 0, splitBtoTrad = pfB?.contribSplit.traditional ?? 0, splitBtoRoth = pfB?.contribSplit.roth ?? 0;
     const contribToTax = contribA * splitAtoTax + contribB * splitBtoTax;
-    const contribToTrad = contribA * splitAtoTrad + contribB * splitBtoTrad;
     const contribToRoth = contribA * splitAtoRoth + contribB * splitBtoRoth;
 
     taxable = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - wdTax);
-    trad    = Math.max(0, trad    * (1 + gRateTradYear) + contribToTrad - wdTrd - rmdAmt - conv);
-    roth    = Math.max(0, roth    * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
+    // Split withdrawals and conversions pro-rata by each person's trad balance.
+    // Combined max(0, ...) preserves the single-pool mass-balance invariant; tradANext
+    // is clamped to [0, tradCombined] so tradA+tradB == tradCombined exactly even when
+    // one person's RMD rate differs from the other's (different ages → per-person overdraft).
+    const totalTradBeg = tradA + tradB;
+    const ratioA = totalTradBeg > 0 ? tradA / totalTradBeg : 0;
+    const tradANext = tradA * (1 + gRateTradYear) + contribA * splitAtoTrad - rmdA - (wdTrd + conv) * ratioA;
+    const tradCombined = Math.max(0, totalTradBeg * (1 + gRateTradYear) + contribA * splitAtoTrad + contribB * splitBtoTrad - rmdAmt - wdTrd - conv);
+    tradA = tradCombined > 0 ? Math.max(0, Math.min(tradCombined, tradANext)) : 0;
+    tradB = tradCombined - tradA;
+    roth  = Math.max(0, roth  * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
     taxableBasis = Math.max(0, taxableBasis + contribToTax - wdTax * (1 - gainFraction));
 
     // One-time income events: inject directly into target account.
@@ -488,7 +506,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         lumpSumInjectTaxable += ev.amount;
         lumpSumHSAIncome += ev.amount;
       } else if (ev.bucket === 'inheritedPreTaxIRA') {
-        trad += ev.amount; lumpSumInjectTrad += ev.amount;
+        if (ev.whose === 'B') tradB += ev.amount; else tradA += ev.amount;
+        lumpSumInjectTrad += ev.amount;
         const s = inheritedState.find(s => s.ev.id === ev.id);
         if (s) { s.remainingBal = ev.amount; s.injected = true; }
       } else if (ev.bucket === 'inheritedRoth') {
@@ -500,7 +519,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
     // Inherited IRA/Roth 10-year depletion (SECURE Act). Runs after withdrawal balances are
     // updated so proportional-credit uses current-year host balance post-strategy.
-    let lumpSumForcedTradDist = 0;
+    let lumpSumForcedTradDist = 0, lumpSumForcedTradDistA = 0, lumpSumForcedTradDistB = 0;
     let lumpSumForcedRothDist = 0;
     for (const s of inheritedState) {
       if (!s.injected || s.remainingBal <= 0) continue;
@@ -516,7 +535,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const yearsRemaining = 10 - yearsElapsed;
       const floor = s.remainingBal / yearsRemaining;
 
-      const hostBal = s.ev.bucket === 'inheritedPreTaxIRA' ? trad : roth;
+      const hostBal = s.ev.bucket === 'inheritedPreTaxIRA'
+        ? (s.ev.whose === 'B' ? tradB : tradA)
+        : roth;
       const wdFromHost = s.ev.bucket === 'inheritedPreTaxIRA' ? wdTrd : wdRth;
       const proportionalDepleted = hostBal > 0
         ? Math.min(s.remainingBal, wdFromHost * (s.remainingBal / hostBal))
@@ -528,8 +549,11 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         : Math.max(0, floor - proportionalDepleted);
       s.remainingBal = Math.max(0, s.remainingBal - supplement);
 
-      if (s.ev.bucket === 'inheritedPreTaxIRA') lumpSumForcedTradDist += supplement;
-      else lumpSumForcedRothDist += supplement;
+      if (s.ev.bucket === 'inheritedPreTaxIRA') {
+        lumpSumForcedTradDist += supplement;
+        if (s.ev.whose === 'B') lumpSumForcedTradDistB += supplement;
+        else lumpSumForcedTradDistA += supplement;
+      } else lumpSumForcedRothDist += supplement;
     }
 
     const lumpSumOrdIncome = lumpSumHSAIncome + lumpSumForcedTradDist;
@@ -551,10 +575,15 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     }
 
     // Move supplemental forced dist cash from host account to taxable.
-    if (lumpSumForcedTradDist > 0) {
-      trad    = Math.max(0, trad - lumpSumForcedTradDist);
-      taxable += lumpSumForcedTradDist;
-      taxableBasis += lumpSumForcedTradDist;
+    if (lumpSumForcedTradDistA > 0) {
+      tradA   = Math.max(0, tradA - lumpSumForcedTradDistA);
+      taxable += lumpSumForcedTradDistA;
+      taxableBasis += lumpSumForcedTradDistA;
+    }
+    if (lumpSumForcedTradDistB > 0) {
+      tradB   = Math.max(0, tradB - lumpSumForcedTradDistB);
+      taxable += lumpSumForcedTradDistB;
+      taxableBasis += lumpSumForcedTradDistB;
     }
     if (lumpSumTaxFreeCash > 0) {
       roth    = Math.max(0, roth - lumpSumTaxFreeCash);
@@ -567,7 +596,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const cashSurplus = Math.max(0, ss.total + other.taxableAmt + rmdAmt - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear);
     if (cashSurplus > 0) { taxable += cashSurplus; taxableBasis += cashSurplus; }
 
-    const endTotal = taxable + trad + roth;
+    const endTotal = taxable + tradA + tradB + roth;
     // Depletion is "could not fund the year's spending need from the portfolio", NOT just
     // "endTotal reached exactly zero". Each bucket's update is max(0, bal*g - wd), and wd is
     // capped at bal, so residuals decay geometrically toward zero but never quite hit it —
@@ -618,7 +647,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       lumpSumForcedRothDist,
       cashSurplus,
       begTaxable, begTraditional: begTrad, begRoth,
-      endTaxable: taxable, endTraditional: trad, endRoth: roth,
+      endTaxable: taxable, endTraditional: tradA + tradB, endRoth: roth,
       endTotal,
     });
   }

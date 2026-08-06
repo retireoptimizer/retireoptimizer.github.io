@@ -298,3 +298,154 @@ export function planJ_personBZeroBalance(): Plan {
     state: 'IL',
   };
 }
+
+/**
+ * Wide age gap: A born 1968 (RMD start 75), B born 1957 (RMD start 73).
+ * B is 11 years older — B reaches RMD age before A, and both survivor phases are tested.
+ */
+export function planK_wideAgeGap(): Plan {
+  const p = goldenBase();
+  return {
+    ...p,
+    personA: { ...p.personA, dob: '1968-03-15', retirementAge: 65, planToAge: 95, passingAge: 90 },
+    personB: { ...p.personB!, dob: '1957-06-01', retirementAge: 65, planToAge: 95, passingAge: 88 },
+    portfolio: {
+      personA: { taxable: 200000, taxableBasis: 100000, traditional: 600000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.8, roth: 0 } },
+      personB: { taxable: 200000, taxableBasis: 100000, traditional: 500000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.8, roth: 0 } },
+    },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
+    state: 'IL',
+  };
+}
+
+/**
+ * Survivor: A dies first at 80, B is the long survivor to 90.
+ * A: born 1962 (RMD start 75), B: born 1960 (RMD start 73).
+ * After A dies, tradA merges into tradB; B continues RMDs on the full merged balance.
+ */
+export function planL_survivorARMD(): Plan {
+  const p = goldenBase();
+  return {
+    ...p,
+    personA: { ...p.personA, dob: '1962-01-01', retirementAge: 65, planToAge: 95, passingAge: 80 },
+    personB: { ...p.personB!, dob: '1960-01-01', retirementAge: 65, planToAge: 95, passingAge: 90 },
+    portfolio: {
+      personA: { taxable: 100000, taxableBasis: 50000, traditional: 400000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
+      personB: { taxable: 100000, taxableBasis: 50000, traditional: 600000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
+    },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
+    state: 'IL',
+  };
+}
+
+/**
+ * Survivor: B dies first at 78, A is the long survivor to 90.
+ * A: born 1960 (RMD start 73), B: born 1962 (RMD start 75).
+ * After B dies, tradB merges into tradA; A continues RMDs on the full merged balance.
+ */
+export function planM_survivorBRMD(): Plan {
+  const p = goldenBase();
+  return {
+    ...p,
+    personA: { ...p.personA, dob: '1960-01-01', retirementAge: 65, planToAge: 95, passingAge: 90 },
+    personB: { ...p.personB!, dob: '1962-01-01', retirementAge: 65, planToAge: 95, passingAge: 78 },
+    portfolio: {
+      personA: { taxable: 100000, taxableBasis: 50000, traditional: 600000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
+      personB: { taxable: 100000, taxableBasis: 50000, traditional: 400000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
+    },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
+    state: 'IL',
+  };
+}
+
+/**
+ * Short-lived A: personA retires at 62 and dies at 68 — only 6 joint MFJ years.
+ * Tests algorithms that can express "convert heavily before death then stop."
+ * PersonB is long-lived to 95.
+ */
+export function planN_shortLivedA(): Plan {
+  const p = goldenBase();
+  return {
+    ...p,
+    personA: { ...p.personA, dob: '1963-01-01', retirementAge: 62, planToAge: 95, passingAge: 68, ssPIA: 42000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1966-01-01', retirementAge: 62, planToAge: 95, passingAge: 92, ssPIA: 26000, ssClaimAge: 67 },
+    portfolio: {
+      personA: { taxable: 250000, taxableBasis: 125000, traditional: 750000, roth: 100000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+      personB: { taxable: 180000, taxableBasis: 90000, traditional: 350000, roth: 80000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+    },
+    incomeStreams: [],
+    expenseStreams: [
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 62, stopAge: 95, annualAmount: 100000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+    ],
+    withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
+    conversion: { mode: 'off', startAge: 62, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    state: 'IL',
+  };
+}
+
+/**
+ * Large pension: personA has $75K/yr pension that partially crowds conversion bracket room.
+ * Tests algorithms that correctly find smaller or zero conversions.
+ */
+export function planO_largePension(): Plan {
+  const p = goldenBase();
+  return {
+    ...p,
+    personA: { ...p.personA, dob: '1973-01-01', retirementAge: 65, planToAge: 95, passingAge: 90, ssPIA: 35000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1975-01-01', retirementAge: 63, planToAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
+    portfolio: {
+      personA: { taxable: 300000, taxableBasis: 150000, traditional: 400000, roth: 150000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.3, roth: 0.4 } },
+      personB: { taxable: 200000, taxableBasis: 100000, traditional: 250000, roth: 100000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.3, roth: 0.4 } },
+    },
+    incomeStreams: [
+      { id: 'pension', description: 'Federal Pension', whose: 'A', type: 'Pension', startAge: 65, stopAge: 95, annualAmount: 75000, growthPct: { mode: 'fixed', rate: 0.01 }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 35000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    ],
+    expenseStreams: [
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 95000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'health', description: 'Healthcare', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 28000, inflationPct: { mode: 'fixed', rate: 0.048 } },
+      { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, stopAge: 82, annualAmount: 18000, inflationPct: { mode: 'fixed', rate: 0.03 } },
+    ],
+    withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    state: 'IL',
+  };
+}
+
+/**
+ * Tight plan: portfolio is tight relative to spending — plan depletes around age 88–90.
+ * Tests that conversion algorithms don't over-convert and accelerate depletion.
+ */
+export function planP_tightPlan(): Plan {
+  const p = goldenBase();
+  return {
+    ...p,
+    personA: { ...p.personA, dob: '1968-01-01', retirementAge: 62, planToAge: 95, passingAge: 90, ssPIA: 28000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1971-01-01', retirementAge: 60, planToAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
+    assumptions: { taxableReturn: 0.055, tradReturn: 0.055, rothReturn: 0.055, inflation: 0.025 },
+    portfolio: {
+      personA: { taxable: 150000, taxableBasis: 75000, traditional: 450000, roth: 50000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+      personB: { taxable: 100000, taxableBasis: 50000, traditional: 300000, roth: 50000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
+    },
+    incomeStreams: [
+      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 28000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    ],
+    expenseStreams: [
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 62, stopAge: 95, annualAmount: 130000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+    ],
+    withdrawalStrategy: 'taxfirst',
+    withdrawalBracketCeiling: 100800,
+    conversion: { mode: 'off', startAge: 62, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    state: 'IL',
+  };
+}

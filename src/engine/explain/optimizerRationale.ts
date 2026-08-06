@@ -1,76 +1,153 @@
 import type { Plan } from '../../schemas/plan';
 import type { OptimizeResult } from '../optimizer';
+import { runProjection } from '../projection';
 import { fmtUSD } from '../../lib/format';
 import { rmdStartAgeForDob } from '../rmd';
 import { generateInsights, insightsForSurface } from './index';
 
-/** Builds 2-4 plain-English sentences explaining the optimizer's policy choice.
- *  Inputs: the user's plan + the optimizer result. Output: one bullet per insight.
- *
- *  This is template-driven, not LLM-generated — every sentence is anchored to a
- *  specific number in the plan or projection so it can be verified. Phase 4's
- *  narrative engine will subsume this module; for now it's a focused helper. */
+/** Builds 2–5 plain-English sentences explaining the optimizer's policy choice.
+ *  Template-driven, not LLM-generated — every sentence is anchored to a specific
+ *  number in the plan or projection so it can be verified. */
 export function explainPolicy(plan: Plan, result: OptimizeResult): string[] {
   const out: string[] = [];
+  const rows = result.projection.rows;
 
-  // --- "What it does" — describe the conversion schedule in human terms ---
-  const conv = result.policy.windows.filter((w) => (w.convAmt ?? 0) > 0);
-  if (conv.length === 0) {
-    out.push('The optimizer recommends no Roth conversions. Your tax-deferred balance is small enough or your low-bracket window is short enough that conversions don\'t improve the goal.');
-  } else if (conv.length === 1) {
-    const w = conv[0];
-    out.push(`Convert ${fmtUSD(w.convAmt!)} per year from age ${w.fromAge} to ${w.toAge} (today's $).`);
+  // Run a no-conversion baseline so the summary can quantify the benefit.
+  const noConvPlan: Plan = {
+    ...plan,
+    customPolicy: undefined,
+    conversion: { ...plan.conversion, mode: 'off' },
+  };
+  const noConvProj = runProjection(noConvPlan);
+  const convBenefit = result.projection.endTotalReal - noConvProj.endTotalReal;
+
+  // ── 1. Conversion summary ────────────────────────────────────────────────
+  const convWindows = result.policy.windows.filter((w) => (w.convAmt ?? 0) > 0);
+  if (convWindows.length === 0) {
+    // Plan-specific reasoning for zero conversions.
+    const reasons: string[] = [];
+
+    const tradTotal = plan.portfolio.personA.traditional + (plan.portfolio.personB?.traditional ?? 0);
+    const totalStart = tradTotal +
+      plan.portfolio.personA.taxable + (plan.portfolio.personB?.taxable ?? 0) +
+      plan.portfolio.personA.roth + (plan.portfolio.personB?.roth ?? 0);
+    const tradShare = totalStart > 0 ? tradTotal / totalStart : 0;
+
+    if (tradShare < 0.30) {
+      reasons.push(`only ${Math.round(tradShare * 100)}% of assets are in pre-tax accounts — not enough future RMD pressure to justify conversions`);
+    }
+
+    const peakRmdReal = Math.max(0, ...rows.map((r) => r.rmd / r.inflationFactor));
+    if (peakRmdReal < 30_000) {
+      reasons.push(`projected RMDs stay below ${fmtUSD(peakRmdReal)} — no meaningful bracket-push from required distributions`);
+    }
+
+    const largePension = (plan.incomeStreams ?? []).some(
+      (s) => s.type === 'Pension' && s.annualAmount >= 40_000
+    );
+    if (largePension) {
+      reasons.push('pension income already fills the lower brackets throughout retirement');
+    }
+
+    const reasonText = reasons.length > 0
+      ? ` — ${reasons.join('; ')}`
+      : '. Your tax-deferred balance or low-bracket window is small enough that conversions don\'t improve the goal';
+
+    out.push(`The optimizer recommends no Roth conversions${reasonText}.`);
   } else {
-    const parts = conv.map((w) => `${fmtUSD(w.convAmt!)} at ages ${w.fromAge === w.toAge ? w.fromAge : `${w.fromAge}–${w.toAge}`}`);
-    out.push(`Convert ${parts.slice(0, -1).join('; ')} and ${parts[parts.length - 1]} (today's $ per year).`);
+    const totalConverted = convWindows.reduce(
+      (sum, w) => sum + (w.convAmt ?? 0) * (w.toAge - w.fromAge + 1), 0
+    );
+    const firstConvAge = convWindows[0].fromAge;
+    const lastConvAge  = convWindows[convWindows.length - 1].toAge;
+
+    // Detect event immediately after the last conversion year.
+    const stopAge = lastConvAge + 1;
+    const rmdAge  = rmdStartAgeForDob(plan.personA.dob);
+    let stopEvent = '';
+    if (stopAge === rmdAge) {
+      stopEvent = `, stopping just before RMDs begin at ${rmdAge}`;
+    } else if (stopAge === 63) {
+      stopEvent = ', stopping before the 2-year IRMAA lookback window opens at 63';
+    } else if (stopAge === plan.personA.ssClaimAge) {
+      stopEvent = `, stopping before Social Security begins at ${plan.personA.ssClaimAge}`;
+    } else if (stopAge === plan.personA.planToAge) {
+      stopEvent = ', running through end of plan';
+    }
+
+    const benefitText = convBenefit > 1_000
+      ? ` — adding ${fmtUSD(convBenefit)} vs no conversions`
+      : '';
+
+    out.push(
+      `The plan converts roughly ${fmtUSD(totalConverted)} total (today's $) from age ${firstConvAge} to ${lastConvAge}${stopEvent}${benefitText}.`
+    );
   }
 
-  // --- "Why" — pull plan-anchored reasons from the data ---
-  const reasons: string[] = [];
+  // ── 2. Event-anchored timing drivers ────────────────────────────────────
+  const drivers: string[] = [];
 
-  // Reason 1: large Pre-tax balance
+  // Driver A: MFJ → Single filing transition
+  if (plan.personB) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i - 1].filingStatus === 'MFJ' && rows[i].filingStatus === 'Single') {
+        const filingChangeAge = rows[i].ageA;
+        const rateBefore = Math.round(rows[i - 1].effRate * 100);
+        const rateAfter  = Math.round(rows[i].effRate * 100);
+        if (rateAfter > rateBefore) {
+          drivers.push(
+            `Filing switches to Single at your age ${filingChangeAge} — effective rate rises from ${rateBefore}% to ${rateAfter}%; converting before then avoids the bracket compression`
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  // Driver B: RMD-driven bracket pressure
+  const rmdAge  = rmdStartAgeForDob(plan.personA.dob);
+  const peakRmdReal = Math.max(0, ...rows.map((r) => r.rmd / r.inflationFactor));
+  if (peakRmdReal > 50_000) {
+    drivers.push(
+      `without conversions, RMDs would peak above ${fmtUSD(peakRmdReal)} (today's $) after age ${rmdAge}, pushing MAGI into higher brackets and IRMAA tiers`
+    );
+  }
+
+  // Driver C: large pre-tax share
   const tradTotal = plan.portfolio.personA.traditional + (plan.portfolio.personB?.traditional ?? 0);
   const totalStart = tradTotal +
     plan.portfolio.personA.taxable + (plan.portfolio.personB?.taxable ?? 0) +
     plan.portfolio.personA.roth + (plan.portfolio.personB?.roth ?? 0);
-  if (tradTotal > 0 && totalStart > 0) {
-    const tradPct = tradTotal / totalStart;
-    if (tradPct > 0.4) {
-      reasons.push(`your Pre-tax 401(k)/IRA balance is large (${fmtUSD(tradTotal)} — ${Math.round(tradPct * 100)}% of total)`);
-    }
+  if (tradTotal > 0 && totalStart > 0 && tradTotal / totalStart > 0.4) {
+    drivers.push(
+      `${Math.round((tradTotal / totalStart) * 100)}% of assets (${fmtUSD(tradTotal)}) sit in pre-tax accounts, creating a large future tax liability`
+    );
   }
 
-  // Reason 2: low-bracket gap before SS
-  const personAClaimAge = plan.personA.ssClaimAge;
-  if (personAClaimAge >= 65 && plan.personA.retirementAge < personAClaimAge - 2) {
-    reasons.push(`you have a low-tax window between retirement (age ${plan.personA.retirementAge}) and Social Security at age ${personAClaimAge}`);
+  // Driver D: low-bracket gap before SS
+  const ssStartAge = plan.personA.ssClaimAge;
+  if (ssStartAge >= 65 && plan.personA.retirementAge < ssStartAge - 2) {
+    drivers.push(
+      `there's a low-income window from retirement (age ${plan.personA.retirementAge}) to Social Security at ${ssStartAge} — ideal for filling lower brackets cheaply`
+    );
   }
 
-  // Reason 3: RMD-driven IRMAA risk
-  const rmdAge = rmdStartAgeForDob(plan.personA.dob);
-  const peakRmd = Math.max(0, ...result.projection.rows.map((r) => r.rmd / r.inflationFactor));
-  if (peakRmd > 50000) {
-    reasons.push(`deferring conversions would force RMDs above ${fmtUSD(peakRmd)} (today's $) after age ${rmdAge}, pushing future MAGI into higher IRMAA tiers`);
+  if (drivers.length > 0) {
+    const joined = drivers.length === 1
+      ? drivers[0]
+      : drivers.slice(0, -1).join('; ') + '; and ' + drivers[drivers.length - 1];
+    out.push(`Why this timing: ${joined}.`);
   }
 
-  // Reason 4: pre-Medicare conversions are IRMAA-safe
-  const conv63 = result.policy.windows.some((w) => (w.convAmt ?? 0) > 0 && w.toAge < 63);
-  if (conv63) {
-    reasons.push('conversions before age 63 don\'t affect Medicare premiums — there\'s no IRMAA 2-year lookback yet');
-  }
+  // ── 3. Net-effect summary ────────────────────────────────────────────────
+  const endStr = fmtUSD(result.projection.endTotalReal);
+  const taxStr = fmtUSD(result.projection.lifetimeFedTax);
+  const fundedStr = result.projection.ranOut
+    ? 'Note: plan still depletes — consider reducing spending or extending retirement age.'
+    : `Plan funds through age ${plan.personA.planToAge}.`;
+  out.push(`Result: ${endStr} end balance (today's $) · ${taxStr} lifetime federal tax. ${fundedStr}`);
 
-  if (reasons.length > 0) {
-    const joined = reasons.length === 1
-      ? reasons[0]
-      : reasons.slice(0, -1).join('; ') + '; and ' + reasons[reasons.length - 1];
-    out.push(`The optimizer chose this because ${joined}.`);
-  }
-
-  // --- "Net effect" — quantify the win vs. doing nothing ---
-  out.push(`Result: ${fmtUSD(result.projection.endTotalReal)} end balance (today's $) and ${fmtUSD(result.projection.lifetimeFedTax)} lifetime federal tax. ${result.projection.ranOut ? 'Note: plan still depletes — consider reducing spending or extending retirement age.' : 'Plan funds through age ' + plan.personA.planToAge + '.'}`);
-
-  // --- Layered rule-driven insights from the narrative engine ---
-  // Only surface the most actionable strategy-level ones (avoid stacking too many bullets).
+  // ── 4. Rule-driven insights (strategy surface) ──────────────────────────
   const ruleInsights = insightsForSurface(generateInsights(plan, result.projection), 'strategy');
   for (const ins of ruleInsights.slice(0, 2)) {
     out.push(`${ins.title}: ${ins.body}`);

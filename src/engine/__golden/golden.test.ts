@@ -5,6 +5,7 @@ import {
   planD_singleFIRE, planE_allRothCouple, planF_allTradCouple,
   planG_californiaCouple, planH_survivorMidPlan,
   planI_multiStreamIncome, planJ_personBZeroBalance,
+  planK_wideAgeGap, planL_survivorARMD, planM_survivorBRMD,
 } from './plans';
 
 /**
@@ -65,6 +66,21 @@ describe('Golden projection snapshots', () => {
 
   it('Plan J — Person B with zero balances (real-world user shape)', () => {
     const r = runAndCompare('planJ_personBZeroBalance', planJ_personBZeroBalance());
+    expect(r.ok, r.message).toBe(true);
+  });
+
+  it('Plan K — Wide age gap (A born 1968, B born 1957): B starts RMD before A', () => {
+    const r = runAndCompare('planK_wideAgeGap', planK_wideAgeGap());
+    expect(r.ok, r.message).toBe(true);
+  });
+
+  it('Plan L — Survivor: A dies at 80, B continues RMDs on merged balance', () => {
+    const r = runAndCompare('planL_survivorARMD', planL_survivorARMD());
+    expect(r.ok, r.message).toBe(true);
+  });
+
+  it('Plan M — Survivor: B dies at 78, A continues RMDs on merged balance', () => {
+    const r = runAndCompare('planM_survivorBRMD', planM_survivorBRMD());
     expect(r.ok, r.message).toBe(true);
   });
 });

@@ -84,10 +84,16 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   if (r.rmd < -tol) out.push(`rmd negative: ${r.rmd}`);
   if (r.rothConv < -tol) out.push(`rothConv negative: ${r.rothConv}`);
 
-  // 6. RMD must be 0 before rmdStartAge
-  const rmdStartAge = rmdStartAgeForDob(plan.personA.dob);
-  if (r.ageA < rmdStartAge && r.rmd > tol) {
-    out.push(`RMD before rmdStartAge (${rmdStartAge}): ageA=${r.ageA}, rmd=${r.rmd}`);
+  // 6. RMD must be 0 before any alive person has reached their own SECURE 2.0 start age.
+  const rmdStartAgeA = rmdStartAgeForDob(plan.personA.dob);
+  const rmdStartAgeB = plan.personB ? rmdStartAgeForDob(plan.personB.dob) : rmdStartAgeA;
+  const ageB = r.ageB;
+  const aliveA = r.ageA <= plan.personA.passingAge;
+  const aliveB = ageB !== undefined && plan.personB !== undefined && ageB <= plan.personB.passingAge;
+  const aCanRMD = aliveA && r.ageA >= rmdStartAgeA;
+  const bCanRMD = aliveB && ageB !== undefined && ageB >= rmdStartAgeB;
+  if (!aCanRMD && !bCanRMD && r.rmd > tol) {
+    out.push(`RMD before any person's rmdStartAge: ageA=${r.ageA} (start ${rmdStartAgeA}), ageB=${ageB ?? 'N/A'} (start ${rmdStartAgeB}), rmd=${r.rmd}`);
   }
 
   // 7. SPENDING COVERAGE (when either person is retired and portfolio not depleted).

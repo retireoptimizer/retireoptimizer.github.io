@@ -2,6 +2,7 @@ import { describe, it } from 'vitest';
 import fc from 'fast-check';
 import { runProjection } from '../projection';
 import { assertProjectionInvariants, assertDeterministic } from '../__invariants__/assertions';
+import { rmdStartAgeForDob } from '../rmd';
 import { arbPlan } from './generators';
 
 /**
@@ -37,6 +38,34 @@ describe('Property-based fuzz: projection invariants', () => {
         assertDeterministic(plan);
       }),
       { numRuns: Math.floor(NUM_RUNS / 2), verbose: true },
+    );
+  }, 120_000);
+
+  it(`RMD is zero when no alive person has reached their own SECURE 2.0 start age (${NUM_RUNS} runs)`, () => {
+    const startYear = new Date().getFullYear();
+    fc.assert(
+      fc.property(arbPlan(), (plan) => {
+        const rmdStartAgeA = rmdStartAgeForDob(plan.personA.dob);
+        const rmdStartAgeB = plan.personB ? rmdStartAgeForDob(plan.personB.dob) : Infinity;
+        const startAgeA = startYear - Number(plan.personA.dob.slice(0, 4));
+        const startAgeB = plan.personB ? startYear - Number(plan.personB.dob.slice(0, 4)) : undefined;
+        const proj = runProjection(plan);
+        for (const r of proj.rows) {
+          const i = r.ageA - startAgeA;
+          const ageB = startAgeB !== undefined ? startAgeB + i : undefined;
+          const aliveA = r.ageA <= plan.personA.passingAge;
+          const aliveB = ageB !== undefined && plan.personB !== undefined && ageB <= plan.personB.passingAge;
+          const aCanRMD = aliveA && r.ageA >= rmdStartAgeA;
+          const bCanRMD = aliveB && ageB !== undefined && ageB >= rmdStartAgeB;
+          if (!aCanRMD && !bCanRMD && r.rmd > 1) {
+            throw new Error(
+              `RMD=${r.rmd.toFixed(2)} at year ${r.year} when no person has reached RMD start age` +
+              ` (ageA=${r.ageA} start ${rmdStartAgeA}, ageB=${ageB ?? 'N/A'} start ${rmdStartAgeB})`,
+            );
+          }
+        }
+      }),
+      { numRuns: NUM_RUNS, verbose: true },
     );
   }, 120_000);
 
