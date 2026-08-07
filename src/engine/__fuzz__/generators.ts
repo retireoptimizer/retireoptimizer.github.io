@@ -118,6 +118,8 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           : undefined,
         assumptions: {
           taxableReturn: s.taxableReturn,
+          taxableDivYield: 0,
+          taxableQualifiedPct: 0.80,
           tradReturn: s.tradReturn,
           rothReturn: s.rothReturn,
           inflation: s.inflation,

@@ -30,6 +30,10 @@ export type Person = z.infer<typeof PersonSchema>;
 export const AssumptionsSchema = z.object({
   /** Per-bucket expected annual growth rates. Replaces the old single preRetReturn/postRetReturn. */
   taxableReturn: z.number().default(0.055),
+  /** Fraction of taxableReturn paid as dividends/interest each year (taxed annually, reinvested at cost basis). 0 = defer all gains until withdrawal. */
+  taxableDivYield: z.number().min(0).max(1).default(0),
+  /** Fraction of taxableDivYield that is qualified dividends (taxed at LTCG rates). Remainder is ordinary income. */
+  taxableQualifiedPct: z.number().min(0).max(1).default(0.80),
   tradReturn: z.number().default(0.055),
   rothReturn: z.number().default(0.055),
   inflation: z.number(),
@@ -207,6 +211,8 @@ export const defaultPlan = (): Plan => ({
   personB: undefined,
   assumptions: {
     taxableReturn: 0.055,
+    taxableDivYield: 0,
+    taxableQualifiedPct: 0.80,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
@@ -272,6 +278,8 @@ export const samplePlan = (): Plan => ({
   },
   assumptions: {
     taxableReturn: 0.055,
+    taxableDivYield: 0,
+    taxableQualifiedPct: 0.80,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,

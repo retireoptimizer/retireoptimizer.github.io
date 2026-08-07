@@ -184,9 +184,10 @@ export default function InputsPage() {
     try {
       const worker = getEngineWorker();
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
-      const result = await worker.optimize(plan, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
+      const planForOptimizer = { ...plan, conversion: { ...plan.conversion, optimize: true } };
+      const result = await worker.optimize(planForOptimizer, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
       setOptimizerResult(result);
-      const appliedPlan = applyResultToPlan(plan, result);
+      const appliedPlan = applyResultToPlan(planForOptimizer, result);
       setPlanKey(planInputKey(appliedPlan));
       applyOptimizerResult(appliedPlan);
       window.scrollTo(0, 0);
@@ -501,15 +502,46 @@ export default function InputsPage() {
                     { label: 'Roth', key: 'rothReturn' as const, hint: 'Roth IRA / 401k' },
                   ].map(({ label, key, hint }) => (
                     <div key={key} className="form-group">
-                      <label>{label}</label>
+                      <label>{label}{hint && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {hint}</span>}</label>
                       <div className="input-suffix-wrap">
                         <NumberInput value={asm[key]} scale={100} digits={1} onCommit={(v) => setAssumptions({ [key]: v })} />
                         <span className="input-suffix">%</span>
                       </div>
-                      {hint && <div className="helper-text">{hint}</div>}
                     </div>
                   ))}
                 </div>
+                {asm.taxableReturn > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 10 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ color: 'var(--text-muted)' }}>↳ Div / Interest Yield</label>
+                      <div className="input-suffix-wrap">
+                        <NumberInput
+                          value={asm.taxableDivYield ?? 0}
+                          scale={100}
+                          digits={1}
+                          onCommit={(v) => setAssumptions({ taxableDivYield: Math.min(Math.max(v, 0), asm.taxableReturn) })}
+                        />
+                        <span className="input-suffix">%</span>
+                      </div>
+                      <div className="helper-text">included in total return above; reinvested annually</div>
+                    </div>
+                    {(asm.taxableDivYield ?? 0) > 0 && (
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ color: 'var(--text-muted)' }}>→ % Qualified</label>
+                        <div className="input-suffix-wrap">
+                          <NumberInput
+                            value={asm.taxableQualifiedPct ?? 0.80}
+                            scale={100}
+                            digits={0}
+                            onCommit={(v) => setAssumptions({ taxableQualifiedPct: Math.min(Math.max(v, 0), 1) })}
+                          />
+                          <span className="input-suffix">%</span>
+                        </div>
+                        <div className="helper-text">qualified dividends (LTCG rates); remainder is ordinary income</div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div style={{ width: 1, background: 'rgba(13,27,46,0.12)', margin: isMobile ? '12px 0' : '0 24px', alignSelf: 'stretch' }} />

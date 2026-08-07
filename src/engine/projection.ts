@@ -215,6 +215,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const rmdStartAgeA = rmdStartAgeForDob(plan.personA.dob);
   const rmdStartAgeB = plan.personB ? rmdStartAgeForDob(plan.personB.dob) : rmdStartAgeA;
   const planInflation = plan.assumptions.inflation;
+  const taxableDivYield    = plan.assumptions.taxableDivYield    ?? 0;
+  const taxableQualifiedPct = plan.assumptions.taxableQualifiedPct ?? 0.80;
   // Running inflation factor — compounded from per-year CPI overrides when provided,
   // otherwise from the plan's fixed inflation rate. Year 0 is always 1 (base year).
   let runningInflationFactor = 1;
@@ -373,8 +375,16 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // gRateThisYear + contribToTradEarly are declared earlier (for the conv cap).
     const contribToTaxEarly = contribA * pfA.contribSplit.taxable + contribB * (pfB?.contribSplit.taxable ?? 0);
     const contribToRothEarly = contribA * pfA.contribSplit.roth + contribB * (pfB?.contribSplit.roth ?? 0);
+    // Annual dividends/interest from taxable account.
+    // Basis grows unconditionally (dividends are reinvested during accumulation too).
+    // Tax impact is gated on retirement — the engine does not model working-year income taxes.
+    const annualDivForBasis = taxable * taxableDivYield;
+    const annualDiv    = eitherRetired ? annualDivForBasis : 0;
+    const ordinaryDiv  = annualDiv * (1 - taxableQualifiedPct);
+    const qualifiedDiv = annualDiv * taxableQualifiedPct;
     const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTaxEarly);
-    const preBasisThisYear = taxableBasis + contribToTaxEarly;
+    // Include annualDiv in basis: reinvested dividends reduce gain fraction for any withdrawal this year.
+    const preBasisThisYear = taxableBasis + contribToTaxEarly + annualDiv;
     const gainFraction = taxAvail > 0 ? Math.max(0, Math.min(1, 1 - preBasisThisYear / taxAvail)) : 0;
     const tradAvail = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt - conv);
     const rothAvail = Math.max(0, roth * (1 + gRateRothYear) + contribToRothEarly + conv);
@@ -393,7 +403,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // For CA/NY: retirement withdrawals + conversions are also taxable.
     // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
     const numPersons = (aliveA ? 1 : 0) + (aliveB ? 1 : 0);
-    let stateAmt = stateTax(plan.state, other.nonExempt + lumpSumHSAIncomeEst, other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate); // initial pass; ltcg unknown until loop iter 1
+    let stateAmt = stateTax(plan.state, other.nonExempt + ordinaryDiv + lumpSumHSAIncomeEst, other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate); // initial pass; ltcg unknown until loop iter 1
 
     // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
@@ -411,11 +421,13 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
           });
       wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;
 
-      const ltcg = wdTax * gainFraction;
+      const ltcg = wdTax * gainFraction + qualifiedDiv;
       // SS taxability via IRC §86 provisional-income tiers (replaces flat 0.85).
-      const provisionalIncome = other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst + 0.5 * ss.total;
+      // annualDiv (ordinary + qualified) counts toward provisional income per IRC §86.
+      const provisionalIncome = other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst + annualDiv + 0.5 * ss.total;
       const taxableSS = taxableSocialSecurity(provisionalIncome, ss.total, filingStatus);
-      const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst;
+      // ordinaryDiv is ordinary income; qualifiedDiv is captured in ltcg (LTCG stack path).
+      const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst + ordinaryDiv;
       const t = yearFederalTax({
         filingStatus,
         inflationFactor,
@@ -439,7 +451,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
       // ltcg goes into nonExemptOrdinaryIncome so IL (retirementExempt:true) still taxes it —
       // IL exempts retirement distributions but NOT capital gains.
-      stateAmt = stateTax(plan.state, other.nonExempt + ltcg + lumpSumHSAIncomeEst, wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate);
+      stateAmt = stateTax(plan.state, other.nonExempt + ordinaryDiv + ltcg + lumpSumHSAIncomeEst, wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate);
 
       // ACA marketplace premium (pre-Medicare years when the user has opted in).
       acaPremiumYear = 0;
@@ -487,7 +499,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     tradA = tradCombined > 0 ? Math.max(0, Math.min(tradCombined, tradANext)) : 0;
     tradB = tradCombined - tradA;
     roth  = Math.max(0, roth  * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
-    taxableBasis = Math.max(0, taxableBasis + contribToTax - wdTax * (1 - gainFraction));
+    taxableBasis = Math.max(0, taxableBasis + contribToTax + annualDivForBasis - wdTax * (1 - gainFraction));
 
     // One-time income events: inject directly into target account.
     // Amount is stored in plan-start-year (today's) dollars — inflate to nominal at event year,

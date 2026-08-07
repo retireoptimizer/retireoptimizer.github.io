@@ -479,7 +479,9 @@ function GuideContent() {
         entire planning horizon, so even small differences compound significantly over 30 years.
       </P>
       <FieldTable rows={[
-        ["Taxable Return", "Annual growth rate for your brokerage (non-retirement) accounts.", "6.5%"],
+        ["Taxable Return", "Total annual growth rate for your brokerage (non-retirement) accounts — price appreciation plus any dividends or interest. Enter the full total return here even if you also use the yield fields below.", "6.5%"],
+        ["↳ Div / Interest Yield", "The portion of Taxable Return paid out annually as dividends or interest. Taxed each year — qualified dividends at capital gains rates, ordinary dividends and interest at your income rate. Leave at 0 to treat all growth as price appreciation (gains deferred until withdrawal). Dividends are assumed to be reinvested.", "2.0%"],
+        ["↳ % Qualified", "What fraction of the annual yield is qualified dividends (taxed at 0/15/20% LTCG rates). The remainder is ordinary income. Broad US equity ETFs are typically 80–100% qualified; bond funds and REITs are 0%.", "80%"],
         ["Pre-tax Return", "Growth rate for Traditional 401(k) and IRA accounts.", "6.5%"],
         ["Roth Return", "Growth rate for Roth IRA and Roth 401(k) accounts.", "6.5%"],
       ]} />
@@ -492,6 +494,7 @@ function GuideContent() {
         A balanced portfolio of stocks and bonds has historically returned 6–7% before inflation.
         If you are conservative, use 5–6%. Do not enter inflation-adjusted returns here — the app
         handles the inflation math separately using the Inflation rate you enter.
+        If you enter a Div / Interest Yield, keep Taxable Return as the full total return (price appreciation plus dividends) — the yield is a subset of that number, not an addition to it. The app taxes dividends annually and reinvests them at cost basis, which reduces future capital gains on withdrawal.
       </Tip>
 
       <H3>Current Account Balances</H3>

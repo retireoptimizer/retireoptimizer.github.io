@@ -127,10 +127,16 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 16,
+      version: 17,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v17: add taxableDivYield and taxableQualifiedPct to assumptions.
+        if (fromVersion < 17 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {
+          const asm = ps.plan.assumptions as Record<string, unknown>;
+          asm.taxableDivYield    ??= 0;
+          asm.taxableQualifiedPct ??= 0.80;
+        }
         // v16: convert growthPct/inflationPct/contribGrowth from number to GrowthRate object.
         if (fromVersion < 16 && ps.plan && typeof ps.plan === 'object') {
           const planObj = ps.plan as Record<string, unknown>;
