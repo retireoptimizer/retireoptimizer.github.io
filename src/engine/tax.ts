@@ -2,6 +2,8 @@ import {
   FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE,
   STANDARD_DEDUCTION_MFJ, STANDARD_DEDUCTION_SINGLE,
   SENIOR_ADDON_MFJ, SENIOR_ADDON_SINGLE,
+  SENIOR_BONUS_PER_PERSON, SENIOR_BONUS_FIRST_YEAR, SENIOR_BONUS_LAST_YEAR,
+  SENIOR_BONUS_PHASEOUT_START_SINGLE, SENIOR_BONUS_PHASEOUT_START_MFJ, SENIOR_BONUS_PHASEOUT_RATE,
   LTCG_BRACKETS_MFJ, LTCG_BRACKETS_SINGLE,
   SS_PROVISIONAL_BASE_MFJ, SS_PROVISIONAL_UPPER_MFJ,
   SS_PROVISIONAL_BASE_SINGLE, SS_PROVISIONAL_UPPER_SINGLE,
@@ -46,6 +48,25 @@ export function standardDeduction(
   const base = STANDARD_DEDUCTION_SINGLE;
   const addon = ageA >= 65 ? SENIOR_ADDON_SINGLE : 0;
   return (base + addon) * inflationFactor;
+}
+
+/**
+ * Temporary $6,000/person senior bonus deduction (OBBBA, tax years 2025–2028).
+ * Phases out at $0.06 per $1 of MAGI over the threshold (fixed thresholds, not inflation-indexed).
+ */
+export function seniorBonusDeduction(
+  filingStatus: FilingStatus,
+  ageA: number,
+  ageB: number | undefined,
+  magi: number,
+  calendarYear: number,
+): number {
+  if (calendarYear < SENIOR_BONUS_FIRST_YEAR || calendarYear > SENIOR_BONUS_LAST_YEAR) return 0;
+  const eligible = (ageA >= 65 ? 1 : 0) + (ageB !== undefined && ageB >= 65 ? 1 : 0);
+  if (eligible === 0) return 0;
+  const threshold = filingStatus === 'MFJ' ? SENIOR_BONUS_PHASEOUT_START_MFJ : SENIOR_BONUS_PHASEOUT_START_SINGLE;
+  const reduction = Math.max(0, magi - threshold) * SENIOR_BONUS_PHASEOUT_RATE;
+  return Math.max(0, eligible * SENIOR_BONUS_PER_PERSON - reduction);
 }
 
 /**

@@ -48,7 +48,9 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
 
     it('personA.planToAge', () => {
       const d = sensitivity(defaultPlan(), (p) => ({
-        ...p, personA: { ...p.personA, planToAge: p.personA.planToAge - 5 },
+        ...p,
+        personA: { ...p.personA, planToAge: p.personA.planToAge - 5 },
+        personB: p.personB ? { ...p.personB, planToAge: p.personB.planToAge - 5 } : p.personB,
       }));
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });

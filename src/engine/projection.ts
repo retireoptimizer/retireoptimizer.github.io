@@ -1,9 +1,10 @@
 import type { Plan, IncomeStream, ExpenseStream, LumpSumEvent } from '../schemas/plan';
 import { householdTotals, resolveGrowthRate } from '../schemas/plan';
+import { householdPlanToAgeA } from './planInputKey';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
-import { yearFederalTax, standardDeduction, taxableSocialSecurity } from './tax';
+import { yearFederalTax, standardDeduction, taxableSocialSecurity, seniorBonusDeduction } from './tax';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from './taxConstants';
 import { rothConversion } from './conversion';
 import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
@@ -187,7 +188,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const passingB = plan.personB?.passingAge;
   const retireAgeA = plan.personA.retirementAge;
   const retireAgeB = plan.personB?.retirementAge ?? retireAgeA;
-  const planToAge = plan.personA.planToAge;
+  const planToAge = householdPlanToAgeA(plan);
 
   const totals = householdTotals(plan.portfolio);
   let taxable = totals.taxable;
@@ -294,6 +295,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Standard deduction this year. For Single filers where B is the survivor, use B's age.
     const filerAge = (filingStatus === 'Single' && !aliveA && aliveB && ageB !== undefined) ? ageB : ageA;
     const stdD = standardDeduction(filingStatus, filerAge, ageB, inflationFactor);
+    const calYear = startYear + i;
+    let seniorBonus = 0;
 
     // Roth conversion (BEFORE withdrawals — increases ord income for the year).
     // If the active blend policy's window has an explicit convAmt (including 0), that is
@@ -428,16 +431,16 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const taxableSS = taxableSocialSecurity(provisionalIncome, ss.total, filingStatus);
       // ordinaryDiv is ordinary income; qualifiedDiv is captured in ltcg (LTCG stack path).
       const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncomeEst + ordinaryDiv;
+      const magi = ordIncome + ltcg;
+      seniorBonus = seniorBonusDeduction(filingStatus, filerAge, ageB, magi, calYear);
       const t = yearFederalTax({
         filingStatus,
         inflationFactor,
         ordinaryIncome: ordIncome,
         ltcgIncome: ltcg,
-        standardDeduction: stdD,
+        standardDeduction: stdD + seniorBonus,
       });
       fedTax = t.fedTax; ordIncomeFinal = ordIncome; ltcgFinal = ltcg; effRate = t.effRate;
-
-      const magi = ordIncomeFinal + ltcgFinal;
       // IRMAA 2-year lookback: year i's surcharge is based on MAGI from year i-2.
       // For the first two years, fall back to the current year's MAGI.
       const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
@@ -456,7 +459,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // ACA marketplace premium (pre-Medicare years when the user has opted in).
       acaPremiumYear = 0;
       if (plan.assumptions.modelACA && plan.assumptions.acaBenchmarkPremium > 0) {
-        const preMedicareCount = (aliveA && ageA < 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB < 65 ? 1 : 0);
+        const acaStartA = plan.assumptions.acaStartAgeA ?? retireAgeA;
+        const acaStartB = plan.assumptions.acaStartAgeB ?? retireAgeB;
+        const preMedicareCount = (aliveA && ageA >= acaStartA && ageA < 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= acaStartB && ageB < 65 ? 1 : 0);
         if (preMedicareCount > 0) {
           const scaledPremium = plan.assumptions.acaBenchmarkPremium * inflationFactor * preMedicareCount;
           acaPremiumYear = plan.assumptions.acaNoSubsidy
@@ -574,7 +579,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Correct ordIncome/tax/state for cases where actual != estimate (e.g. tradfirst zeroed supplement).
     if (lumpSumOrdIncome !== lumpSumOrdIncomeEst || lumpSumTaxFreeCash !== lumpSumTaxFreeEst) {
       const ordIncomeActual = ordIncomeFinal - lumpSumOrdIncomeEst + lumpSumOrdIncome;
-      const tCorrected = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeActual, ltcgIncome: ltcgFinal, standardDeduction: stdD });
+      const tCorrected = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeActual, ltcgIncome: ltcgFinal, standardDeduction: stdD + seniorBonus });
       fedTax = tCorrected.fedTax;
       ordIncomeFinal = ordIncomeActual;
       effRate = tCorrected.effRate;

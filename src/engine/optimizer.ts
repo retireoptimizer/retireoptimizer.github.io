@@ -1,6 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import type { BlendPolicy, BlendWindow } from './blendPolicy';
 import { runProjection, type ProjectionResult } from './projection';
+import { householdPlanToAgeA } from './planInputKey';
 import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommender';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
 import { mulberry32, historicalBootstrap } from './returnModels';
@@ -174,7 +175,7 @@ function innerOptimize(
   const innerGoalKey: RecGoal = 'max-end';
   const spec = REC_GOALS[innerGoalKey];
   const retireAge = plan.personA.retirementAge;
-  const planToAge = plan.personA.planToAge;
+  const planToAge = householdPlanToAgeA(plan);
 
   if (retireAge > planToAge) {
     throw new Error('Retirement age is after plan-to age.');
@@ -609,6 +610,62 @@ function innerOptimize(
 const fmtUSD = (n: number) => '$' + Math.round(n).toLocaleString();
 const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
 
+/**
+ * Compute an amortization-based sustainable spending estimate.
+ * Returns both the absolute real dollar amount and the multiplier relative to current expenses.
+ * The absolute amount is used when baseSpend = 0 so the bisection has a meaningful base to scale.
+ */
+function amortizationSeed(plan: Plan): { absoluteReal: number; multiplier: number } {
+  const retireAge = plan.personA.retirementAge;
+  const planToAge = householdPlanToAgeA(plan);
+  const n = Math.max(1, planToAge - retireAge + 1);
+  const inf = plan.assumptions.inflation;
+  const p = plan.portfolio;
+
+  // Blended nominal return weighted by current bucket balances
+  const totA = p.personA.taxable + p.personA.traditional + p.personA.roth;
+  const totB = p.personB ? p.personB.taxable + p.personB.traditional + p.personB.roth : 0;
+  const tot = totA + totB || 1;
+  const blendA = totA > 0
+    ? (p.personA.taxable * plan.assumptions.taxableReturn +
+       p.personA.traditional * plan.assumptions.tradReturn +
+       p.personA.roth * plan.assumptions.rothReturn) / totA
+    : plan.assumptions.tradReturn;
+  const blendB = totB > 0 && p.personB
+    ? (p.personB.taxable * plan.assumptions.taxableReturn +
+       p.personB.traditional * plan.assumptions.tradReturn +
+       p.personB.roth * plan.assumptions.rothReturn) / totB
+    : plan.assumptions.tradReturn;
+  const blendNominal = (totA * blendA + totB * blendB) / tot;
+  const realR = Math.max(0.001, (1 + blendNominal) / (1 + inf) - 1);
+
+  // Quick projection to get at-retirement portfolio and external income in real (today's) dollars
+  const proj = runProjection(plan);
+  const retireRow = proj.rows.find((r) => r.ageA === retireAge);
+  const inflF = retireRow ? retireRow.inflationFactor : 1;
+  const portfolioRealAtRetire = retireRow
+    ? (retireRow.begTaxable + retireRow.begTraditional + retireRow.begRoth) / inflF
+    : tot;
+
+  // Average annual external income in today's dollars across retirement rows
+  const retRows = proj.rows.filter((r) => r.ageA >= retireAge);
+  const avgExternalReal = retRows.length > 0
+    ? retRows.reduce((s, r) => s + (r.totalSS + r.otherIncome) / r.inflationFactor, 0) / retRows.length
+    : 0;
+
+  // Annuity factor: PV of inflation-adjusted $1/yr at real rate for n years
+  const annuityFactor = (1 - Math.pow(1 + realR, -n)) / realR;
+  const portfolioWithdrawalReal = portfolioRealAtRetire / annuityFactor;
+  const absoluteReal = Math.max(1, portfolioWithdrawalReal + avgExternalReal);
+
+  const baseSpend = plan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
+  const multiplier = baseSpend > 0
+    ? Math.max(0.3, Math.min(8.0, absoluteReal / baseSpend))
+    : 1.0;
+
+  return { absoluteReal, multiplier };
+}
+
 /** Scale every expense stream's annualAmount by `s`. */
 function scaleExpenses(plan: Plan, s: number): Plan {
   return {
@@ -665,7 +722,7 @@ function packageResult(
 // so the coordinate descent refines *within* that basin rather than escaping it.
 function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: number }, outerProgress?: () => void): InnerEval {
   const retireAge = plan.personA.retirementAge;
-  const planToAge = plan.personA.planToAge;
+  const planToAge = householdPlanToAgeA(plan);
   const optimizeConversions = plan.conversion.optimize ?? true;
 
   const constantSeeds: BlendWindow[][] = [
@@ -721,70 +778,113 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // valid starting point; a genuinely-feasible level can no longer be mislabelled infeasible.
     // Cross-goal seed: use customPolicy from a different goal as first-probe fallback.
     // Excluded when customPolicy is from this same goal to prevent feedback-loop drift.
-    const priorSeedMSS = plan.customPolicy?.goal !== 'max-sustainable-spending' ? plan.customPolicy?.windows : undefined;
-    let bestFeasible: { s: number; inner: InnerEval } | null = null;
-    const tryAt = (s: number, label: string): InnerEval => {
+    const baseAnnualSpend = plan.expenseStreams.reduce((sum, e) => sum + e.annualAmount, 0);
+    const { absoluteReal: amortAbs } = amortizationSeed(plan);
+
+    // Bisect over absolute spending dollars so the result is independent of how large
+    // or small the plan's current expense streams are. A $1 or $0 base would make
+    // multiplier-based bisection useless — the seed would be clamped and the search
+    // would never reach the true sustainable level.
+    // For plans with expenses, scaleTo(dollars) scales each stream proportionally so
+    // their relative sizes are preserved. For zero-expense plans, a proxy stream is
+    // used so the projection sees real spending (the proxy is not persisted — apply
+    // skips the scaling step when baseAnnualSpend = 0 and recommendedAnnualSpend
+    // serves as the user-facing dollar reference).
+    const basePlan = baseAnnualSpend > 0 ? plan : {
+      ...plan,
+      expenseStreams: [{
+        id: '__amort_proxy__',
+        description: 'Spending',
+        whose: 'Household' as const,
+        startAge: plan.personA.retirementAge,
+        stopAge: householdPlanToAgeA(plan),
+        annualAmount: 1,
+        inflationPct: { mode: 'cpi' as const },
+      }],
+    };
+    const scaleBase = baseAnnualSpend > 0 ? baseAnnualSpend : 1;
+    const scaleTo = (dollars: number) => scaleExpenses(basePlan, dollars / scaleBase);
+
+    let bestFeasible: { dollars: number; inner: InnerEval } | null = null;
+    const tryAtDollars = (dollars: number, label: string): InnerEval => {
       opts.onProgress?.(0, label);
-      return innerOptimize(scaleExpenses(plan, s), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows ?? priorSeedMSS);
+      return innerOptimize(scaleTo(dollars), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows);
     };
 
-    // Probe s=1.0 first
-    const innerOne = tryAt(1.0, 'Testing current spending plan…');
-    if (!innerOne.ranOut) bestFeasible = { s: 1.0, inner: innerOne };
+    // Amortization seed: screen 3 diverse constant seeds + existing customPolicy (any goal).
+    // Taking the best of all screens ensures we always reach the highest-quality basin
+    // available. Including customPolicy regardless of its goal means each run is
+    // monotonically improving — the result can only stay the same or get better.
+    opts.onProgress?.(0, `Testing ${fmtUSD(amortAbs)}/yr (amortization seed)…`);
+    {
+      const amortPlan = scaleTo(amortAbs);
+      const retA = plan.personA.retirementAge;
+      const ptA = householdPlanToAgeA(plan);
+      const optConv = plan.conversion.optimize ?? true;
+      const amortSeeds: BlendWindow[][] = [
+        buildConstantSeed(retA, ptA, { tax: 1, trad: 0, roth: 0 }, optConv),
+        buildConstantSeed(retA, ptA, { tax: 0, trad: 1, roth: 0 }, optConv),
+        buildConstantSeed(retA, ptA, { tax: 0, trad: 0, roth: 1 }, optConv),
+      ];
+      if (plan.customPolicy?.windows?.length) amortSeeds.push(plan.customPolicy.windows);
+      const screened = amortSeeds.map((seed) => innerOptimize(amortPlan, opts, evalCounter, undefined, seed, true));
+      screened.sort((a, b) => (isBetter(a, b) ? -1 : isBetter(b, a) ? 1 : 0));
+      const refined = screened.slice(0, 2).map((s) => innerOptimize(amortPlan, opts, evalCounter, undefined, s.policy.windows));
+      const innerSeed = isBetter(refined[0], refined[1]) ? refined[0] : refined[1];
+      if (!innerSeed.ranOut) bestFeasible = { dollars: amortAbs, inner: innerSeed };
+    }
 
-    let lo: number, hi: number;
-    if (innerOne.ranOut) {
-      // Current spending is infeasible — search downward by halving
-      hi = 1.0;
-      lo = 0.5;
-      // Probe lo
-      const innerLow = tryAt(lo, `Testing spending × ${lo.toFixed(2)}…`);
-      if (!innerLow.ranOut) bestFeasible = { s: lo, inner: innerLow };
-      else lo = 0.25; // extreme fallback
+    let lo$: number, hi$: number;
+    if (!bestFeasible) {
+      // Seed is infeasible — search downward
+      hi$ = amortAbs;
+      lo$ = amortAbs * 0.5;
+      const innerLow = tryAtDollars(lo$, `Testing ${fmtUSD(lo$)}/yr…`);
+      if (!innerLow.ranOut) bestFeasible = { dollars: lo$, inner: innerLow };
+      else lo$ = amortAbs * 0.25;
     } else {
-      // Current spending is feasible — double upward to find infeasibility
-      lo = 1.0;
-      hi = 2.0;
+      // Seed is feasible — expand upward to bracket the infeasible side
+      lo$ = amortAbs;
+      hi$ = amortAbs * 1.5;
       for (let probe = 0; probe < 4; probe++) {
-        const innerHi = tryAt(hi, `Testing spending × ${hi.toFixed(2)}…`);
+        const innerHi = tryAtDollars(hi$, `Testing ${fmtUSD(hi$)}/yr…`);
         if (innerHi.ranOut) break;
-        bestFeasible = { s: hi, inner: innerHi };
-        lo = hi;
-        hi = hi * 2;
+        bestFeasible = { dollars: hi$, inner: innerHi };
+        lo$ = hi$;
+        hi$ = hi$ * 2;
       }
     }
 
-    // Bisection inside [lo, hi]
+    // Bisection inside [lo$, hi$]
     const STEPS = 14;
     for (let i = 0; i < STEPS; i++) {
-      const s = (lo + hi) / 2;
-      opts.onProgress?.(i / STEPS, `Refining spending × ${s.toFixed(3)}…`);
-      const inner = tryAt(s, `Refining spending × ${s.toFixed(3)}…`);
-      if (!inner.ranOut) {
-        bestFeasible = { s, inner };
-        lo = s;
-      } else {
-        hi = s;
-      }
+      const d = (lo$ + hi$) / 2;
+      opts.onProgress?.(i / STEPS, `Refining ${fmtUSD(d)}/yr…`);
+      const inner = tryAtDollars(d, `Refining ${fmtUSD(d)}/yr…`);
+      if (!inner.ranOut) { bestFeasible = { dollars: d, inner }; lo$ = d; }
+      else hi$ = d;
     }
     opts.onProgress?.(1, 'Done');
-    const baseAnnualSpend = plan.expenseStreams.reduce((sum, e) => sum + e.annualAmount, 0);
+
     if (!bestFeasible) {
-      // Even at 0.5× the plan depletes — return that result with a warning.
-      const inner = innerOptimize(scaleExpenses(plan, 0.5), opts, evalCounter);
+      const fallbackDollars = amortAbs * 0.5;
+      const inner = innerOptimize(scaleTo(fallbackDollars), opts, evalCounter);
       return packageResult(inner, goal, evalCounter.n, {
-        solvedSpendingMultiplier: 0.5,
-        recommendedAnnualSpend: baseAnnualSpend * 0.5,
-        headline: 'Plan depletes even at 50% spending',
+        solvedSpendingMultiplier: baseAnnualSpend > 0 ? fallbackDollars / baseAnnualSpend : NaN,
+        recommendedAnnualSpend: fallbackDollars,
+        headline: 'Plan depletes even at 50% of estimated sustainable spending',
         headlineLabel: 'Max sustainable spending',
       });
     }
-    const sustainable = baseAnnualSpend * bestFeasible.s;
+    const sustainable = bestFeasible.dollars;
+    const solvedMultiplier = baseAnnualSpend > 0 ? sustainable / baseAnnualSpend : NaN;
     return packageResult(bestFeasible.inner, goal, evalCounter.n, {
-      solvedSpendingMultiplier: bestFeasible.s,
+      solvedSpendingMultiplier: solvedMultiplier,
       recommendedAnnualSpend: sustainable,
       headline: `${fmtUSD(sustainable)}/yr (today's $)`,
-      headlineLabel: `Max sustainable spending — ${(bestFeasible.s * 100).toFixed(0)}% of current plan`,
+      headlineLabel: baseAnnualSpend > 0
+        ? `Max sustainable spending — ${(solvedMultiplier * 100).toFixed(0)}% of current plan`
+        : 'Max sustainable spending',
     });
   }
 

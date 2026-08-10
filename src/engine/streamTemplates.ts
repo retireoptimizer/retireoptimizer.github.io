@@ -29,10 +29,10 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
     id: 'blank',
     label: 'Blank stream',
     hint: 'Empty row — fill in everything yourself',
-    make: () => ({
+    make: ({ retirementAge, planToAge }) => ({
       id: nid('stream'), description: 'Description',
       whose: 'Household', type: 'Other',
-      startAge: 65, stopAge: 90, annualAmount: 0, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1,
+      startAge: retirementAge, stopAge: planToAge, annualAmount: 0, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1,
     }),
   },
   {

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { previewAllPresets } from './presetPreview';
 import { runProjection, depletionAge } from './projection';
 import { planA_simple, planF_allTradCouple } from './__golden/plans';
+import { householdPlanToAgeA } from './planInputKey';
 import type { Plan } from '../schemas/plan';
 
 const PRESETS: Plan['withdrawalStrategy'][] = [
@@ -17,7 +18,7 @@ describe('previewAllPresets correctness', () => {
       const dep = depletionAge(direct);
       expect(preview[preset].endBalance).toBeCloseTo(direct.endTotalReal, 0);
       expect(preview[preset].lifetimeFedTax).toBeCloseTo(direct.lifetimeFedTax, 0);
-      expect(preview[preset].longevityAge).toBe(dep ?? plan.personA.planToAge);
+      expect(preview[preset].longevityAge).toBe(dep ?? householdPlanToAgeA(plan));
       expect(preview[preset].lasts).toBe(dep === null);
     }
   });

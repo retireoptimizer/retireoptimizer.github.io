@@ -3,6 +3,7 @@ import * as Comlink from 'comlink';
 import { useNavigate } from 'react-router-dom';
 import { usePlanStore } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
+import { useWhatIfStore } from '../store/useWhatIfStore';
 import { householdTotals, resolveGrowthRate } from '../schemas/plan';
 import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio, GrowthRate } from '../schemas/plan';
 import { NumberInput } from '../components/inputs/NumberInput';
@@ -13,10 +14,43 @@ import { INCOME_TEMPLATES, EXPENSE_TEMPLATES } from '../engine/streamTemplates';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { planInputKey } from '../engine/planInputKey';
-import GoalSelectPanel from '../components/GoalSelectPanel';
-import type { UserGoal } from '../engine/recommender';
+import { USER_GOALS, type UserGoal } from '../engine/recommender';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../engine/taxConstants';
 
 const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', whiteSpace: 'nowrap' };
+
+const inlineLabelStyle: React.CSSProperties = {
+  fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
+  color: 'var(--text-secondary)', flexShrink: 0, whiteSpace: 'nowrap',
+};
+
+const GOAL_SHORT_LABELS: Record<UserGoal, string> = {
+  'max-end-balance': 'Max End Balance',
+  'max-sustainable-spending': 'Max Spending',
+  'min-retirement-age': 'Earliest Retire',
+};
+
+const Chk = () => <span style={{ color: 'var(--gold)', fontWeight: 800 }}>✓</span>;
+
+const inputPillStyle = (active: boolean): React.CSSProperties => ({
+  height: 34, boxSizing: 'border-box', padding: '0 13px',
+  fontSize: 13, fontWeight: 600, borderRadius: 999,
+  border: active ? '2px solid var(--gold)' : '1px solid var(--border-light)',
+  background: active ? 'rgba(201,168,76,0.08)' : '#fff',
+  color: active ? '#7a5c10' : 'var(--text-secondary)',
+  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+});
+
+const inputSelectPillStyle = (active: boolean): React.CSSProperties => ({
+  height: 34, boxSizing: 'border-box', padding: '0 8px 0 12px',
+  fontSize: 13, fontWeight: 600, borderRadius: 999,
+  border: active ? '2px solid var(--gold)' : '1px solid var(--border-light)',
+  background: active ? 'rgba(201,168,76,0.08)' : '#fff',
+  color: active ? '#7a5c10' : 'var(--text-primary)',
+  cursor: 'pointer', fontFamily: 'inherit',
+  width: 'fit-content', minWidth: 0,
+});
 
 const stepperBtnStyle: React.CSSProperties = {
   width: 22, height: 32, border: 'none', background: 'rgba(13,27,46,0.06)',
@@ -130,21 +164,40 @@ export default function InputsPage() {
   const updateExpenseStream = usePlanStore((s) => s.updateExpenseStream);
   const removeExpenseStream = usePlanStore((s) => s.removeExpenseStream);
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
+  const setConversion = usePlanStore((s) => s.setConversion);
+  const resetWhatIf = useWhatIfStore((s) => s.reset);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
   const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
+  const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
+  const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
+  const pendingGoal = useOptimizerStore((s) => s.pendingGoal);
 
-  const [selectedGoal, setSelectedGoal] = useState<UserGoal>(
-    (plan.optimizedForGoal as UserGoal | undefined) ?? 'max-end-balance'
-  );
+  const planGoal: UserGoal = pendingGoal ?? (plan.optimizedForGoal as UserGoal | undefined) ?? 'max-end-balance';
+  const [selectedGoal, setSelectedGoal] = useState<UserGoal>(planGoal);
+  const [seenGoal, setSeenGoal] = useState<UserGoal>(planGoal);
+  if (planGoal !== seenGoal) { setSeenGoal(planGoal); setSelectedGoal(planGoal); }
+
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
   const [buildError, setBuildError] = useState<string | null>(null);
+
   const [dobA, setDobA] = useState(plan.personA.dob);
-  const [dobB, setDobB] = useState(plan.personB?.dob ?? '');
+  const [seenDobA, setSeenDobA] = useState(plan.personA.dob);
+  if (plan.personA.dob !== seenDobA) { setSeenDobA(plan.personA.dob); setDobA(plan.personA.dob); }
+
+  const planDobB = plan.personB?.dob ?? '';
+  const [dobB, setDobB] = useState(planDobB);
+  const [seenDobB, setSeenDobB] = useState(planDobB);
+  if (planDobB !== seenDobB) { setSeenDobB(planDobB); setDobB(planDobB); }
 
   const A = plan.personA;
   const B = plan.personB;
   const asm = plan.assumptions;
+  const conv = plan.conversion;
+  const brackets = B ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
+  const convBracketOptions = brackets.slice(0, 4).map(([top, rate]: readonly [number, number]) => ({
+    value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})`,
+  }));
   const pf = plan.portfolio;
   const isMobile = useIsMobile();
 
@@ -164,6 +217,11 @@ export default function InputsPage() {
     && splitValidA && splitValidB;
   const retirementAge = A.retirementAge;
   const planToAge = A.planToAge;
+  const minStartAge = (whose: string) => {
+    if (whose === 'B' && B) return B.retirementAge;
+    if (whose === 'Household' && B) return Math.min(A.retirementAge, B.retirementAge);
+    return A.retirementAge;
+  };
 
   const addIncomeFromTemplate = (tplId: string) => {
     const tpl = INCOME_TEMPLATES.find((t) => t.id === tplId);
@@ -184,12 +242,14 @@ export default function InputsPage() {
     try {
       const worker = getEngineWorker();
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
-      const planForOptimizer = { ...plan, conversion: { ...plan.conversion, optimize: true } };
-      const result = await worker.optimize(planForOptimizer, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
-      setOptimizerResult(result);
-      const appliedPlan = applyResultToPlan(planForOptimizer, result);
-      setPlanKey(planInputKey(appliedPlan));
+      const result = await worker.optimize(plan, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
+      const appliedPlan = applyResultToPlan(plan, result);
       applyOptimizerResult(appliedPlan);
+      setOptimizerResult(result);
+      setPlanKey(planInputKey(plan));
+      setPendingPlan(null);
+      setPendingGoal(null);
+      resetWhatIf();
       window.scrollTo(0, 0);
       navigate('/dashboard');
     } catch (err) {
@@ -320,27 +380,51 @@ export default function InputsPage() {
                   </label>
                 </div>
                 {asm.modelACA && (
-                  <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '150px auto' : '150px 100px auto', gap: 10, alignItems: 'start' }}>
-                    <div className="form-group">
-                      <label>Annual Premium</label>
-                      <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                        <NumberInput value={asm.acaBenchmarkPremium} digits={0} style={{ paddingLeft: 22 }} onCommit={(v) => setAssumptions({ acaBenchmarkPremium: v })} />
-                      </div>
-                      <div className="helper-text">{asm.acaNoSubsidy ? 'Full cost' : 'SLCSP; subsidy by income'}</div>
-                    </div>
-                    {!asm.acaNoSubsidy && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '150px auto' : '150px 100px auto', gap: 10, alignItems: 'start' }}>
                       <div className="form-group">
-                        <label>Household Size</label>
-                        <NumberInput value={asm.acaHouseholdSize} digits={0} min={1} max={8} onCommit={(v) => setAssumptions({ acaHouseholdSize: Math.round(v) })} />
+                        <label>Annual Premium</label>
+                        <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+                          <NumberInput value={asm.acaBenchmarkPremium} digits={0} style={{ paddingLeft: 22 }} onCommit={(v) => setAssumptions({ acaBenchmarkPremium: v })} />
+                        </div>
+                        <div className="helper-text">{asm.acaNoSubsidy ? 'Full cost' : 'SLCSP; subsidy by income'}</div>
                       </div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', paddingTop: 18 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 400, color: 'var(--text-secondary)', marginBottom: 0, whiteSpace: 'nowrap' }}>
-                        <input type="checkbox" checked={asm.acaNoSubsidy} onChange={(e) => setAssumptions({ acaNoSubsidy: e.target.checked })} style={{ accentColor: 'var(--gold)', width: 13, height: 13 }} />
-                        No subsidy
-                      </label>
+                      {!asm.acaNoSubsidy && (
+                        <div className="form-group">
+                          <label>Household Size</label>
+                          <NumberInput value={asm.acaHouseholdSize} digits={0} min={1} max={8} onCommit={(v) => setAssumptions({ acaHouseholdSize: Math.round(v) })} />
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', paddingTop: 18 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 400, color: 'var(--text-secondary)', marginBottom: 0, whiteSpace: 'nowrap' }}>
+                          <input type="checkbox" checked={asm.acaNoSubsidy} onChange={(e) => setAssumptions({ acaNoSubsidy: e.target.checked })} style={{ accentColor: 'var(--gold)', width: 13, height: 13 }} />
+                          No subsidy
+                        </label>
+                      </div>
                     </div>
-                  </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: B ? '1fr 1fr' : '1fr', gap: 10, marginTop: 6 }}>
+                      <div className="form-group">
+                        <label>{A.name || 'Person A'} ACA start age</label>
+                        <NumberInput
+                          value={asm.acaStartAgeA ?? A.retirementAge}
+                          digits={0} min={40} max={64}
+                          onCommit={(v) => setAssumptions({ acaStartAgeA: Math.round(v) })}
+                        />
+                        <div className="helper-text">Default: retire age ({A.retirementAge})</div>
+                      </div>
+                      {B && (
+                        <div className="form-group">
+                          <label>{B.name || 'Person B'} ACA start age</label>
+                          <NumberInput
+                            value={asm.acaStartAgeB ?? B.retirementAge}
+                            digits={0} min={40} max={64}
+                            onCommit={(v) => setAssumptions({ acaStartAgeB: Math.round(v) })}
+                          />
+                          <div className="helper-text">Default: retire age ({B.retirementAge})</div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -385,10 +469,10 @@ export default function InputsPage() {
                     <option value="Annuity">Annuity</option>
                     <option value="Other">Other</option>
                   </select>
-                  <NumberInput value={s.startAge} digits={0} min={0} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.round(v) })} />
+                  <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.round(v) })} />
                   <NumberInput value={s.stopAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { stopAge: Math.round(v) })} />
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                    <NumberInput value={s.annualAmount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateIncomeStream(s.id, { annualAmount: v })} />
+                    <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateIncomeStream(s.id, { annualAmount: Math.round(v) })} />
                   </div>
                   <GrowthRateInput
                     value={s.growthPct}
@@ -466,10 +550,10 @@ export default function InputsPage() {
                     <option value="A">{nameA}</option>
                     <option value="B">{nameB}</option>
                   </select>
-                  <NumberInput value={s.startAge} digits={0} min={0} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.round(v) })} />
+                  <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.round(v) })} />
                   <NumberInput value={s.stopAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { stopAge: Math.round(v) })} />
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                    <NumberInput value={s.annualAmount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: v })} />
+                    <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: Math.round(v) })} />
                   </div>
                   <GrowthRateInput
                     value={s.inflationPct}
@@ -577,8 +661,64 @@ export default function InputsPage() {
           </div>
         </div>
 
-        {/* ── Section 4: Goals ─────────────────── */}
-        <GoalSelectPanel goal={selectedGoal} onGoalChange={setSelectedGoal} />
+        {/* ── Section 4: Optimization goal & Roth mode ─────────────────── */}
+        <div className="panel" style={{ marginBottom: 20 }}>
+          <div className="panel-header">
+            <div className="panel-title"><div className="panel-title-dot"></div>Optimization Goal</div>
+          </div>
+          <div className="panel-body" style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={inlineLabelStyle}>Goal</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {(Object.keys(USER_GOALS) as UserGoal[]).map((key) => {
+                  const active = key === selectedGoal;
+                  return (
+                    <button key={key} onClick={() => setSelectedGoal(key)} title={USER_GOALS[key].description}
+                      style={inputPillStyle(active)}>
+                      {active && <Chk />}{GOAL_SHORT_LABELS[key]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={inlineLabelStyle}>Roth conversions</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  onClick={() => setConversion({ optimize: true })}
+                  title="The optimizer searches conversion amounts for you"
+                  style={inputPillStyle(conv.optimize === true)}
+                >
+                  {conv.optimize === true && <Chk />}🎯 Optimizer decides
+                </button>
+                <button onClick={() => setConversion({ optimize: false, mode: 'off' })}
+                  style={inputPillStyle(!conv.optimize && conv.mode === 'off')}>
+                  {!conv.optimize && conv.mode === 'off' && <Chk />}None
+                </button>
+                <select
+                  value={!conv.optimize && conv.mode === 'bracket-fill' ? conv.bracketCeiling : ''}
+                  onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setConversion({ optimize: false, mode: 'bracket-fill', bracketCeiling: v }); }}
+                  style={inputSelectPillStyle(!conv.optimize && conv.mode === 'bracket-fill')}
+                  aria-label="Bracket-Fill conversion ceiling"
+                >
+                  <option value="">Bracket-Fill</option>
+                  {convBracketOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+                <button onClick={() => setConversion({ optimize: false, mode: 'auto-window' })}
+                  style={inputPillStyle(!conv.optimize && conv.mode === 'auto-window')}>
+                  {!conv.optimize && conv.mode === 'auto-window' && <Chk />}Fixed Amount
+                </button>
+                <button onClick={() => setConversion({ optimize: false, mode: 'manual' })}
+                  style={inputPillStyle(!conv.optimize && conv.mode === 'manual')}>
+                  {!conv.optimize && conv.mode === 'manual' && <Chk />}Manual
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
 
         {/* ── Build Plan button ─────────────────── */}
         <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>

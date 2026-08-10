@@ -70,8 +70,8 @@ export const usePlanStore = create<PlanState>()(
       updateScenario: (id, patch) => set((st) => ({ scenarios: st.scenarios.map((x) => x.id === id ? { ...x, ...patch } : x) })),
       removeScenario: (id) => set((st) => ({ scenarios: st.scenarios.filter((x) => x.id !== id) })),
       resetScenarios: () => set({ scenarios: defaultScenarios() }),
-      setPersonA: (patch) => set((s) => ({ plan: { ...s.plan, personA: { ...s.plan.personA, ...patch }, ...('retirementAge' in patch ? { basePersonA: undefined, basePersonB: undefined } : {}) } })),
-      setPersonB: (patch) => set((s) => ({ plan: { ...s.plan, personB: s.plan.personB ? { ...s.plan.personB, ...patch } : undefined, ...('retirementAge' in patch ? { basePersonA: undefined, basePersonB: undefined } : {}) } })),
+      setPersonA: (patch) => set((s) => ({ plan: { ...s.plan, personA: { ...s.plan.personA, ...patch } } })),
+      setPersonB: (patch) => set((s) => ({ plan: { ...s.plan, personB: s.plan.personB ? { ...s.plan.personB, ...patch } : undefined } })),
       addPersonB: () => set((s) => ({
         plan: {
           ...s.plan,
@@ -98,12 +98,12 @@ export const usePlanStore = create<PlanState>()(
       addLumpSumEvent: (e) => set((s) => ({ plan: { ...s.plan, lumpSumEvents: [...(s.plan.lumpSumEvents ?? []), e] } })),
       updateLumpSumEvent: (id, patch) => set((s) => ({ plan: { ...s.plan, lumpSumEvents: (s.plan.lumpSumEvents ?? []).map(x => x.id === id ? { ...x, ...patch } : x) } })),
       removeLumpSumEvent: (id) => set((s) => ({ plan: { ...s.plan, lumpSumEvents: (s.plan.lumpSumEvents ?? []).filter(x => x.id !== id) } })),
-      setExpenseStreams: (expenseStreams) => set((s) => ({ plan: { ...s.plan, expenseStreams, baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
-      addExpenseStream: (stream) => set((s) => ({ plan: { ...s.plan, expenseStreams: [...s.plan.expenseStreams, stream], baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
+      setExpenseStreams: (expenseStreams) => set((s) => ({ plan: { ...s.plan, expenseStreams, solvedSpendingMultiplier: undefined } })),
+      addExpenseStream: (stream) => set((s) => ({ plan: { ...s.plan, expenseStreams: [...s.plan.expenseStreams, stream], solvedSpendingMultiplier: undefined } })),
       updateExpenseStream: (id, patch) => set((s) => ({
-        plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.map(x => x.id === id ? { ...x, ...patch } : x), baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined },
+        plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.map(x => x.id === id ? { ...x, ...patch } : x), solvedSpendingMultiplier: undefined },
       })),
-      removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id), baseExpenseStreams: undefined, solvedSpendingMultiplier: undefined } })),
+      removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id), solvedSpendingMultiplier: undefined } })),
       setWithdrawalStrategy: (withdrawalStrategy) => set((s) => ({
         plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined },
       })),
@@ -127,10 +127,18 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 17,
+      version: 19,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v19: add acaStartAgeA / acaStartAgeB (optional; engine falls back to retirement age).
+        // v18: remove base* snapshot fields (optimizer results are now ephemeral in useOptimizerStore).
+        if (fromVersion < 18 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          delete planObj.baseExpenseStreams;
+          delete planObj.basePersonA;
+          delete planObj.basePersonB;
+        }
         // v17: add taxableDivYield and taxableQualifiedPct to assumptions.
         if (fromVersion < 17 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {
           const asm = ps.plan.assumptions as Record<string, unknown>;
@@ -305,15 +313,15 @@ export const usePlanStore = create<PlanState>()(
   )
 );
 
-/** Selector hook — returns a memoized projection result, re-run on every plan change.
+/** Selector hook — returns a projection result, re-run on every plan change.
  *  Engine is fast (~1-5ms per full 75y run), so we just run on every render.
  *
- *  Honors transient what-if overrides from `useWhatIfStore`: when the bar is active
- *  and any override is set, the projection is run against the overlaid plan instead.
+ *  Accepts an optional planOverride (e.g. the pending optimizer plan on the Dashboard).
+ *  When provided, what-if overrides are layered on top of it instead of the stored plan.
  *  The saved plan in usePlanStore is never mutated. */
-export function useProjection(): ProjectionResult {
+export function useProjection(planOverride?: Plan): ProjectionResult {
   const plan = usePlanStore((s) => s.plan);
   const whatIf = useWhatIfStore();
-  const effective = applyWhatIf(plan, whatIf);
+  const effective = applyWhatIf(planOverride ?? plan, whatIf);
   return runProjection(effective);
 }

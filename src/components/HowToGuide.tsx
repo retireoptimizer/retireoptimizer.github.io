@@ -145,6 +145,18 @@ function Tip({ children }: { children: React.ReactNode }) {
   );
 }
 
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: 'rgba(13,100,200,0.06)', border: '1px solid rgba(13,100,200,0.2)',
+      borderRadius: 8, padding: '10px 14px', margin: '12px 0',
+      fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6,
+    }}>
+      <strong style={{ color: 'var(--text-primary)' }}>How this tool is designed: </strong>{children}
+    </div>
+  );
+}
+
 // All FieldTable row strings use double quotes so apostrophes inside them never break parsing.
 function FieldTable({ rows }: { rows: [string, string, string][] }) {
   return (
@@ -277,6 +289,16 @@ function GuideContent() {
 
       {/* ── Section 2: Income & Expenses ─────────────────────── */}
       <H2 id="s2">Income &amp; Expenses</H2>
+      <Note>
+        This tool models your <strong>retirement finances only</strong> — not your situation today.
+        Every income and expense stream you enter should represent amounts that apply{' '}
+        <em>after you retire</em>. Do <strong>not</strong> enter your current salary, current
+        mortgage, or today&apos;s living expenses here. Instead, enter what each item will look
+        like once you stop working: your pension payout, Social Security benefit, post-retirement
+        healthcare costs, and the spending categories that will continue into retirement. Start
+        ages must be at or after your retirement age. The engine begins the projection on your
+        retirement date — anything before that is outside the scope of this tool.
+      </Note>
       <P>
         The second section of the Inputs page. Enter every source of money coming in (income)
         and every category of spending going out (expenses). All amounts are entered in{' '}

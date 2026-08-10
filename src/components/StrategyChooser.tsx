@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { usePlanStore } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
+import { useWhatIfStore } from '../store/useWhatIfStore';
 import { STRATEGIES } from '../engine/strategyPresets';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
 import type { ConversionParams } from '../schemas/plan';
@@ -71,18 +72,26 @@ export default function StrategyChooser() {
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const optimizedPlanKey = useOptimizerStore((s) => s.planKey);
   const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
+  const setOptimizerResult = useOptimizerStore((s) => s.setResult);
+  const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
+  const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
+
+  const resetWhatIf = useWhatIfStore((s) => s.reset);
 
   const [sheetMode, setSheetMode] = useState<null | 'blend' | 'conversion' | 'chart'>(null);
   const [optimizing, setOptimizing] = useState(false);
 
-  const hasCustom = !!plan.customPolicy;
+  // Derive active state from the pending plan (if one exists) or the committed plan store.
+  const effectivePlan = pendingPlan ?? plan;
+  const hasCustom = !!effectivePlan.customPolicy;
   const activeKey = plan.withdrawalStrategy;
-  const activeGoal = plan.optimizedForGoal as UserGoal | undefined;
+  const activeGoal = effectivePlan.optimizedForGoal as UserGoal | undefined;
   const optimizerDriven = hasCustom && activeGoal != null;
   const handEdited = hasCustom && activeGoal == null;
-  // True when plan inputs (income streams, lump sums, portfolio, etc.) changed since last optimizer run.
-  const planInputsChanged = optimizerDriven && optimizedPlanKey != null && planInputKey(plan) !== optimizedPlanKey;
-  const conv = plan.conversion;
+  // True when plan store inputs changed since the optimizer last ran against them.
+  const planInputsChanged = optimizedPlanKey != null && planInputKey(plan) !== optimizedPlanKey;
+  const conv = effectivePlan.conversion;
   const optimizeOn = conv.optimize ?? true;
 
   const [approach, setApproach] = useState<'optimize' | 'manual'>(optimizerDriven ? 'optimize' : 'manual');
@@ -99,9 +108,10 @@ export default function StrategyChooser() {
   // Highlighted goal; null = no explicit selection yet (shows idle pills).
   const [selectedGoal, setSelectedGoal] = useState<UserGoal | null>(activeGoal ?? null);
   const [seenGoal, setSeenGoal] = useState<UserGoal | undefined>(activeGoal);
+  // Sync when the active goal changes externally (e.g. pendingPlan updated by a different code path).
   if (activeGoal !== seenGoal) {
     setSeenGoal(activeGoal);
-    if (activeGoal) setSelectedGoal(activeGoal);
+    setSelectedGoal(activeGoal ?? null);
   }
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
@@ -112,7 +122,7 @@ export default function StrategyChooser() {
     .filter(([top]) => plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
     .map(([top, rate]) => ({ value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})` }));
 
-  const policyHasNumericConv = plan.customPolicy?.windows.some((w) => w.convAmt != null) ?? false;
+  const policyHasNumericConv = effectivePlan.customPolicy?.windows.some((w) => w.convAmt != null) ?? false;
   // Stale if optimize flag flipped vs policy, conv mode drifted since last run, or pending selection exists.
   const convModeDrifted = optimizerDriven && !optimizeOn && (
     conv.mode !== convSnapshot.mode ||
@@ -129,26 +139,37 @@ export default function StrategyChooser() {
     setOptimizing(true);
     try {
       const worker = getEngineWorker();
+      // Plan store is always the clean baseline — no base* restoration needed.
       let planForOptimize = plan;
-      if (plan.baseExpenseStreams) planForOptimize = { ...planForOptimize, expenseStreams: plan.baseExpenseStreams };
-      if (plan.basePersonA) {
-        planForOptimize = { ...planForOptimize, personA: plan.basePersonA };
-        if (plan.basePersonB !== undefined) planForOptimize = { ...planForOptimize, personB: plan.basePersonB };
-      }
       // Bake pending conv selection into the plan before sending to optimizer.
       if (pendingConv) planForOptimize = { ...planForOptimize, conversion: { ...planForOptimize.conversion, ...pendingConv } };
       const goalToUse = (selectedGoal ?? activeGoal ?? 'max-end-balance') as UserGoal;
       const r = await worker.optimize(planForOptimize, goalToUse, { useNelderMead: true, thorough: true });
       const appliedPlan = applyResultToPlan(planForOptimize, r);
-      // Key must come from the applied plan — for min-retirement-age the optimizer mutates
-      // personA.retirementAge, so keying off planForOptimize would cause a mismatch on re-render.
-      setPlanKey(planInputKey(appliedPlan));
+      // planKey fingerprints planForOptimize (what the optimizer actually saw, including any pendingConv).
+      setPlanKey(planInputKey(planForOptimize));
       setTabFreshEntry('none');
-      applyOptimizerResult(appliedPlan);
-      // Commit pending conv to the plan store now that the optimizer ran with it.
+      setOptimizerResult(r);
+      // Commit pending conv mode to the plan store — it's a user preference, not an optimizer output.
       if (pendingConv) { setConversion(pendingConv); setPendingConv(null); }
       const c = planForOptimize.conversion;
       setConvSnapshot({ optimize: c.optimize, mode: c.mode, bracketCeiling: c.bracketCeiling, autoAmount: c.autoAmount, startAge: c.startAge, endAge: c.endAge });
+      // Only show the pending banner when the optimizer mutates input-visible fields.
+      // max-end-balance: only updates customPolicy/optimizedForGoal — safe to auto-apply, no circularity.
+      // max-sustainable-spending / min-retirement-age: scales expenses or changes retirementAge —
+      // user must explicitly Apply so those mutations don't silently corrupt the baseline for other goals.
+      const mutatesInputs = goalToUse === 'max-sustainable-spending' || goalToUse === 'min-retirement-age';
+      if (mutatesInputs) {
+        setPendingPlan(appliedPlan);
+        setPendingGoal(goalToUse);
+      } else {
+        applyOptimizerResult(appliedPlan);
+        setPendingPlan(null);
+        setPendingGoal(null);
+        // Clear any what-if overrides so the dashboard reflects the optimizer's actual inputs,
+        // not stale slider positions from a prior what-if session.
+        resetWhatIf();
+      }
     } catch (err) {
       console.error('[StrategyChooser] Re-optimize failed:', err);
     } finally {
@@ -168,6 +189,10 @@ export default function StrategyChooser() {
 
   const pickWithdrawal = (key: typeof STRATEGIES[number]['key']) => {
     if (hasCustom) clearCustomPolicy();
+    // User is explicitly choosing a manual strategy — discard any pending optimizer result so
+    // effectivePlan (pendingPlan ?? plan) doesn't keep hasCustom = true via pendingPlan.customPolicy.
+    setPendingPlan(null);
+    setPendingGoal(null);
     setTabFreshEntry('none');
     setStrategy(key);
   };
@@ -214,6 +239,9 @@ export default function StrategyChooser() {
         setPendingConv({ optimize: false, mode: m, ...extra });
       } else {
         if (hasCustom) clearCustomPolicy();
+        // Discard pending optimizer result for the same reason as pickWithdrawal.
+        setPendingPlan(null);
+        setPendingGoal(null);
         setTabFreshEntry('none');
         setConversion({ mode: m, ...extra });
       }
@@ -366,6 +394,8 @@ export default function StrategyChooser() {
                           const val = parseInt(e.target.value, 10);
                           if (isNaN(val)) return;
                           if (hasCustom) clearCustomPolicy();
+                          setPendingPlan(null);
+                          setPendingGoal(null);
                           setTabFreshEntry('none');
                           setStrategy('bracketfill');
                           setWithdrawalBracketCeiling(val);

@@ -4,54 +4,19 @@ import BottomTabBar from './BottomTabBar';
 import HowToGuide from './HowToGuide';
 import ReleaseNotes from './ReleaseNotes';
 import { usePlanStore } from '../store/usePlanStore';
-import { useOptimizerStore } from '../store/useOptimizerStore';
 import { downloadPlan, importPlanFromJSON, readFileAsText } from '../storage/exportImport';
-import { planInputKey } from '../engine/planInputKey';
-import { getEngineWorker } from '../engine/workerClient';
-import { applyResultToPlan } from '../engine/applyOptimizerResult';
-import type { UserGoal } from '../engine/recommender';
 
 export default function AppShell() {
   const plan = usePlanStore((s) => s.plan);
-  const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const displayMode = usePlanStore((s) => s.displayMode);
   const setDisplayMode = usePlanStore((s) => s.setDisplayMode);
   const resetPlan = usePlanStore((s) => s.resetPlan);
-  const optimizedPlanKey = useOptimizerStore((s) => s.planKey);
-  const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [releaseOpen, setReleaseOpen] = useState(false);
-  const [reoptimizing, setReoptimizing] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-
-  const optimizerDriven = !!plan.customPolicy && plan.optimizedForGoal != null;
-  const outputTabsGated = optimizerDriven && optimizedPlanKey != null && planInputKey(plan) !== optimizedPlanKey;
-
-  const runOptimizeAndNavigate = async () => {
-    setReoptimizing(true);
-    try {
-      const worker = getEngineWorker();
-      const selectedGoal = (plan.optimizedForGoal as UserGoal) ?? 'max-end-balance';
-      let planForOptimize = plan;
-      if (plan.baseExpenseStreams) planForOptimize = { ...planForOptimize, expenseStreams: plan.baseExpenseStreams };
-      if (plan.basePersonA) {
-        planForOptimize = { ...planForOptimize, personA: plan.basePersonA };
-        if (plan.basePersonB !== undefined) planForOptimize = { ...planForOptimize, personB: plan.basePersonB };
-      }
-      const r = await worker.optimize(planForOptimize, selectedGoal, { useNelderMead: true, thorough: true });
-      setPlanKey(planInputKey(planForOptimize));
-      applyOptimizerResult(applyResultToPlan(planForOptimize, r));
-      navigate('/dashboard');
-    } catch (err) {
-      console.error('[AppShell] Re-optimize failed:', err);
-      showToast('err', 'Optimization failed — try again');
-    } finally {
-      setReoptimizing(false);
-    }
-  };
 
   const showToast = (kind: 'ok' | 'err', text: string) => {
     setToast({ kind, text });
@@ -106,45 +71,16 @@ export default function AppShell() {
           >
             Inputs
           </NavLink>
-          <span className="nav-divider" aria-hidden="true" />
-          {outputTabsGated ? (
-            <>
-              <button
-                onClick={runOptimizeAndNavigate}
-                disabled={reoptimizing}
-                className="atab"
-                style={{
-                  background: reoptimizing ? 'rgba(13,27,46,0.06)' : 'var(--gold)',
-                  color: reoptimizing ? 'var(--text-muted)' : 'var(--navy)',
-                  border: 'none', cursor: reoptimizing ? 'default' : 'pointer',
-                  fontFamily: 'inherit', fontWeight: 700,
-                }}
-              >
-                {reoptimizing ? 'Optimizing…' : '↗ Optimize'}
-              </button>
-              {['Dashboard', 'Projections', 'Taxes & Roth Conversions', 'Monte Carlo'].map((label) => (
-                <span
-                  key={label}
-                  className="atab"
-                  style={{ opacity: 0.3, cursor: 'not-allowed', pointerEvents: 'none' }}
-                  title="Inputs changed — run Optimize first"
-                >
-                  {label}
-                </span>
-              ))}
-            </>
-          ) : (
-            [
-              { to: '/dashboard', label: 'Dashboard' },
-              { to: '/projections', label: 'Projections' },
-              { to: '/taxes', label: 'Taxes & Roth Conversions' },
-              { to: '/montecarlo', label: 'Monte Carlo' },
-            ].map(({ to, label }) => (
-              <NavLink key={to} to={to} className={({ isActive }) => `atab${isActive ? ' active' : ''}`}>
-                {label}
-              </NavLink>
-            ))
-          )}
+          {[
+            { to: '/dashboard', label: 'Dashboard' },
+            { to: '/projections', label: 'Projections' },
+            { to: '/taxes', label: 'Taxes & Roth Conversions' },
+            { to: '/montecarlo', label: 'Monte Carlo' },
+          ].map(({ to, label }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `atab${isActive ? ' active' : ''}`}>
+              {label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="app-right">

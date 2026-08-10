@@ -1,7 +1,15 @@
 import { usePlanStore } from '../store/usePlanStore';
 import { useWhatIfStore } from '../store/useWhatIfStore';
+import { useOptimizerStore } from '../store/useOptimizerStore';
 import type { DeepPartial } from '../engine/scenario';
 import type { Plan } from '../schemas/plan';
+
+function yearsToRetirement(dob: string, retirementAge: number): number {
+  const currentYear = new Date().getFullYear();
+  const birthYear = parseInt(dob.slice(0, 4), 10);
+  const currentAge = currentYear - birthYear;
+  return Math.max(0, retirementAge - currentAge);
+}
 
 /** Ephemeral what-if controls — a single inline bar: 4 sliders + Reset +
  *  Save-as-scenario all on one line. Sliders overlay the saved plan and trigger
@@ -9,23 +17,29 @@ import type { Plan } from '../schemas/plan';
  *  any slider implicitly activates the overlay (see useWhatIfStore.setOverride). */
 export default function WhatIfBar() {
   const plan = usePlanStore((s) => s.plan);
+  const displayMode = usePlanStore((s) => s.displayMode);
+  const real = displayMode === 'real';
   const addScenario = usePlanStore((s) => s.addScenario);
   const active = useWhatIfStore((s) => s.active);
   const overrides = useWhatIfStore((s) => s.overrides);
   const setOverride = useWhatIfStore((s) => s.setOverride);
   const reset = useWhatIfStore((s) => s.reset);
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
 
-  // Live values fall back to the saved plan when not overridden.
-  const retireA = overrides.retirementAgeA ?? plan.personA.retirementAge;
-  const retireB = overrides.retirementAgeB ?? plan.personB?.retirementAge ?? 0;
+  // When a pending optimizer result is active, use it as the baseline for what-if sliders.
+  const effectivePlan = pendingPlan ?? plan;
+
+  // Live values fall back to the effective plan (pending or saved) when not overridden.
+  const retireA = overrides.retirementAgeA ?? effectivePlan.personA.retirementAge;
+  const retireB = overrides.retirementAgeB ?? effectivePlan.personB?.retirementAge ?? 0;
   // Use tradReturn as the representative rate for the single what-if slider.
-  const returnRate = overrides.returnRate ?? plan.assumptions.tradReturn;
-  const inflation = overrides.inflation ?? plan.assumptions.inflation;
-  // Default to solvedSpendingMultiplier so slider reflects the optimizer result (e.g. 133%)
-  // rather than always starting at 100% after a max-spending run.
-  const spendMult = overrides.spendingMultiplier ?? plan.solvedSpendingMultiplier ?? 1;
-  const spendIsOverridden = overrides.spendingMultiplier !== undefined &&
-    (overrides.spendingMultiplier !== 1 || !!plan.baseExpenseStreams);
+  const returnRate = overrides.returnRate ?? effectivePlan.assumptions.tradReturn;
+  const inflation = overrides.inflation ?? effectivePlan.assumptions.inflation;
+  // Spending: show absolute dollars based on the effective plan's expense streams.
+  const baseSum = effectivePlan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
+  const currentSum = baseSum;
+  const spendDollars = overrides.spendingDollars ?? currentSum;
+  const spendIsOverridden = overrides.spendingDollars !== undefined && Math.abs(overrides.spendingDollars - currentSum) > 1;
 
   const dirty = active && (
     overrides.retirementAgeA !== undefined ||
@@ -50,12 +64,11 @@ export default function WhatIfBar() {
         ...(overrides.inflation !== undefined ? { inflation: overrides.inflation } : {}),
       };
     }
-    if (overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1) {
-      // Spending multiplier isn't a single Plan field — snapshot current expenses
-      // with the multiplier baked in. mergeOverrides replaces arrays wholesale.
-      planOverrides.expenseStreams = plan.expenseStreams.map((s) => ({
+    if (overrides.spendingDollars !== undefined && baseSum > 0) {
+      // Bake the dollar override into the snapshot by scaling base expenses proportionally.
+      planOverrides.expenseStreams = effectivePlan.expenseStreams.map((s) => ({
         ...s,
-        annualAmount: s.annualAmount * overrides.spendingMultiplier!,
+        annualAmount: s.annualAmount * overrides.spendingDollars! / baseSum,
       }));
     }
     const labelParts: string[] = [];
@@ -63,7 +76,7 @@ export default function WhatIfBar() {
     if (overrides.retirementAgeB !== undefined && plan.personB) labelParts.push(`${plan.personB.name} retire @${overrides.retirementAgeB}`);
     if (overrides.returnRate !== undefined) labelParts.push(`${(overrides.returnRate * 100).toFixed(1)}% return`);
     if (overrides.inflation !== undefined) labelParts.push(`${(overrides.inflation * 100).toFixed(1)}% infl`);
-    if (overrides.spendingMultiplier !== undefined && overrides.spendingMultiplier !== 1) labelParts.push(`spend ${Math.round(overrides.spendingMultiplier * 100)}%`);
+    if (spendIsOverridden) labelParts.push(`spend $${Math.round(overrides.spendingDollars! / 1000)}K`);
     addScenario({
       id,
       name: labelParts.length > 0 ? `What-if · ${labelParts.join(' · ')}` : 'What-if · ' + new Date().toLocaleString('en-US', { month: 'short', day: 'numeric' }),
@@ -153,16 +166,24 @@ export default function WhatIfBar() {
           onChange={(v) => setOverride('inflation', v / 100)}
           isOverridden={overrides.inflation !== undefined}
         />
-        <Slider
-          label="Spending"
-          value={spendMult * 100}
-          min={50}
-          max={200}
-          step={5}
-          format={(v) => `${v.toFixed(0)}%`}
-          onChange={(v) => setOverride('spendingMultiplier', v / 100)}
-          isOverridden={spendIsOverridden}
-        />
+        {currentSum > 0 && (
+          <Slider
+            label={`Spending${real ? '' : ' (nominal $)'}`}
+            value={spendDollars}
+            min={Math.max(0, Math.round(currentSum * 0.5 / 1000) * 1000)}
+            max={Math.round(currentSum * 2.5 / 1000) * 1000}
+            step={Math.max(1000, Math.round(currentSum / 50 / 1000) * 1000)}
+            format={(v) => {
+              if (real) return `$${Math.round(v / 1000)}K`;
+              const infl = overrides.inflation ?? effectivePlan.assumptions.inflation;
+              const yrs = yearsToRetirement(plan.personA.dob, retireA);
+              const nominal = v * Math.pow(1 + infl, yrs);
+              return `$${Math.round(nominal / 1000)}K`;
+            }}
+            onChange={(v) => setOverride('spendingDollars', v)}
+            isOverridden={spendIsOverridden}
+          />
+        )}
       </div>
     </div>
   );

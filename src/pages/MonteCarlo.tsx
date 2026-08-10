@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import * as Comlink from 'comlink';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
+import { useOptimizerStore } from '../store/useOptimizerStore';
 import type { Plan } from '../schemas/plan';
 import type { MonteCarloResult } from '../engine/monteCarlo';
 import { getEngineWorker } from '../engine/workerClient';
@@ -37,6 +38,7 @@ const bandColor = (t: RiskBand['tone']): string => {
 export default function MonteCarlo() {
   const plan = usePlanStore((s) => s.plan);
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const displayMode = usePlanStore((s) => s.displayMode);
   // Robustness optimization is ephemeral until the user explicitly applies it.
   const [robustnessPlan, setRobustnessPlan] = useState<Plan | null>(null);
@@ -84,13 +86,14 @@ export default function MonteCarlo() {
       const onProgress = Comlink.proxy((frac: number, msg?: string) => {
         setRobustProgress({ frac, msg });
       });
-      const goal = plan.optimizedForGoal ?? 'max-end-balance';
+      const basePlan = pendingPlan ?? plan;
+      const goal = basePlan.optimizedForGoal ?? 'max-end-balance';
       const optResult = await worker.optimize(
-        plan, goal,
+        basePlan, goal,
         { useNelderMead: true, thorough: true, mcAware: true },
         onProgress,
       );
-      const updatedPlan = applyResultToPlan(plan, optResult);
+      const updatedPlan = applyResultToPlan(basePlan, optResult);
       setRobustnessPlan(updatedPlan);
       // Re-run MC with the robustness-optimized policy (ephemeral — not written to plan store).
       const mc = await worker.monteCarlo(updatedPlan, { trials, model: 'historical', equityPct: equityPct / 100 });

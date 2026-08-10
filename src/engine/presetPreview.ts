@@ -1,5 +1,6 @@
 import type { Plan } from '../schemas/plan';
 import { runProjection, depletionAge, type ProjectionResult } from './projection';
+import { householdPlanToAgeA } from './planInputKey';
 
 const PRESETS: Array<Plan['withdrawalStrategy']> = [
   'taxfirst',
@@ -34,7 +35,7 @@ export function previewAllPresets(plan: Plan): PresetPreviewResult {
     out[preset] = {
       endBalance: proj.endTotalReal,
       lifetimeFedTax: proj.lifetimeFedTax,
-      longevityAge: dep ?? plan.personA.planToAge,
+      longevityAge: dep ?? householdPlanToAgeA(plan),
       lasts: dep === null,
     };
   }

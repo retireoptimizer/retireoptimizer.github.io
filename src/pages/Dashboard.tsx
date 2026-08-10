@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
+import { useWhatIfStore } from '../store/useWhatIfStore';
+import { planInputKey } from '../engine/planInputKey';
 import { fmtM, fmtCompactWithSign } from '../lib/format';
 import WhatIfBar from '../components/WhatIfBar';
 import ScenarioCompare from '../components/ScenarioCompare';
@@ -15,19 +17,33 @@ import ChartFrame from '../components/charts/ChartFrame';
 import { compareWithWithoutConversion } from '../engine/comparison';
 import { explainPolicy } from '../engine/explain/optimizerRationale';
 
+const GOAL_LABELS: Record<string, string> = {
+  'max-end-balance': 'Max End Balance',
+  'max-sustainable-spending': 'Max Spending',
+  'min-retirement-age': 'Earliest Retire',
+};
+
 export default function Dashboard() {
   const plan = usePlanStore((s) => s.plan);
-  const proj = useProjection();
+  const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const displayMode = usePlanStore((s) => s.displayMode);
   const real = displayMode === 'real';
   const addScenario = usePlanStore((s) => s.addScenario);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [rationaleOpen, setRationaleOpen] = useState(false);
   const optimizerResult = useOptimizerStore((s) => s.result);
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
+  const pendingGoal = useOptimizerStore((s) => s.pendingGoal);
+  const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
+  const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
+  const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
+  const setResult = useOptimizerStore((s) => s.setResult);
+  const proj = useProjection(pendingPlan ?? undefined);
 
-  const cmp = useMemo(() => compareWithWithoutConversion(plan), [plan]);
-  const rationale = useMemo(() => optimizerResult ? explainPolicy(plan, optimizerResult) : [], [plan, optimizerResult]);
-  const A = plan.personA;
+  const effectivePlan = pendingPlan ?? plan;
+  const cmp = useMemo(() => compareWithWithoutConversion(effectivePlan), [effectivePlan]);
+  const rationale = useMemo(() => optimizerResult ? explainPolicy(effectivePlan, optimizerResult) : [], [effectivePlan, optimizerResult]);
+  const A = effectivePlan.personA;
 
   const cmpEndBalanceDelta = real
     ? cmp.endBalanceDelta
@@ -44,6 +60,10 @@ export default function Dashboard() {
       (cmp.noConv.rows[cmp.noConv.rows.length - 1]?.endRoth ?? 0);
 
   const retireRow = proj.rows.find((r) => r.ageA === A.retirementAge);
+  const firstRetireRow = proj.rows.find((r) => r.phase === 'Retire' || r.phase === 'SemiRetire' || r.phase === 'Survivor');
+  const annualSpend = firstRetireRow
+    ? (real ? firstRetireRow.netSpend / firstRetireRow.inflationFactor : firstRetireRow.netSpend)
+    : 0;
   const wdRate = initialWithdrawalRate(proj);
   const depAge = depletionAge(proj);
   const longevityAge = depAge ?? A.planToAge;
@@ -61,9 +81,59 @@ export default function Dashboard() {
   const [yearIdx, setYearIdx] = useState<number>(defaultYearIdx);
   const yearRow = proj.rows[Math.min(yearIdx, proj.rows.length - 1)] ?? proj.rows[0];
 
+  const resetWhatIf = useWhatIfStore((s) => s.reset);
+
+  const handleApply = () => {
+    if (!pendingPlan) return;
+    applyOptimizerResult(pendingPlan);
+    setPlanKey(planInputKey(pendingPlan));
+    setPendingPlan(null);
+    setPendingGoal(null);
+    resetWhatIf();
+  };
+
+  const handleDiscard = () => {
+    setPendingPlan(null);
+    setPendingGoal(null);
+    setResult(null);
+  };
+
   return (
     <div className="page">
       <div className="page-body">
+
+        {/* ── Pending optimizer result banner ── */}
+        {pendingPlan && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexWrap: 'wrap', gap: 10,
+            background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.35)',
+            borderRadius: 10, padding: '10px 18px', marginBottom: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>⚡</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#7a5c10' }}>
+                {pendingGoal ? GOAL_LABELS[pendingGoal] ?? pendingGoal : 'Optimizer'} result ready
+              </span>
+              <span style={{ fontSize: 12, color: '#9a7830' }}>— not yet saved to your plan</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={handleApply}
+                className="btn btn-gold"
+                style={{ fontSize: 12, padding: '5px 14px' }}
+              >
+                Apply to Plan
+              </button>
+              <button
+                onClick={handleDiscard}
+                style={{ background: 'none', border: 'none', fontSize: 12, color: '#9a7830', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit', padding: 0 }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Plan Summary — compact dark banner ── */}
         <div style={{
@@ -97,15 +167,17 @@ export default function Dashboard() {
 
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 1, flexWrap: 'wrap' }}>
-            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`age ${A.planToAge} · ${real ? "today's $" : 'nominal'}`} />
+            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`age ${A.planToAge} · ${real ? "today's $" : 'nominal $'}`} />
+            <Divider />
+            <HeroStat label="Annual Spending" value={annualSpend > 0 ? fmtM(annualSpend) : '—'} sub={real ? "today's $" : 'nominal $'} />
             <Divider />
             <HeroStat label="Years Funded" value={`${yearsFunded} / ${retirementYears}`} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub="retirement yrs" />
             <Divider />
             <HeroStat label="Initial WR" value={wdRate > 0 ? (wdRate * 100).toFixed(2) + '%' : '—'} sub="year-1 draw" />
             <Divider />
-            <HeroStat label="Lifetime SS" value={fmtM(lifetimeSS)} valueColor="#4ade80" sub={real ? "today's $" : 'nominal'} />
+            <HeroStat label="Lifetime SS" value={fmtM(lifetimeSS)} valueColor="#4ade80" sub={real ? "today's $" : 'nominal $'} />
             <Divider />
-            <HeroStat label="All-in Tax" value={fmtM(lifetimeAllInTax)} valueColor="#f87171" sub={`fed + state + IRMAA + NIIT · ${real ? "today's $" : 'nominal'}`} />
+            <HeroStat label="All-in Tax" value={fmtM(lifetimeAllInTax)} valueColor="#f87171" sub={`fed + state + IRMAA + NIIT · ${real ? "today's $" : 'nominal $'}`} />
             <Divider />
             <HeroStat label="Lifetime IRMAA" value={fmtM(lifetimeIRMAA)} valueColor="#fb923c" sub={real ? "today's $" : 'Medicare surcharge'} />
             <Divider />
@@ -123,7 +195,7 @@ export default function Dashboard() {
                 <BenefitDark label="Lifetime tax" delta={cmpLifetimeTaxDelta} goodWhen="negative" />
                 <BenefitDark label="Lifetime RMDs" delta={cmpLifetimeRMDDelta} goodWhen="negative" />
                 <BenefitDark label="Roth legacy" delta={cmpEndRothDelta} goodWhen="positive" />
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>vs. no conversions ({real ? "today's $" : 'nominal'})</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>vs. no conversions ({real ? "today's $" : 'nominal $'})</span>
               </div>
             ) : (
               <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.38)' }}>
@@ -208,7 +280,7 @@ export default function Dashboard() {
                 Pre-built what-ifs. For free-form exploration, use the What-if bar above.
               </div>
               <div className="template-picker-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {scenarioTemplates(plan).map((t) => (
+                {scenarioTemplates(effectivePlan).map((t) => (
                   <button
                     key={t.id}
                     className="btn btn-outline"

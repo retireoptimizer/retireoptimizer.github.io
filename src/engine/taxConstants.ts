@@ -30,6 +30,14 @@ export const STANDARD_DEDUCTION_SINGLE = 16100;
 export const SENIOR_ADDON_MFJ = 1650; // per qualifying spouse 65+ (2026, inflation-adjusted)
 export const SENIOR_ADDON_SINGLE = 2050;
 
+// Temporary senior bonus deduction (OBBBA, tax years 2025–2028). Thresholds are fixed by law.
+export const SENIOR_BONUS_PER_PERSON = 6_000;
+export const SENIOR_BONUS_FIRST_YEAR = 2025;
+export const SENIOR_BONUS_LAST_YEAR = 2028;
+export const SENIOR_BONUS_PHASEOUT_START_SINGLE = 75_000;
+export const SENIOR_BONUS_PHASEOUT_START_MFJ = 150_000;
+export const SENIOR_BONUS_PHASEOUT_RATE = 0.06;
+
 // LTCG simplified — flat 15% (legacy; replaced by stacked brackets in yearFederalTax).
 export const LTCG_RATE = 0.15;
 

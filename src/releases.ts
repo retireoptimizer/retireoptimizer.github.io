@@ -14,6 +14,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.4.0',
+    date: '2026-08-07',
+    summary: 'Stable max-sustainable-spending results and plan import fixes.',
+    changes: [
+      { kind: 'fix', text: 'Max-sustainable-spending optimizer now produces consistent results across runs. The bisection previously started from 1× current spending and doubled upward, landing in different local optima depending on prior optimizer history. It now starts from an amortization-based seed — the real annual withdrawal that drains the retirement portfolio to zero by plan-to age — which anchors the search in the same neighborhood every time.' },
+      { kind: 'fix', text: 'Importing a plan now correctly resets date-of-birth fields for both spouses. Previously, the DOB inputs retained the prior plan\'s dates because the local input state was not re-synced when the plan store changed.' },
+      { kind: 'fix', text: 'Importing a plan now correctly resets the optimizer goal selection on the Set Goals page. If the imported plan had no prior optimization result, the previously selected goal (max-end-balance, max-sustainable-spending, or min-retirement-age) would remain highlighted instead of clearing.' },
+    ],
+  },
+  {
     version: '1.3.0',
     date: '2026-08-06',
     summary: 'Dividend/interest yield modeling, per-person spousal RMD rollover, and smarter conversion explainer.',

@@ -49,6 +49,11 @@ export const AssumptionsSchema = z.object({
   /** When true, skip APTC calculation and use acaBenchmarkPremium as the full cost paid.
    *  Use for COBRA, employer retiree coverage, or income above subsidy range. */
   acaNoSubsidy: z.boolean().default(false),
+  /** Age at which Person A enters the ACA marketplace. Defaults to their retirement age.
+   *  Set later than retirement age for COBRA or continued spouse/employer coverage. */
+  acaStartAgeA: z.number().int().min(0).max(64).optional(),
+  /** Age at which Person B enters the ACA marketplace. Defaults to their retirement age. */
+  acaStartAgeB: z.number().int().min(0).max(64).optional(),
 });
 export type Assumptions = z.infer<typeof AssumptionsSchema>;
 
@@ -179,14 +184,6 @@ export const PlanSchema = z.object({
   withdrawalBracketCeiling: z.number().nonnegative().default(BRACKET_12_TOP_MFJ),
   customPolicy: BlendPolicySchema.optional(),
   optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
-  /** Snapshot of expenseStreams before any max-sustainable-spending scaling. Used by the
-   *  Dashboard re-optimizer to run max-end-balance / min-retirement-age on the original
-   *  expense level so they produce meaningfully different results from max-sustainable-spending. */
-  baseExpenseStreams: z.array(ExpenseStreamSchema).optional(),
-  /** Snapshot of personA/personB before any min-retirement-age change. Used by the
-   *  Dashboard re-optimizer to restore original configured ages when switching goals. */
-  basePersonA: PersonSchema.optional(),
-  basePersonB: PersonSchema.optional(),
   /** The multiplier solved by the last max-sustainable-spending run (e.g. 1.33 = 133%).
    *  Drives the What-If Bar spending slider default so it reflects the optimized level. */
   solvedSpendingMultiplier: z.number().optional(),

@@ -11,14 +11,14 @@ interface Props {
   real?: boolean;
 }
 
-const TIER_COLORS = [palette.warning, palette.danger, '#7a1d12'];
+const TIER_COLORS = [palette.warning, palette.danger, '#7a1d12', '#4b0082'];
 
 export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props) {
   const rows = proj.rows.filter((r) => r.ageA >= 60);
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
 
-  const tierDatasets = [0, 1, 2].map((i) => ({
+  const tierDatasets = [0, 1, 2, 3].map((i) => ({
     label: `IRMAA Tier ${i + 1}`,
     data: rows.map((r) => {
       const tiers = r.filingStatus === 'MFJ' ? IRMAA_TIERS_MFJ : IRMAA_TIERS_SINGLE;

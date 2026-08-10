@@ -6,11 +6,11 @@ import type { Plan } from '../schemas/plan';
  *  in memory and reset on page reload. The Plan returned by `applyOverrides`
  *  is a shallow-copied projection input. */
 export interface WhatIfOverrides {
-  retirementAgeA?: number;     // overrides plan.personA.retirementAge
-  retirementAgeB?: number;     // overrides plan.personB.retirementAge (ignored if no person B)
-  returnRate?: number;         // overrides all three bucket returns uniformly
-  inflation?: number;          // overrides plan.assumptions.inflation
-  spendingMultiplier?: number; // multiplies every expense stream's annualAmount
+  retirementAgeA?: number;  // overrides plan.personA.retirementAge
+  retirementAgeB?: number;  // overrides plan.personB.retirementAge (ignored if no person B)
+  returnRate?: number;      // overrides all three bucket returns uniformly
+  inflation?: number;       // overrides plan.assumptions.inflation
+  spendingDollars?: number; // target total annual spending in today's dollars
 }
 
 interface WhatIfState {
@@ -38,10 +38,9 @@ export const useWhatIfStore = create<WhatIfState>()((set) => ({
 export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
   if (!w.active) return plan;
   const o = w.overrides;
-  // When baseExpenseStreams exists (max-spending was applied), treat spendingMultiplier=1 as
-  // meaningful (user explicitly wants original-level expenses instead of scaled ones).
-  const hasSpending = o.spendingMultiplier !== undefined &&
-    (o.spendingMultiplier !== 1 || plan.baseExpenseStreams !== undefined);
+  const baseExpenses = plan.expenseStreams;
+  const baseSum = baseExpenses.reduce((s, e) => s + e.annualAmount, 0);
+  const hasSpending = o.spendingDollars !== undefined && baseSum > 0;
   const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.returnRate !== undefined || o.inflation !== undefined || hasSpending;
   if (!hasAny) return plan;
 
@@ -109,15 +108,13 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
     };
   }
   if (hasSpending) {
-    // Apply against original expenses (baseExpenseStreams when available) so the slider
-    // is an absolute multiplier vs the user's configured spending — not double-stacked
-    // on top of a prior max-sustainable-spending scaling.
-    const baseExpenses = plan.baseExpenseStreams ?? next.expenseStreams;
+    // Scale base expenses proportionally so their relative sizes are preserved.
+    // baseSum is always > 0 here (checked above in hasSpending guard).
     next = {
       ...next,
       expenseStreams: baseExpenses.map((s) => ({
         ...s,
-        annualAmount: s.annualAmount * (o.spendingMultiplier ?? 1),
+        annualAmount: s.annualAmount * o.spendingDollars! / baseSum,
       })),
     };
   }
