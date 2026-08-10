@@ -15,12 +15,20 @@ export interface Release {
 export const RELEASES: Release[] = [
   {
     version: '1.4.0',
-    date: '2026-08-07',
-    summary: 'Stable max-sustainable-spending results and plan import fixes.',
+    date: '2026-08-10',
+    summary: 'OBBBA senior deduction, ACA start age, stable max-spending optimizer, Apply-to-Plan flow, and UX cleanup.',
     changes: [
-      { kind: 'fix', text: 'Max-sustainable-spending optimizer now produces consistent results across runs. The bisection previously started from 1× current spending and doubled upward, landing in different local optima depending on prior optimizer history. It now starts from an amortization-based seed — the real annual withdrawal that drains the retirement portfolio to zero by plan-to age — which anchors the search in the same neighborhood every time.' },
-      { kind: 'fix', text: 'Importing a plan now correctly resets date-of-birth fields for both spouses. Previously, the DOB inputs retained the prior plan\'s dates because the local input state was not re-synced when the plan store changed.' },
-      { kind: 'fix', text: 'Importing a plan now correctly resets the optimizer goal selection on the Set Goals page. If the imported plan had no prior optimization result, the previously selected goal (max-end-balance, max-sustainable-spending, or min-retirement-age) would remain highlighted instead of clearing.' },
+      { kind: 'feature', text: 'Senior bonus deduction (OBBBA): the engine now applies the $6,000/person above-the-line deduction for taxpayers 65+ for tax years 2025–2028. Phases out at $0.06 per dollar of MAGI above $75K (Single) / $150K (MFJ). Calculated automatically — no user input required.' },
+      { kind: 'feature', text: 'ACA enrollment start age: when ACA modeling is on, you can now set the age each person enters the marketplace. Useful when a gap period is covered by COBRA or a spouse\'s employer plan before switching to ACA.' },
+      { kind: 'feature', text: 'Apply-to-Plan flow: the optimizer result is now previewed on the Dashboard before being committed. An ⚡ banner shows the result is pending; click Apply to Plan to save it or Discard to abandon it. This lets you compare the projected outcome before overwriting your plan.' },
+      { kind: 'feature', text: 'Annual Spending hero stat added to the Dashboard, showing first-retirement-year net spending in today\'s dollars (or nominal, matching the display mode toggle).' },
+      { kind: 'feature', text: 'Roth conversion mode controls moved inline on the Inputs page alongside the goal selector — no longer buried in a separate panel. Optimizer decides / None / Bracket-Fill / Fixed Amount / Manual are all visible before running.' },
+      { kind: 'fix', text: 'Max-sustainable-spending optimizer now produces consistent results across runs. It seeds from an amortization estimate (the real withdrawal that drains the portfolio to zero by plan-to age), eliminating the run-to-run variance caused by anchoring at 1× current spending.' },
+      { kind: 'fix', text: 'Projection and optimizer windows now extend to whichever spouse lives longer. Previously the window was capped at Person A\'s plan-to age, cutting the projection short for couples where Person B is configured to live longer.' },
+      { kind: 'fix', text: 'Importing a plan now correctly resets DOB fields for both spouses and clears the optimizer goal selection when the imported plan has no prior optimization result.' },
+      { kind: 'fix', text: 'Navigation tabs (Dashboard, Projections, Taxes, Monte Carlo) are now always accessible. The gate that disabled them when inputs changed since the last optimizer run has been removed.' },
+      { kind: 'cosmetic', text: 'What-If spending slider now shows absolute dollar amounts instead of a percentage multiplier. Range auto-scales to ±2.5× current expenses; step size is proportional to spending level.' },
+      { kind: 'cosmetic', text: 'Income and expense start ages are now clamped to the relevant person\'s retirement age, preventing entries that predate retirement.' },
     ],
   },
   {
