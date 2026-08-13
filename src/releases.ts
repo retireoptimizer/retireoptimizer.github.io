@@ -29,6 +29,7 @@ export const RELEASES: Release[] = [
       { kind: 'fix', text: 'The standard deduction shown in the Projections table now includes the senior bonus deduction for taxpayers 65+, matching the actual tax calculation.' },
       { kind: 'fix', text: 'Annual Spending on the Dashboard now shows the correct first year of retirement spending, ignoring any gap years with zero spending before retirement income kicks in.' },
       { kind: 'fix', text: 'Running the optimizer with the Max Sustainable Spending or Min Retirement Age goal now correctly shows the pending Apply-to-Plan banner, consistent with the v1.4.0 behavior for other goals.' },
+      { kind: 'cosmetic', text: 'Projections table has four new tax columns: MAGI, Standard Deduction, Senior Bonus Deduction, and Taxable Income — in that order, showing the full deduction waterfall before tax is calculated.' },
       { kind: 'cosmetic', text: 'Dividend yield can now be entered with two decimal places (e.g. 1.75%) instead of one.' },
       { kind: 'cosmetic', text: 'Monte Carlo trials capped at 10,000. The input now enforces this limit when typing.' },
       { kind: 'cosmetic', text: 'Side panels (How-To Guide, Release Notes, Customize sheet) no longer render behind chart content on desktop.' },
