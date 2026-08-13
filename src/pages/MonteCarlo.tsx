@@ -148,8 +148,8 @@ export default function MonteCarlo() {
                 <input
                   type="number"
                   value={trials}
-                  min={50} max={2000} step={50}
-                  onChange={(e) => setTrials(parseInt(e.target.value, 10) || 500)}
+                  min={50} max={10000} step={50}
+                  onChange={(e) => setTrials(Math.min(10000, parseInt(e.target.value, 10) || 500))}
                   style={{ width: 80 }}
                 />
               </div>
