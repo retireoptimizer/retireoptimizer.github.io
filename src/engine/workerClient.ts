@@ -32,7 +32,7 @@ export function disposeEngineWorker() {
 if (import.meta.hot) {
   import.meta.hot.dispose(() => disposeEngineWorker());
   // Also dispose if either the worker entry or the optimizer module reloads.
-  import.meta.hot.accept(['./worker.ts', './optimizer.ts', './projection.ts'], () => {
+  import.meta.hot.accept(['./worker.ts', './optimizer.ts', './projection.ts', './tax.ts', './taxConstants.ts'], () => {
     disposeEngineWorker();
   });
 }
