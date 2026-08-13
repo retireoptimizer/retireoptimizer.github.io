@@ -5,7 +5,8 @@ import { householdPlanToAgeA } from './planInputKey';
 import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommender';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
 import { mulberry32, historicalBootstrap } from './returnModels';
-import { FED_BRACKETS_MFJ } from './taxConstants';
+import { FED_BRACKETS_MFJ, FPL_BASE, FPL_INCREMENT } from './taxConstants';
+import { shiftRetirementAge } from './retirementAgeShift';
 
 const COARSE_STEPS = [0, 0.25, 0.5, 0.75, 1.0];
 const FINE_STEPS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
@@ -279,6 +280,54 @@ function innerOptimize(
   };
 
   sweep(COARSE_SPLITS, CONV_COARSE, 'forward');
+
+  // ACA cliff anchor: the 400% FPL cliff is a discontinuity — coordinate descent cannot
+  // cross it organically. For each pre-Medicare year where the current best MAGI is above
+  // the cliff, compute the withdrawal split that targets MAGI just below 399% FPL and
+  // evaluate it as a single additional candidate. Accepts only if strictly better.
+  if (plan.assumptions.modelACA && (plan.assumptions.acaBenchmarkPremium ?? 0) > 0 && !plan.assumptions.acaNoSubsidy) {
+    const fpl = FPL_BASE + Math.max(0, plan.assumptions.acaHouseholdSize - 1) * FPL_INCREMENT;
+    for (let yi = 0; yi < bestWindows.length; yi++) {
+      const row = bestProj.rows[yi + retireRowOffset];
+      if (!row || row.acaPremium <= 0) continue;
+
+      const targetMAGI = 3.99 * fpl * row.inflationFactor;
+      if (row.magi <= targetMAGI) continue;  // already in or below the subsidy band
+
+      // Exact withdrawal amounts are on the row — no estimation needed.
+      // Gain fraction: capital-gains portion of taxable withdrawal only (excludes qualified divs).
+      const gainFrac = row.wdTax > 1 ? Math.max(0, Math.min(1, (row.ltcg - row.qualifiedDiv) / row.wdTax)) : 0;
+      // Fixed MAGI: what remains with zero withdrawals and zero conversion (anchor sets convAmt=0).
+      const fixedMAGI = Math.max(0, row.magi - row.wdTrd - row.wdTax * gainFrac - row.rothConv);
+      if (fixedMAGI >= targetMAGI) continue;  // fixed income alone exceeds target; no split can help
+
+      // With pctTaxable=0: only traditional withdrawals add variable MAGI (1:1 with ordIncome).
+      const pctTrad = Math.max(0, Math.min(1, (targetMAGI - fixedMAGI) / Math.max(1, row.totalWD)));
+      const trial = bestWindows.map((w, idx) => {
+        if (idx !== yi) return w;
+        const updated: BlendWindow = {
+          ...w,
+          pctTaxable: 0,
+          pctTraditional: +pctTrad.toFixed(4),
+          pctRoth: +(1 - pctTrad).toFixed(4),
+        };
+        if (optimizeConversions) updated.convAmt = 0;
+        return updated;
+      });
+      const trialPolicy: BlendPolicy = { windows: trial, source: 'optimizer' };
+      const proj = runProjection(plan, { policy: trialPolicy });
+      const score = spec.score(proj);
+      evalCounter.n++;
+      const candidate: InnerEval = { policy: trialPolicy, proj, score, ranOut: proj.ranOut };
+      if (isBetter(candidate, { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut })) {
+        bestWindows = trial;
+        bestPolicy = trialPolicy;
+        bestProj = proj;
+        bestScore = score;
+      }
+    }
+  }
+
   sweep(FINE_SPLITS, CONV_FINE, 'forward');
 
   // screenOnly: stop here — coarse+fine grid is sufficient for basin ranking.
@@ -676,14 +725,7 @@ function scaleExpenses(plan: Plan, s: number): Plan {
 
 /** Set retirement age for personA (and personB if present, capped at their original). */
 function setRetirementAge(plan: Plan, ageA: number): Plan {
-  const deltaA = ageA - plan.personA.retirementAge;
-  return {
-    ...plan,
-    personA: { ...plan.personA, retirementAge: ageA },
-    personB: plan.personB
-      ? { ...plan.personB, retirementAge: Math.max(40, plan.personB.retirementAge + deltaA) }
-      : plan.personB,
-  };
+  return shiftRetirementAge(plan, ageA);
 }
 
 function packageResult(
@@ -747,6 +789,18 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
   if (plan.customPolicy?.windows?.length && plan.customPolicy.goal !== 'max-end-balance') {
     const priorRefined = innerOptimize(plan, opts, evalCounter, outerProgress, plan.customPolicy.windows);
     if (isBetter(priorRefined, best)) best = priorRefined;
+  }
+
+  // Zero-pre-Medicare-conversions competitor: coordinate descent can lock into an isolated
+  // pre-65 conversion (e.g., age 59) that looks locally optimal but is worse than deferring
+  // all conversions to post-Medicare years where ACA constraints are gone. Take the current
+  // best windows, suppress all convAmts before age 65, and fully refine from that basin.
+  if (optimizeConversions) {
+    const noPreMedicareConvSeed = best.policy.windows.map((w) =>
+      w.fromAge < 65 ? { ...w, convAmt: 0 } : w
+    );
+    const noPreMedRefined = innerOptimize(plan, opts, evalCounter, outerProgress, noPreMedicareConvSeed);
+    if (isBetter(noPreMedRefined, best)) best = noPreMedRefined;
   }
 
   return best;
@@ -911,16 +965,35 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       step++;
       const trialPlan = setRetirementAge(plan, age);
       const inner = innerOptimize(trialPlan, opts, evalCounter, undefined, bestFeasible?.inner.policy.windows ?? priorSeedMRA);
-      // Check whether the optimized plan needed trad withdrawals to cover actual spending
-      // before 59 (penalty zone). We exclude years with netSpend=0 so that purely
-      // elective Roth conversions (which create a tax bill funded partly by wdTrd) don't
-      // falsely trip the check — those conversions are penalty-free; only spending draws are not.
-      const needsEarlyTrad = inner.proj.rows.some(r => r.ageA < 59 && r.netSpend > 0 && r.wdTrd > 1);
-      if (!inner.ranOut && !needsEarlyTrad) {
-        bestFeasible = { age, inner };
-      } else {
-        stopReason = inner.ranOut ? 'ran-out' : 'early-trad';
+      if (inner.ranOut) {
+        stopReason = 'ran-out';
         break;
+      }
+      // The unconstrained optimizer may elect traditional withdrawals before 59 for tax
+      // efficiency even when taxable+Roth suffices — the projection doesn't model the 10%
+      // penalty. When that happens, re-verify feasibility with pctTraditional locked to 0
+      // for all pre-59 windows. If the constrained plan still survives, it's a viable age
+      // (the user avoids the penalty by drawing from taxable/Roth first). Only break if
+      // the constrained plan also runs out — meaning trad genuinely cannot be avoided.
+      const needsEarlyTrad = inner.proj.rows.some(r => r.ageA < 59 && r.netSpend > 0 && r.wdTrd > 1);
+      if (needsEarlyTrad) {
+        const clampedPolicy: BlendPolicy = {
+          ...inner.policy,
+          windows: inner.policy.windows.map((w) =>
+            w.fromAge < 59 ? { ...w, pctTraditional: 0, pctRoth: w.pctRoth + w.pctTraditional } : w
+          ),
+        };
+        const clampedProj = runProjection(trialPlan, { policy: clampedPolicy });
+        if (clampedProj.ranOut) {
+          stopReason = 'early-trad';
+          break;
+        }
+        bestFeasible = {
+          age,
+          inner: { policy: clampedPolicy, proj: clampedProj, score: clampedProj.endTotalReal, ranOut: false },
+        };
+      } else {
+        bestFeasible = { age, inner };
       }
     }
     opts.onProgress?.(1, 'Done');

@@ -163,8 +163,8 @@ export default function InputsPage() {
   const addExpenseStream = usePlanStore((s) => s.addExpenseStream);
   const updateExpenseStream = usePlanStore((s) => s.updateExpenseStream);
   const removeExpenseStream = usePlanStore((s) => s.removeExpenseStream);
-  const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const setConversion = usePlanStore((s) => s.setConversion);
+  const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const resetWhatIf = useWhatIfStore((s) => s.reset);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
   const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
@@ -244,11 +244,17 @@ export default function InputsPage() {
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
       const result = await worker.optimize(plan, selectedGoal, { useNelderMead: true, thorough: true }, onProgress);
       const appliedPlan = applyResultToPlan(plan, result);
-      applyOptimizerResult(appliedPlan);
+      const mutatesInputs = selectedGoal === 'max-sustainable-spending' || selectedGoal === 'min-retirement-age';
       setOptimizerResult(result);
-      setPlanKey(planInputKey(plan));
-      setPendingPlan(null);
-      setPendingGoal(null);
+      setPlanKey(planInputKey(mutatesInputs ? plan : appliedPlan));
+      if (mutatesInputs) {
+        setPendingPlan(appliedPlan);
+        setPendingGoal(selectedGoal);
+      } else {
+        applyOptimizerResult(appliedPlan);
+        setPendingPlan(null);
+        setPendingGoal(null);
+      }
       resetWhatIf();
       window.scrollTo(0, 0);
       navigate('/dashboard');
@@ -602,7 +608,7 @@ export default function InputsPage() {
                         <NumberInput
                           value={asm.taxableDivYield ?? 0}
                           scale={100}
-                          digits={1}
+                          digits={2}
                           onCommit={(v) => setAssumptions({ taxableDivYield: Math.min(Math.max(v, 0), asm.taxableReturn) })}
                         />
                         <span className="input-suffix">%</span>

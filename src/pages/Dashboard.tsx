@@ -60,7 +60,7 @@ export default function Dashboard() {
       (cmp.noConv.rows[cmp.noConv.rows.length - 1]?.endRoth ?? 0);
 
   const retireRow = proj.rows.find((r) => r.ageA === A.retirementAge);
-  const firstRetireRow = proj.rows.find((r) => r.phase === 'Retire' || r.phase === 'SemiRetire' || r.phase === 'Survivor');
+  const firstRetireRow = proj.rows.find((r) => (r.phase === 'Retire' || r.phase === 'SemiRetire' || r.phase === 'Survivor') && r.netSpend > 0);
   const annualSpend = firstRetireRow
     ? (real ? firstRetireRow.netSpend / firstRetireRow.inflationFactor : firstRetireRow.netSpend)
     : 0;

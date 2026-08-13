@@ -193,10 +193,11 @@ describe('conversion.optimize gate', () => {
     expect(proj.lifetimeConversion).toBeGreaterThan(0);
     for (const r of proj.rows) {
       if (r.ageA < startAge || r.ageA > endAge) continue;
-      // rothConv (nominal) / inflationFactor is today's-$ conversion; must not exceed the ceiling.
+      // Taxable ordinary income (after std deduction, in today's $) must not exceed the bracket ceiling.
+      const taxableOrdReal = (r.ordIncome - r.stdDeduction) / r.inflationFactor;
       expect(
-        r.rothConv / r.inflationFactor,
-        `year ${r.year} ageA=${r.ageA}: conv $${(r.rothConv / r.inflationFactor).toFixed(0)} exceeds ceiling $${bracketCeiling}`
+        taxableOrdReal,
+        `year ${r.year} ageA=${r.ageA}: taxable ord income $${taxableOrdReal.toFixed(0)} exceeds ceiling $${bracketCeiling}`
       ).toBeLessThanOrEqual(bracketCeiling + 1);
     }
   });
@@ -225,7 +226,8 @@ describe('conversion.optimize gate', () => {
     const { startAge, endAge, bracketCeiling } = plan.conversion;
     for (const row of r.projection.rows) {
       if (row.ageA < startAge || row.ageA > endAge) continue;
-      expect(row.rothConv / row.inflationFactor).toBeLessThanOrEqual(bracketCeiling + 1);
+      const taxableOrdReal = (row.ordIncome - row.stdDeduction) / row.inflationFactor;
+      expect(taxableOrdReal).toBeLessThanOrEqual(bracketCeiling + 1);
     }
     // Withdrawals still optimized: end balance beats the all-taxable, mode-driven baseline.
     const baseline = runProjection(plan); // no policy → all-taxable withdrawals + same mode conversions

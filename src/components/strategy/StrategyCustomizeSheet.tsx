@@ -32,7 +32,7 @@ export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: 
         position: 'fixed',
         inset: 0,
         background: 'rgba(13,27,46,0.45)',
-        zIndex: isMobile ? 160 : 100,
+        zIndex: isMobile ? 160 : 200,
         display: 'flex',
         justifyContent: isMobile ? undefined : 'flex-end',
         alignItems: isMobile ? 'flex-end' : undefined,

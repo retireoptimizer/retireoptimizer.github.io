@@ -8,6 +8,7 @@ import { runProjection, type ProjectionResult } from '../engine/projection';
 import type { Scenario } from '../engine/scenario';
 import { defaultScenarios } from '../engine/scenario';
 import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
+import { useOptimizerStore } from './useOptimizerStore';
 import { disposeEngineWorker } from '../engine/workerClient';
 
 export type DisplayMode = 'real' | 'nominal';
@@ -51,6 +52,7 @@ interface PlanState {
   setWithdrawalBracketCeiling: (v: number) => void;
   setState: (state: string) => void;
   setCustomStateTaxRate: (rate: number) => void;
+  setPayTaxFromBrokerage: (v: boolean) => void;
   addGoal: (g: Goal) => void;
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   removeGoal: (id: string) => void;
@@ -120,6 +122,7 @@ export const usePlanStore = create<PlanState>()(
       })),
       setState: (state) => set((s) => ({ plan: { ...s.plan, state } })),
       setCustomStateTaxRate: (rate) => set((s) => ({ plan: { ...s.plan, customStateTaxRate: rate } })),
+      setPayTaxFromBrokerage: (v) => set((s) => ({ plan: { ...s.plan, payTaxFromBrokerage: v } })),
       addGoal: (g) => set((s) => ({ plan: { ...s.plan, goals: [...(s.plan.goals ?? []), g] } })),
       updateGoal: (id, patch) => set((s) => ({ plan: { ...s.plan, goals: (s.plan.goals ?? []).map((x) => x.id === id ? { ...x, ...patch } : x) } })),
       removeGoal: (id) => set((s) => ({ plan: { ...s.plan, goals: (s.plan.goals ?? []).filter((x) => x.id !== id) } })),
@@ -127,10 +130,15 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 19,
+      version: 20,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v20: add payTaxFromBrokerage (default false — preserves existing behavior).
+        if (fromVersion < 20 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          if (!('payTaxFromBrokerage' in planObj)) planObj.payTaxFromBrokerage = false;
+        }
         // v19: add acaStartAgeA / acaStartAgeB (optional; engine falls back to retirement age).
         // v18: remove base* snapshot fields (optimizer results are now ephemeral in useOptimizerStore).
         if (fromVersion < 18 && ps.plan && typeof ps.plan === 'object') {
@@ -321,7 +329,10 @@ export const usePlanStore = create<PlanState>()(
  *  The saved plan in usePlanStore is never mutated. */
 export function useProjection(planOverride?: Plan): ProjectionResult {
   const plan = usePlanStore((s) => s.plan);
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const whatIf = useWhatIfStore();
-  const effective = applyWhatIf(planOverride ?? plan, whatIf);
+  // When the optimizer has a pending result (not yet applied), use it as the base so all
+  // projection views reflect the optimizer's recommended plan without requiring Apply first.
+  const effective = applyWhatIf(planOverride ?? pendingPlan ?? plan, whatIf);
   return runProjection(effective);
 }

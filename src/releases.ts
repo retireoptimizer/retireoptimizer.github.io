@@ -14,6 +14,28 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.5.0',
+    date: '2026-08-13',
+    summary: 'Pay taxes from brokerage, ACA cliff optimizer, smarter retirement-age shift, Projections table overhaul, and accuracy fixes.',
+    changes: [
+      { kind: 'feature', text: 'Pay IRA withdrawal taxes from brokerage: new option on the Strategy page lets you source federal/state taxes from the taxable (brokerage) account first, rather than bundling them with spending in the withdrawal strategy. Degrades gracefully when brokerage is depleted.' },
+      { kind: 'feature', text: 'ACA cliff-anchor step added to the optimizer: for each pre-Medicare year where projected MAGI is above the 400% FPL subsidy cliff, the optimizer now explicitly evaluates a withdrawal split targeting MAGI just below 399% FPL. This captures subsidy-preserving strategies that coordinate descent could miss.' },
+      { kind: 'feature', text: 'Zero pre-Medicare conversions competitor: the optimizer now always evaluates a basin where all Roth conversions before age 65 are suppressed, then fully refines it. Prevents locking into an isolated pre-65 conversion that looks locally optimal but is worse than deferring to post-Medicare years.' },
+      { kind: 'feature', text: 'Retirement-age shift now moves pinned expense-stream start ages: when the optimizer or what-if slider adjusts retirement age, expense streams whose start age was set to the old retirement age are automatically moved to the new one. All three code paths (optimizer trial loop, Apply-to-Plan, what-if slider) now use the same canonical shiftRetirementAge function.' },
+      { kind: 'feature', text: 'Projections table redesigned: columns reorganized into Income, Withdrawals, Spending, Taxes, and Balances groups with distinct color bands. Sticky column headers now stay visible while scrolling horizontally and vertically. Qualified and ordinary dividend columns added.' },
+      { kind: 'feature', text: 'Monte Carlo and historical sweep now respect What-If Bar overrides (retirement age, return rate, inflation, spending). Previously Monte Carlo always ran against the saved plan ignoring live slider adjustments.' },
+      { kind: 'fix', text: 'Min-retirement-age optimizer no longer rejects early retirement solely because the unconstrained optimizer elected pre-59 traditional withdrawals for tax efficiency. It now re-verifies feasibility with pre-59 traditional locked to zero; only stops if the constrained plan also runs out.' },
+      { kind: 'fix', text: 'Bracket-fill Roth conversion headroom now correctly allows negative ordinary income minus standard deduction to propagate (removed inner Math.max guard). This was under-converting when base income was below the standard deduction.' },
+      { kind: 'fix', text: 'De-minimis traditional withdrawal artifact (<$100) from the safety-valve last-resort funding path is now zeroed out when the active blend window has pctTraditional=0. Prevents spurious "early traditional withdrawal" flags in the optimizer.' },
+      { kind: 'fix', text: 'Standard deduction shown in Projections table now includes the senior bonus deduction ($6,000/person 65+), matching the tax calculation.' },
+      { kind: 'fix', text: 'Dashboard Annual Spending stat now skips rows where netSpend=0, so it correctly reflects the first year with actual spending rather than an intermediate phase.' },
+      { kind: 'fix', text: 'Apply-to-Plan flow: max-sustainable-spending and min-retirement-age goals now correctly show the pending banner after optimization, consistent with the behavior introduced in v1.4.0.' },
+      { kind: 'fix', text: 'Dividend yield input now accepts two decimal places instead of one.' },
+      { kind: 'cosmetic', text: 'Modal z-index raised to 200 on desktop for HowToGuide, ReleaseNotes, and Customize sheet — prevents content from rendering behind charts.' },
+      { kind: 'cosmetic', text: 'NumberInput decimal-place guard: typing beyond the configured digit limit is now blocked at the input level instead of silently rounding.' },
+    ],
+  },
+  {
     version: '1.4.0',
     date: '2026-08-10',
     summary: 'OBBBA senior deduction, ACA start age, stable max-spending optimizer, Apply-to-Plan flow, and UX cleanup.',

@@ -148,6 +148,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           optimize: s.convOptimize,
         },
         state: s.state,
+        payTaxFromBrokerage: false,
         goals: [],
       };
     });

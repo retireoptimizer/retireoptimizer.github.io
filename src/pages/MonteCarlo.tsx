@@ -2,6 +2,7 @@ import { useState } from 'react';
 import * as Comlink from 'comlink';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
+import { useWhatIfStore, applyWhatIf } from '../store/useWhatIfStore';
 import type { Plan } from '../schemas/plan';
 import type { MonteCarloResult } from '../engine/monteCarlo';
 import { getEngineWorker } from '../engine/workerClient';
@@ -37,6 +38,8 @@ const bandColor = (t: RiskBand['tone']): string => {
 
 export default function MonteCarlo() {
   const plan = usePlanStore((s) => s.plan);
+  const whatIf = useWhatIfStore();
+  const effectivePlan = applyWhatIf(plan, whatIf);
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const displayMode = usePlanStore((s) => s.displayMode);
@@ -60,7 +63,7 @@ export default function MonteCarlo() {
     setRunning(true);
     try {
       const worker = getEngineWorker();
-      const mc = await worker.monteCarlo(robustnessPlan ?? plan, { trials, model: 'historical', equityPct: equityPct / 100 });
+      const mc = await worker.monteCarlo(robustnessPlan ?? effectivePlan, { trials, model: 'historical', equityPct: equityPct / 100 });
       setResult(mc);
     } finally {
       setRunning(false);
@@ -71,7 +74,7 @@ export default function MonteCarlo() {
     setRunningHistorical(true);
     try {
       const worker = getEngineWorker();
-      const sweep = await worker.historicalSweep(robustnessPlan ?? plan, { equityPct: equityPct / 100 });
+      const sweep = await worker.historicalSweep(robustnessPlan ?? effectivePlan, { equityPct: equityPct / 100 });
       setHistoricalResult(sweep);
     } finally {
       setRunningHistorical(false);

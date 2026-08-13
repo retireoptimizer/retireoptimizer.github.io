@@ -41,8 +41,10 @@ export interface ProjectionRow {
   // Tax / conversions
   rmd: number;
   rothConv: number;
-  ordIncome: number;       // taxable ordinary income (after std deduction)
+  ordIncome: number;       // taxable ordinary income (pre-deduction gross)
   ltcg: number;
+  ordinaryDiv: number;     // ordinary (non-qualified) dividends from taxable account
+  qualifiedDiv: number;    // qualified dividends from taxable account (subset of ltcg)
   fedTax: number;
   stateTaxAmt: number;
   irmaa: number;
@@ -412,17 +414,21 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
     for (let iter = 0; iter < 16; iter++) {
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other/inherited-dist cash.
-      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + prevTax + stateAmt + prevIRMAA + prevNIIT + prevACA);
+      const taxBurden = prevTax + stateAmt + prevIRMAA + prevNIIT + prevACA;
+      // When payTaxFromBrokerage is on, pull the tax portion from brokerage first so the
+      // withdrawal strategy only needs to cover spending. Falls back to normal when brokerage is depleted.
+      const taxFromBrok = (plan.payTaxFromBrokerage ?? false) ? Math.min(taxBurden, taxAvail) : 0;
+      gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + taxBurden - taxFromBrok);
       const w = activePolicy
-        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail })
+        ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail - taxFromBrok, traditional: tradAvail, roth: rothAvail })
         : applyWithdrawalOrder({
             strategy: plan.withdrawalStrategy,
-            gap, taxable: taxAvail, traditional: tradAvail, roth: rothAvail,
+            gap, taxable: taxAvail - taxFromBrok, traditional: tradAvail, roth: rothAvail,
             rmd: rmdAmt, baseOrdinaryIncome: baseOrdIncForWd,
             bracketCeiling: effectiveBracketCeiling(plan.withdrawalBracketCeiling, filingStatus),
             stdD, inflationFactor,
           });
-      wdTax = w.wdTax; wdTrd = w.wdTrd; wdRth = w.wdRth;
+      wdTax = w.wdTax + taxFromBrok; wdTrd = w.wdTrd; wdRth = w.wdRth;
 
       const ltcg = wdTax * gainFraction + qualifiedDiv;
       // SS taxability via IRC §86 provisional-income tiers (replaces flat 0.85).
@@ -482,6 +488,15 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       prevNIIT = niit;
       prevStateAmt = stateAmt;
       prevACA = acaPremiumYear;
+    }
+
+    // Clamp de-minimis traditional spill: when the active blend window sets pctTraditional=0,
+    // a tiny wdTrd is a floating-point artifact from the safety-valve (last-resort funding when
+    // preferred sources are depleted near end-of-plan). Apply after the gross-up loop so tax
+    // convergence is unaffected; only the output values and balance update are cleaned up.
+    if (activePolicy) {
+      const bw = findWindow(activePolicy, ageA);
+      if (bw && bw.pctTraditional === 0 && wdTrd < 100) wdTrd = 0;
     }
 
     // Update balances. Withdrawals were sized to cover all cash needs.
@@ -650,12 +665,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       rothConv: conv,
       ordIncome: ordIncomeFinal,
       ltcg: ltcgFinal,
+      ordinaryDiv,
+      qualifiedDiv,
       fedTax,
       stateTaxAmt: stateAmt,
       irmaa,
       niit,
       effRate,
-      stdDeduction: stdD,
+      stdDeduction: stdD + seniorBonus,
       magi: ordIncomeFinal + ltcgFinal,
       acaPremium: acaPremiumYear,
       lumpSumInjectTaxable, lumpSumInjectTrad, lumpSumInjectRoth,

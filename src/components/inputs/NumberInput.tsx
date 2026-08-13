@@ -49,6 +49,10 @@ export function NumberInput({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     const stripped = useCommas ? stripCommas(raw) : raw;
+    if (digits != null) {
+      const dotIdx = stripped.indexOf('.');
+      if (dotIdx !== -1 && stripped.length - dotIdx - 1 > digits) return;
+    }
     setDraft(useCommas ? formatWithCommas(stripped) : raw);
     if (stripped === '' || stripped === '-' || stripped === '.' || stripped === '-.') return;
     const parsed = parseFloat(stripped);

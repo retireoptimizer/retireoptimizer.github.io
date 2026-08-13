@@ -29,6 +29,7 @@ export function planInputKey(plan: Plan): string {
     withdrawalStrategy: plan.withdrawalStrategy,
     withdrawalBracketCeiling: plan.withdrawalBracketCeiling,
     conversion: plan.conversion,
+    payTaxFromBrokerage: plan.payTaxFromBrokerage,
     state: plan.state,
   });
 }

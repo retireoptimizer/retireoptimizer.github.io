@@ -1,6 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import type { OptimizeResult } from './optimizer';
 import { householdPlanToAgeA } from './planInputKey';
+import { shiftRetirementAge } from './retirementAgeShift';
 
 /** Pure function that returns the plan as it would be after the optimizer runs.
  *  The caller is responsible for deciding whether to commit this to the plan store
@@ -47,19 +48,13 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
     };
   }
 
-  // min-retirement-age: shift personA to the solved age and shift personB by the same delta.
+  // min-retirement-age: shift retirement ages and expense startAges tied to the old retire age.
   if (
     result.goal === 'min-retirement-age' &&
     typeof result.solvedRetirementAge === 'number' &&
     result.solvedRetirementAge !== plan.personA.retirementAge
   ) {
-    const targetA = result.solvedRetirementAge;
-    const deltaA = targetA - plan.personA.retirementAge;
-    next = { ...next, personA: { ...next.personA, retirementAge: targetA } };
-    if (next.personB) {
-      const targetB = Math.max(40, next.personB.retirementAge + deltaA);
-      next = { ...next, personB: { ...next.personB, retirementAge: targetB } };
-    }
+    next = shiftRetirementAge(next, result.solvedRetirementAge);
   }
 
   return next;

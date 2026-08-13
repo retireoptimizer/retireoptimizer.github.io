@@ -188,6 +188,10 @@ export const PlanSchema = z.object({
    *  Drives the What-If Bar spending slider default so it reflects the optimized level. */
   solvedSpendingMultiplier: z.number().optional(),
   conversion: ConversionParamsSchema,
+  /** When true, taxes arising from IRA withdrawals are sourced from the brokerage (taxable)
+   *  account first, rather than being bundled with spending in the withdrawal strategy.
+   *  Degrades gracefully to default behavior when brokerage is depleted. */
+  payTaxFromBrokerage: z.boolean().default(false),
   state: z.string().default('IL'),
   customStateTaxRate: z.number().min(0).max(0.5).optional(),
   goals: z.array(GoalSchema).default([]),
@@ -249,6 +253,7 @@ export const defaultPlan = (): Plan => ({
     manualSchedule: {},
     optimize: true,
   },
+  payTaxFromBrokerage: false,
   state: 'NONE',
   goals: [],
 });
@@ -326,6 +331,7 @@ export const samplePlan = (): Plan => ({
     manualSchedule: {},
     optimize: true,
   },
+  payTaxFromBrokerage: false,
   state: 'IL',
   goals: [],
 });

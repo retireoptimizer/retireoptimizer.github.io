@@ -30,7 +30,7 @@ export function rothConversion(inp: ConversionInputs): number {
 
   if (params.mode === 'bracket-fill') {
     const ceiling = params.bracketCeiling * inflationFactor;
-    const headroom = Math.max(0, ceiling - Math.max(0, baseOrdinaryIncome - stdDeduction));
+    const headroom = Math.max(0, ceiling - (baseOrdinaryIncome - stdDeduction));
     return Math.min(traditionalBalance, headroom);
   }
 

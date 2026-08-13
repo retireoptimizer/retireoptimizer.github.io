@@ -69,6 +69,7 @@ export default function StrategyChooser() {
   const setWithdrawalBracketCeiling = usePlanStore((s) => s.setWithdrawalBracketCeiling);
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
   const setConversion = usePlanStore((s) => s.setConversion);
+  const setPayTaxFromBrokerage = usePlanStore((s) => s.setPayTaxFromBrokerage);
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const optimizedPlanKey = useOptimizerStore((s) => s.planKey);
   const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
@@ -102,6 +103,8 @@ export default function StrategyChooser() {
   }));
   // Pending conv selection in "Optimize for me" tab — not written to plan store until re-optimize runs.
   const [pendingConv, setPendingConv] = useState<Partial<ConversionParams> | null>(null);
+  // Pending payTaxFromBrokerage in "Optimize for me" tab — staged until re-optimize runs.
+  const [pendingPayTaxFromBrok, setPendingPayTaxFromBrok] = useState<boolean | null>(null);
   // When a tab is just entered via switchApproach, all pills show idle until user explicitly clicks one.
   const [tabFreshEntry, setTabFreshEntry] = useState<'none' | 'optimize' | 'manual'>('none');
 
@@ -133,7 +136,8 @@ export default function StrategyChooser() {
   );
   const convStale = optimizerDriven && (optimizeOn !== policyHasNumericConv || convModeDrifted || pendingConv !== null);
   const goalChanged = selectedGoal !== null && selectedGoal !== activeGoal;
-  const canReOptimize = !optimizing && tabFreshEntry !== 'optimize' && (goalChanged || convStale || !hasCustom || planInputsChanged);
+  const payTaxPending = pendingPayTaxFromBrok !== null;
+  const canReOptimize = !optimizing && tabFreshEntry !== 'optimize' && (goalChanged || convStale || payTaxPending || !hasCustom || planInputsChanged);
 
   const runReOptimize = async () => {
     setOptimizing(true);
@@ -143,6 +147,7 @@ export default function StrategyChooser() {
       let planForOptimize = plan;
       // Bake pending conv selection into the plan before sending to optimizer.
       if (pendingConv) planForOptimize = { ...planForOptimize, conversion: { ...planForOptimize.conversion, ...pendingConv } };
+      if (pendingPayTaxFromBrok !== null) planForOptimize = { ...planForOptimize, payTaxFromBrokerage: pendingPayTaxFromBrok };
       const goalToUse = (selectedGoal ?? activeGoal ?? 'max-end-balance') as UserGoal;
       const r = await worker.optimize(planForOptimize, goalToUse, { useNelderMead: true, thorough: true });
       const appliedPlan = applyResultToPlan(planForOptimize, r);
@@ -150,8 +155,9 @@ export default function StrategyChooser() {
       setPlanKey(planInputKey(planForOptimize));
       setTabFreshEntry('none');
       setOptimizerResult(r);
-      // Commit pending conv mode to the plan store — it's a user preference, not an optimizer output.
+      // Commit pending selections to the plan store — they're user preferences, not optimizer outputs.
       if (pendingConv) { setConversion(pendingConv); setPendingConv(null); }
+      if (pendingPayTaxFromBrok !== null) { setPayTaxFromBrokerage(pendingPayTaxFromBrok); setPendingPayTaxFromBrok(null); }
       const c = planForOptimize.conversion;
       setConvSnapshot({ optimize: c.optimize, mode: c.mode, bracketCeiling: c.bracketCeiling, autoAmount: c.autoAmount, startAge: c.startAge, endAge: c.endAge });
       // Only show the pending banner when the optimizer mutates input-visible fields.
@@ -179,6 +185,7 @@ export default function StrategyChooser() {
 
   const switchApproach = (next: 'optimize' | 'manual') => {
     if (pendingConv) setPendingConv(null);
+    if (pendingPayTaxFromBrok !== null) setPendingPayTaxFromBrok(null);
     // Preserve goal selection when returning to an active optimizer result; clear it otherwise.
     if (!hasCustom) setSelectedGoal(null);
     // Force idle on manual only when coming from an active optimizer result (hasCustom).
@@ -430,6 +437,37 @@ export default function StrategyChooser() {
               <div>{conversionRow('manual')}</div>
               <div />
             </>)}
+
+            {/* Tax sourcing row — shared across both tabs, always at the bottom */}
+            {(() => {
+              const isOptimizeTab = approach === 'optimize';
+              const checked = isOptimizeTab && pendingPayTaxFromBrok !== null
+                ? pendingPayTaxFromBrok
+                : (plan.payTaxFromBrokerage ?? false);
+              const isPending = isOptimizeTab && pendingPayTaxFromBrok !== null;
+              return (<>
+                <div style={{ ...inlineLabelStyle, borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 2 }}>Tax payments</div>
+                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 2 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, color: isPending ? 'var(--warning)' : 'var(--text-primary)', fontWeight: isPending ? 600 : 400, userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (isOptimizeTab) {
+                          setPendingPayTaxFromBrok(e.target.checked);
+                        } else {
+                          setPayTaxFromBrokerage(e.target.checked);
+                        }
+                      }}
+                      style={{ accentColor: 'var(--gold)', width: 13, height: 13 }}
+                    />
+                    Pay IRA withdrawal taxes from brokerage
+                    {isPending && <span style={{ fontSize: 10, fontWeight: 600 }}> · takes effect on re-optimize</span>}
+                  </label>
+                </div>
+                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 2 }} />
+              </>);
+            })()}
 
           </div>
         </div>
