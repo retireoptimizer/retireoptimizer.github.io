@@ -284,6 +284,7 @@ function GuideContent() {
       <FieldTable rows={[
         ["Annual Premium", "The full benchmark premium (called SLCSP) for your area, before any subsidies. Find this at healthcare.gov by entering your zip code and household size.", "$18,000/yr"],
         ["Household Size", "Number of people on your ACA plan. Larger households qualify for bigger subsidies.", "2"],
+        ["ACA Start Age", "The age at which each person enters the marketplace. Default is your retirement age. Set this later if the gap years are covered by COBRA or a spouse's employer plan.", "63"],
         ["No subsidy (COBRA)", "Check this if your income will be too high for subsidies, or if you will use COBRA. The full premium is counted as an expense.", "—"],
       ]} />
 
@@ -587,6 +588,7 @@ function GuideContent() {
       </P>
       <FieldTable rows={[
         ["End Balance", "What your portfolio is worth at your Plan-To Age. Green means it is positive and the plan is fully funded; yellow means it ran out before that age.", "$820K"],
+        ["Annual Spending", "Your first full year of retirement spending in today's dollars (or nominal, matching the display mode toggle). A quick sanity check that the plan is funding the lifestyle you entered.", "$85K"],
         ["Years Funded", "Out of your total planned retirement years, how many are fully covered. 30/30 means fully funded; 25/30 means the plan runs short 5 years before the end.", "28/30"],
         ["Initial WR", "Your first-year withdrawal divided by your portfolio at retirement. The widely-cited guideline is 4% or below. Above 5% is a flag worth examining.", "3.8%"],
         ["Lifetime SS", "The total Social Security income you will receive over your entire retirement.", "$640K"],
@@ -638,6 +640,13 @@ function GuideContent() {
         the conversion pills while a selection is pending.
       </P>
       <P>
+        When the optimizer finishes, the result appears as a <strong>preview</strong> — an ⚡ banner
+        at the top of the Dashboard shows the pending result. You can review the projected outcome
+        before committing: click <strong>Apply to Plan</strong> to save the new strategy, or{' '}
+        <strong>Discard</strong> to return to your previous plan. This gives you a chance to compare
+        Dashboard numbers before overwriting anything.
+      </P>
+      <P>
         The <strong>📊 Conversions vs RMDs</strong> link opens a chart showing voluntary Roth
         conversions (above zero) versus forced RMDs (below zero) by age — useful for seeing when
         and by how much conversions move the needle.
@@ -664,6 +673,7 @@ function GuideContent() {
           </ul>
         </li>
         <li><strong>Roth conversions · instant</strong> — four pills (None, Bracket-Fill, Fixed Amount, Manual) switch the active conversion mode immediately. Bracket-Fill and Fixed Amount show an "Edit details →" link to configure the window and amount; Manual opens a per-year schedule editor.</li>
+        <li><strong>Pay taxes from brokerage</strong> — a toggle that directs the engine to cover your annual tax bill from your taxable account first, before touching your IRA or Roth balances. Useful when you want to preserve tax-deferred or tax-free growth as long as possible, or when you need to manage your taxable income precisely without being forced to withdraw extra from pre-tax accounts to cover the tax on the withdrawal itself.</li>
       </ul>
       <Tip>
         <strong>Switching to any named preset replaces the optimizer&apos;s custom policy.</strong>{' '}
@@ -735,6 +745,11 @@ function GuideContent() {
         clear the overrides and return to your actual saved numbers.
       </P>
       <P>
+        What-If Bar settings carry through to the Monte Carlo and Historical Sequences pages.
+        When you run a simulation with the bar active, the simulation uses your slider values —
+        not your saved plan — so stress-test scenarios run consistently across all pages.
+      </P>
+      <P>
         Click <strong>Save as scenario</strong> to pin the current what-if as a named comparison
         row in the Pinned Comparisons panel below the charts. You can save multiple scenarios
         and compare them side by side.
@@ -786,11 +801,17 @@ function GuideContent() {
         toward zero before your Plan-To Age, the plan is underfunded and needs adjustments.
       </P>
 
-      <H3>Column visibility and CSV export</H3>
+      <H3>Column groups and visibility</H3>
       <P>
-        The table shows a curated set of columns by default. The toolbar above the table tells
-        you how many columns are visible and how many are available — click to toggle additional
-        columns like RMDs, IRMAA, ACA premiums, and more.
+        Table columns are organized into five color-coded groups: <strong>Income</strong>,{' '}
+        <strong>Withdrawals</strong>, <strong>Spending</strong>, <strong>Taxes</strong>, and{' '}
+        <strong>Balances</strong>. Column headers stay pinned as you scroll in any direction, so
+        you always know which group you are in.
+      </P>
+      <P>
+        The toolbar above the table tells you how many columns are visible and how many are
+        available — click to toggle additional columns. The tax group includes detailed deduction
+        columns you can show for deeper analysis.
       </P>
       <P>
         Click <strong>Download CSV</strong> to export the full projection to a spreadsheet. The
@@ -805,6 +826,19 @@ function GuideContent() {
         ["Roth Conversions", "Amount voluntarily moved from pre-tax to Roth this year. Head to Tax Planning to see whether the conversions are saving money overall.", "$40,000"],
         ["Effective Rate", "Federal tax as a percentage of income. A slowly rising rate is healthy. A sudden spike — usually in your mid-70s — signals RMDs forcing income into a higher bracket.", "14%"],
       ]} />
+      <H3>Tax deduction waterfall columns (optional)</H3>
+      <P>
+        Four optional columns in the Taxes group show the full deduction waterfall before federal tax is calculated. Enable them from the column visibility toolbar:
+      </P>
+      <FieldTable rows={[
+        ["MAGI", "Modified Adjusted Gross Income — the income total before any deductions are applied. This is the number used to determine ACA subsidy eligibility, IRMAA surcharge tiers, and the senior bonus phaseout.", "$195,000"],
+        ["Std Deduct", "The base standard deduction (including the 65+ senior add-on if applicable), not counting the OBBBA senior bonus. This portion is inflation-indexed.", "$30,000"],
+        ["Senior Bonus", "The temporary $6,000/person OBBBA above-the-line deduction for taxpayers 65 and older (tax years 2025–2028). Phases out as MAGI rises above $75K (Single) or $150K (MFJ). Shows $0 once the plan year is outside 2025–2028 or MAGI exceeds the phaseout ceiling.", "$12,000"],
+        ["Taxable Inc", "Ordinary income after all deductions: MAGI minus standard deduction minus senior bonus. The federal tax brackets are applied to this number.", "$153,000"],
+      ]} />
+      <Tip>
+        All four columns display in the same dollars mode as the rest of the table (Today&apos;s $ or Nominal $). Because the standard deduction and IRMAA thresholds are set in nominal law, switch to <strong>Nominal $</strong> view when verifying those numbers against IRS tables.
+      </Tip>
 
       {/* ── Section 7: Tax Planning ──────────────────────────── */}
       <H2 id="s7">Tax Planning Page</H2>
@@ -936,9 +970,15 @@ function GuideContent() {
       </P>
 
       <H3>Simulation settings</H3>
+      <P>
+        If the What-If Bar is active when you click <strong>▶ Run Simulation</strong>, the
+        simulation uses those slider values — not your saved plan. This lets you stress-test
+        "what if I retire 2 years later?" or "what if returns are 4%?" without needing to
+        change your inputs.
+      </P>
       <FieldTable rows={[
         ["Equity Allocation %", "The stock/bond split applied inside each simulated year. Match this to your actual portfolio allocation. More stocks means more upside and more risk in bad years.", "60%"],
-        ["Number of Trials", "How many simulated futures to run. 500 is fast and accurate enough for planning decisions. 1,000–2,000 gives smoother bands at the cost of a longer wait.", "500"],
+        ["Number of Trials", "How many simulated futures to run. 500 is fast and accurate enough for planning decisions. 2,000–5,000 gives smoother percentile bands at the cost of a longer wait. Maximum is 10,000.", "500"],
       ]} />
 
       <H3>How to read the success rate</H3>
