@@ -75,6 +75,7 @@ const COLUMNS: Column[] = [
   // Taxes — inputs first (what creates the liability), then outputs (what you pay)
   { key: 'ordIncome',    label: 'Ord Income',  group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.ordIncome,                              bg: BG.taxes },
   { key: 'ltcg',         label: 'LTCG',        group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.ltcg,                                   bg: BG.taxes },
+  { key: 'magi',         label: 'MAGI',        group: 'taxes', essential: false, fmt: 'money', get: (r) => r.magi,                                   bg: BG.taxes },
   { key: 'taxableIncome',label: 'Taxable Inc', group: 'taxes', essential: false, fmt: 'money', get: (r) => Math.max(0, r.magi - r.stdDeduction),     bg: BG.taxes },
   { key: 'stdDeduction', label: 'Std Deduct',  group: 'taxes', essential: false, fmt: 'money', get: (r) => r.stdDeduction - r.seniorBonus,             bg: BG.taxes },
   { key: 'seniorBonus',  label: 'Senior Bonus',group: 'taxes', essential: false, fmt: 'money', get: (r) => r.seniorBonus,                              bg: BG.taxes },
