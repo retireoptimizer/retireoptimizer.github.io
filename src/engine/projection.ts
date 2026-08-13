@@ -595,6 +595,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Correct ordIncome/tax/state for cases where actual != estimate (e.g. tradfirst zeroed supplement).
     if (lumpSumOrdIncome !== lumpSumOrdIncomeEst || lumpSumTaxFreeCash !== lumpSumTaxFreeEst) {
       const ordIncomeActual = ordIncomeFinal - lumpSumOrdIncomeEst + lumpSumOrdIncome;
+      seniorBonus = seniorBonusDeduction(filingStatus, filerAge, ageB, ordIncomeActual + ltcgFinal, calYear);
       const tCorrected = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeActual, ltcgIncome: ltcgFinal, standardDeduction: stdD + seniorBonus });
       fedTax = tCorrected.fedTax;
       ordIncomeFinal = ordIncomeActual;

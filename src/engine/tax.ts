@@ -65,8 +65,10 @@ export function seniorBonusDeduction(
   const eligible = (ageA >= 65 ? 1 : 0) + (ageB !== undefined && ageB >= 65 ? 1 : 0);
   if (eligible === 0) return 0;
   const threshold = filingStatus === 'MFJ' ? SENIOR_BONUS_PHASEOUT_START_MFJ : SENIOR_BONUS_PHASEOUT_START_SINGLE;
-  const reduction = Math.max(0, magi - threshold) * SENIOR_BONUS_PHASEOUT_RATE;
-  return Math.max(0, eligible * SENIOR_BONUS_PER_PERSON - reduction);
+  const combinedBase = eligible * SENIOR_BONUS_PER_PERSON;
+  const combinedRate = eligible * SENIOR_BONUS_PHASEOUT_RATE;
+  const reduction = Math.max(0, magi - threshold) * combinedRate;
+  return Math.max(0, combinedBase - reduction);
 }
 
 /**
