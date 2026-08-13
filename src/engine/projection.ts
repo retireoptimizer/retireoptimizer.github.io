@@ -50,7 +50,8 @@ export interface ProjectionRow {
   irmaa: number;
   niit: number;
   effRate: number;
-  stdDeduction: number;
+  stdDeduction: number;  // base standard deduction + senior bonus combined
+  seniorBonus: number;   // senior bonus deduction portion only ($6k/person 65+, OBBBA)
   magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; used for IRMAA/ACA)
   acaPremium: number;    // net ACA premium after APTC (0 when modelACA=false or post-Medicare)
   // One-time events & surplus
@@ -673,6 +674,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       niit,
       effRate,
       stdDeduction: stdD + seniorBonus,
+      seniorBonus,
       magi: ordIncomeFinal + ltcgFinal,
       acaPremium: acaPremiumYear,
       lumpSumInjectTaxable, lumpSumInjectTrad, lumpSumInjectRoth,
