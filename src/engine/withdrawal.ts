@@ -17,12 +17,14 @@ export interface WithdrawalOutputs {
   wdTax: number;
   wdTrd: number;
   wdRth: number;
+  bracketOverridden?: boolean;
 }
 
 export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
   const { strategy, taxable, traditional, roth, baseOrdinaryIncome, bracketCeiling, stdD, inflationFactor } = inp;
   let rem = Math.max(0, inp.gap);
   let wdTax = 0, wdTrd = 0, wdRth = 0;
+  let bracketOverridden = false;
 
   const preset = PRESETS[strategy];
 
@@ -49,7 +51,12 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
     wdTrd = Math.min(traditional, Math.min(roomInBracket, rem));
     rem -= wdTrd;
     if (roth > 0 && rem > 0) { wdRth = Math.min(roth, rem); rem -= wdRth; }
-    if (taxable > 0 && rem > 0) { wdTax = Math.min(taxable, rem); }
+    if (taxable > 0 && rem > 0) { wdTax = Math.min(taxable, rem); rem -= wdTax; }
+    // Last resort: override bracket ceiling when taxable + roth cannot cover spending
+    if (rem > 1 && traditional - wdTrd > 1) {
+      wdTrd += Math.min(traditional - wdTrd, rem);
+      bracketOverridden = true;
+    }
   } else {
     const order = preset.order!;
     for (const src of order) {
@@ -60,7 +67,7 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
     }
   }
 
-  return { wdTax, wdTrd, wdRth };
+  return { wdTax, wdTrd, wdRth, bracketOverridden };
 }
 
 /**

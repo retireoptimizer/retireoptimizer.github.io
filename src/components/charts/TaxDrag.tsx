@@ -39,6 +39,18 @@ export default function TaxDrag({ proj, real = true, height = 220 }: Props) {
         yAxisID: 'y1',
         fill: false,
       },
+      {
+        type: 'line' as const,
+        label: 'Marginal Rate',
+        data: rows.map((r) => +(r.marginalRate * 100).toFixed(1)),
+        borderColor: palette.incomeOther,
+        backgroundColor: palette.incomeOther,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0,
+        yAxisID: 'y1',
+        fill: false,
+      },
     ],
   };
 

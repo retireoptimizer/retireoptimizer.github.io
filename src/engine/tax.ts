@@ -140,6 +140,7 @@ export interface YearTaxOutputs {
   fedTax: number;
   taxableOrdinary: number;       // after std deduction
   effRate: number;               // fedTax / (ordinaryIncome + ltcgIncome)
+  marginalRate: number;          // top bracket rate that applies to last dollar of taxable ordinary income
 }
 
 /** Compute year's federal tax given final income components (no iteration). */
@@ -149,9 +150,18 @@ export function yearFederalTax(inp: YearTaxInputs): YearTaxOutputs {
   const ltcgTax = stackedLtcgTax(Math.max(0, inp.ltcgIncome), taxableOrdinary, inp.filingStatus, inp.inflationFactor);
   const fedTax = ordTax + ltcgTax;
   const totalIncome = inp.ordinaryIncome + inp.ltcgIncome;
+  let marginalRate = 0;
+  if (taxableOrdinary > 0) {
+    const brackets = inp.filingStatus === 'MFJ' ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
+    for (const [top, rate] of brackets) {
+      const cap = top === Infinity ? Infinity : top * inp.inflationFactor;
+      if (taxableOrdinary <= cap) { marginalRate = rate; break; }
+    }
+  }
   return {
     fedTax,
     taxableOrdinary,
     effRate: totalIncome > 0 ? fedTax / totalIncome : 0,
+    marginalRate,
   };
 }

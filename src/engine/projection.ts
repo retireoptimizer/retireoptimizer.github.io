@@ -12,7 +12,7 @@ import type { BlendPolicy } from './blendPolicy';
 import { findWindow } from './blendPolicy';
 import { annualIRMAACost } from './irmaa';
 import { annualNIIT } from './niit';
-import { stateTax } from './stateTax';
+import { stateTax, STATE_PROFILES } from './stateTax';
 import { acaNetPremium } from './aca';
 
 export interface ProjectionRow {
@@ -50,6 +50,8 @@ export interface ProjectionRow {
   irmaa: number;
   niit: number;
   effRate: number;
+  marginalRate: number;         // top federal bracket rate on last dollar of taxable ordinary income
+  stateMarginalRate: number;    // flat state rate when taxable state income > 0, else 0
   stdDeduction: number;  // base standard deduction + senior bonus combined
   seniorBonus: number;   // senior bonus deduction portion only ($6k/person 65+, OBBBA)
   magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; used for IRMAA/ACA)
@@ -85,6 +87,7 @@ export interface ProjectionResult {
   endTotalReal: number;
   yearsCovered: number;
   ranOut: boolean;          // true if portfolio hit zero before plan-to age
+  overrideEvents: { age: number; reason: string }[];  // bracket-fill ceiling overrides
 }
 
 const ageAt = (dob: string, planStartYear: number): number => {
@@ -224,6 +227,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   // Running inflation factor — compounded from per-year CPI overrides when provided,
   // otherwise from the plan's fixed inflation rate. Year 0 is always 1 (base year).
   let runningInflationFactor = 1;
+  const overrideEvents: { age: number; reason: string }[] = [];
 
   for (let i = 0; i < maxYears; i++) {
     const ageA = startAgeA + i;
@@ -399,9 +403,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
     // are accounted for as resources. Conversion CREATES tax; loop sizes withdrawals to cover it.
     let prevTax = 0, prevIRMAA = 0, prevNIIT = 0, prevStateAmt = 0, prevACA = 0;
-    let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0;
+    let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0, marginalRate = 0;
     let irmaa = 0, niit = 0, acaPremiumYear = 0;
     let gap = 0;
+    let overrideFiredThisYear = false;
 
     const numAt65Plus = (aliveA && ageA >= 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= 65 ? 1 : 0);
     // State tax — depends on state profile.
@@ -430,6 +435,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
             stdD, inflationFactor,
           });
       wdTax = w.wdTax + taxFromBrok; wdTrd = w.wdTrd; wdRth = w.wdRth;
+      if (w.bracketOverridden) overrideFiredThisYear = true;
 
       const ltcg = wdTax * gainFraction + qualifiedDiv;
       // SS taxability via IRC §86 provisional-income tiers (replaces flat 0.85).
@@ -447,7 +453,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         ltcgIncome: ltcg,
         standardDeduction: stdD + seniorBonus,
       });
-      fedTax = t.fedTax; ordIncomeFinal = ordIncome; ltcgFinal = ltcg; effRate = t.effRate;
+      fedTax = t.fedTax; ordIncomeFinal = ordIncome; ltcgFinal = ltcg; effRate = t.effRate; marginalRate = t.marginalRate;
       // IRMAA 2-year lookback: year i's surcharge is based on MAGI from year i-2.
       // For the first two years, fall back to the current year's MAGI.
       const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
@@ -489,6 +495,17 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       prevNIIT = niit;
       prevStateAmt = stateAmt;
       prevACA = acaPremiumYear;
+    }
+
+    // Collect bracket-fill ceiling override events (once per age, retirement phase only).
+    if (overrideFiredThisYear && !activePolicy && retired &&
+        !overrideEvents.some(e => e.age === ageA)) {
+      const ceiling = effectiveBracketCeiling(plan.withdrawalBracketCeiling, filingStatus);
+      const ceilingFmt = `$${Math.round(ceiling).toLocaleString()}`;
+      overrideEvents.push({
+        age: ageA,
+        reason: `Bracket-fill ceiling (${ceilingFmt}) overridden — spending required traditional draws beyond the ceiling`,
+      });
     }
 
     // Clamp de-minimis traditional spill: when the active blend window sets pctTraditional=0,
@@ -600,6 +617,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       fedTax = tCorrected.fedTax;
       ordIncomeFinal = ordIncomeActual;
       effRate = tCorrected.effRate;
+      marginalRate = tCorrected.marginalRate;
       stateAmt = stateTax(
         plan.state,
         other.nonExempt + ltcgFinal + lumpSumHSAIncome,
@@ -650,6 +668,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Advance the running inflation factor for the next year.
     runningInflationFactor *= (1 + (opts?.inflationOverrides?.[i] ?? plan.assumptions.inflation));
 
+    const stateProfile = STATE_PROFILES[plan.state];
+    const flatStateRate = plan.state === 'CUSTOM' ? (plan.customStateTaxRate ?? 0) : (stateProfile?.effectiveRate ?? 0);
+    const stateMarginalRate = stateAmt > 0 ? flatStateRate : 0;
+
     rows.push({
       year: i + 1,
       ageA, ageB,
@@ -674,6 +696,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       irmaa,
       niit,
       effRate,
+      marginalRate,
+      stateMarginalRate,
       stdDeduction: stdD + seniorBonus,
       seniorBonus,
       magi: ordIncomeFinal + ltcgFinal,
@@ -705,6 +729,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     endTotalReal,
     yearsCovered: rows.length,
     ranOut,
+    overrideEvents,
   };
 }
 

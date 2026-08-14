@@ -754,14 +754,22 @@ function packageResult(
 }
 
 // ─── MULTI-START INNER (max-end-balance) ──────────────────────────────────────
-// Screens 3 diverse constant seeds (taxable-first, traditional-first, roth-first) with a
-// cheap coarse+fine pass, fully refines the top-2, then compares against a direct full
-// refinement of any prior cross-goal customPolicy. Evaluation counter is shared.
+// Screens 3 diverse constant seeds (taxable-first, traditional-first, roth-first) with a cheap
+// coarse+fine pass, fully refines the top-2, then runs several post-refinement competitors.
 //
-// customPolicy is NOT screened: screening runs coordinate descent from the seed and can
-// wander into a different basin, destroying the previously-found feasible solution.
-// A proven policy (e.g. from max-sustainable-spending) goes straight to full refinement
-// so the coordinate descent refines *within* that basin rather than escaping it.
+// Post-refinement competitors (same pattern as customPolicy — direct full refinement, no
+// screening, so coordinate descent refines *within* an existing basin):
+//   1. Prior cross-goal customPolicy (if present) — avoids feedback-loop drift on same goal.
+//   2. Bracketfill preset with no conversions — catches plans where bracket-filling traditional
+//      in early low-income years beats conversion-heavy strategies globally. Only triggered when
+//      the bracketfill preset (one cheap projection) already outscores the multi-start best;
+//      otherwise the 3-seed screening already found the right basin and adding this would be
+//      wasted compute. Critical for plans like: large traditional ($1.2M+), modest fixed income
+//      ($20K pension), RMD age 75 (born 1960+). For such plans the optimizer without this
+//      check finds a local optimum with massive Roth conversions (~$80K/yr) that destroys $1M+
+//      of wealth vs the bracketfill+no-conversion optimum.
+//   3. Zero-pre-Medicare conversions — catches plans where coordinate descent locks into a
+//      pre-65 conversion island that is worse than deferring all conversions post-Medicare.
 function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: number }, outerProgress?: () => void): InnerEval {
   const retireAge = plan.personA.retirementAge;
   const planToAge = householdPlanToAgeA(plan);
@@ -773,7 +781,7 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
     buildConstantSeed(retireAge, planToAge, { tax: 0, trad: 0, roth: 1 }, optimizeConversions), // roth-first
   ];
 
-  // Screen constant seeds with coarse+fine only, refine top-2.
+  // Screen 3 constant seeds with coarse+fine only, fully refine top-2.
   const screened = constantSeeds.map((seed) =>
     innerOptimize(plan, opts, evalCounter, outerProgress, seed, true)
   );
@@ -781,20 +789,42 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
   const refined = screened.slice(0, 2).map((s) =>
     innerOptimize(plan, opts, evalCounter, outerProgress, s.policy.windows)
   );
-  let best = isBetter(refined[0], refined[1]) ? refined[0] : refined[1];
+  let best = refined.reduce((a, b) => isBetter(a, b) ? a : b);
 
-  // If the plan has a proven policy from a DIFFERENT goal, fully refine from it directly
-  // (no screening — screening corrupts a refined policy by escaping its basin).
-  // Same-goal customPolicy is excluded to avoid feedback-loop drift on repeated runs.
+  // Competitor 1: prior cross-goal customPolicy.
   if (plan.customPolicy?.windows?.length && plan.customPolicy.goal !== 'max-end-balance') {
     const priorRefined = innerOptimize(plan, opts, evalCounter, outerProgress, plan.customPolicy.windows);
     if (isBetter(priorRefined, best)) best = priorRefined;
   }
 
-  // Zero-pre-Medicare-conversions competitor: coordinate descent can lock into an isolated
-  // pre-65 conversion (e.g., age 59) that looks locally optimal but is worse than deferring
-  // all conversions to post-Medicare years where ACA constraints are gone. Take the current
-  // best windows, suppress all convAmts before age 65, and fully refine from that basin.
+  // Competitor 2: bracketfill preset with no conversions.
+  // One cheap projection establishes whether the bracketfill basin is globally better than the
+  // multi-start result. Full refinement only fires when it is — no overhead for typical plans.
+  if (optimizeConversions) {
+    const bfCheckPlan: Plan = {
+      ...plan,
+      withdrawalStrategy: 'bracketfill',
+      customPolicy: undefined,
+      conversion: { ...plan.conversion, mode: 'off', optimize: false },
+    };
+    const bfCheckProj = runProjection(bfCheckPlan);
+    if (!bfCheckProj.ranOut && bfCheckProj.endTotalReal > best.score) {
+      const bfSeed: BlendWindow[] = [];
+      for (let age = retireAge; age <= planToAge; age++) {
+        const row = bfCheckProj.rows.find((r) => r.ageA === age);
+        const total = row ? row.wdTrd + row.wdRth + row.wdTax : 0;
+        bfSeed.push(
+          !row || total < 1
+            ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: 0 }
+            : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt: 0 }
+        );
+      }
+      const bfRefined = innerOptimize(plan, opts, evalCounter, outerProgress, bfSeed);
+      if (isBetter(bfRefined, best)) best = bfRefined;
+    }
+  }
+
+  // Competitor 3: zero-pre-Medicare conversions.
   if (optimizeConversions) {
     const noPreMedicareConvSeed = best.policy.windows.map((w) =>
       w.fromAge < 65 ? { ...w, convAmt: 0 } : w
@@ -804,6 +834,95 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
   }
 
   return best;
+}
+
+// ─── OPTIMALITY GAP MEASUREMENT ───────────────────────────────────────────────
+
+export interface OptimizerRunResult {
+  label: string;
+  score: number;
+  evaluations: number;
+  ranOut: boolean;
+}
+
+export interface OptimalityGapResult {
+  runs: OptimizerRunResult[];
+  /** Best end-balance (endTotalReal) among non-depleting runs. */
+  bestScore: number;
+  /** Worst end-balance among non-depleting runs. */
+  worstScore: number;
+  /** (best − worst) / |best| × 100. How far the weakest start is from the best. */
+  spreadPct: number;
+  /** Count of seeds that depleted the portfolio before Plan-To Age. */
+  depletedCount: number;
+}
+
+/**
+ * Measures how consistent the inner optimizer is across diverse starting seeds.
+ * Runs a full innerOptimize (coarse + fine + smoothing; NM if opts.useNelderMead) from
+ * 7 constant starting policies covering every corner and edge midpoint of the allocation
+ * simplex. The spread in final scores quantifies local-optima exposure.
+ *
+ * Small spreadPct (< 2%): landscape is smooth, optimizer is reliable.
+ * Medium (2–10%):         multiple basins exist; starting point sometimes matters.
+ * Large (> 10%):          significant local-optima problem; results vary by run.
+ */
+export function measureOptimalityGap(
+  plan: Plan,
+  opts: Pick<OptimizeOptions, 'useNelderMead' | 'thorough' | 'mcAware'> = {},
+): OptimalityGapResult {
+  const retireAge = plan.personA.retirementAge;
+  const planToAge = householdPlanToAgeA(plan);
+  const optimizeConversions = plan.conversion.optimize ?? true;
+
+  const SPLIT_CONFIGS: Array<{ label: string; tax: number; trad: number; roth: number }> = [
+    { label: 'taxable-first',   tax: 1,    trad: 0,    roth: 0    },
+    { label: 'trad-first',      tax: 0,    trad: 1,    roth: 0    },
+    { label: 'roth-first',      tax: 0,    trad: 0,    roth: 1    },
+    { label: 'balanced',        tax: 1/3,  trad: 1/3,  roth: 1/3  },
+    { label: 'tax+trad',        tax: 0.5,  trad: 0.5,  roth: 0    },
+    { label: 'tax+roth',        tax: 0.5,  trad: 0,    roth: 0.5  },
+    { label: 'trad+roth',       tax: 0,    trad: 0.5,  roth: 0.5  },
+  ];
+
+  // Two conversion starting levels: zero (all seeds start with no conversions) and a
+  // substantial non-zero amount (BRACKET_12_TOP ≈ $100K/yr). This probes both sides of
+  // any conversion-amount local optimum — a critical dimension the withdrawal-split seeds
+  // alone miss entirely. The per-year cap inside innerOptimize clamps this to tradBalance,
+  // so it is safe to pass the same ceiling regardless of plan size.
+  const CONV_STARTS = optimizeConversions ? [0, BRACKET_12_TOP] : [0];
+
+  const runs: OptimizerRunResult[] = [];
+  for (const initConv of CONV_STARTS) {
+    for (const { label, tax, trad, roth } of SPLIT_CONFIGS) {
+      const seedWindows: BlendWindow[] = [];
+      for (let age = retireAge; age <= planToAge; age++) {
+        seedWindows.push({
+          fromAge: age, toAge: age,
+          pctTaxable: tax, pctTraditional: trad, pctRoth: roth,
+          convAmt: optimizeConversions ? initConv : undefined,
+        });
+      }
+      const counter = { n: 0 };
+      const result = innerOptimize(plan, opts as OptimizeOptions, counter, undefined, seedWindows, false);
+      const convLabel = initConv === 0 ? 'no-conv' : 'hi-conv';
+      runs.push({ label: `${label} (${convLabel})`, score: result.score, evaluations: counter.n, ranOut: result.ranOut });
+    }
+  }
+
+  const nonDepleted = runs.filter((r) => !r.ranOut);
+  if (nonDepleted.length === 0) {
+    return { runs, bestScore: 0, worstScore: 0, spreadPct: 0, depletedCount: runs.length };
+  }
+
+  const scores = nonDepleted.map((r) => r.score);
+  const bestScore = Math.max(...scores);
+  const worstScore = Math.min(...scores);
+  const spreadPct = Math.abs(bestScore) > 1
+    ? Math.abs(bestScore - worstScore) / Math.abs(bestScore) * 100
+    : 0;
+
+  return { runs, bestScore, worstScore, spreadPct, depletedCount: runs.length - nonDepleted.length };
 }
 
 export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptions = {}): OptimizeResult {

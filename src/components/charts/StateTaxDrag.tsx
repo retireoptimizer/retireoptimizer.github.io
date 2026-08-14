@@ -42,6 +42,18 @@ export default function StateTaxDrag({ proj, real = true, height = 220 }: Props)
         yAxisID: 'y1',
         fill: false,
       },
+      {
+        type: 'line' as const,
+        label: 'Marginal State Rate',
+        data: rows.map((r) => +(r.stateMarginalRate * 100).toFixed(2)),
+        borderColor: palette.incomeOther,
+        backgroundColor: palette.incomeOther,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0,
+        yAxisID: 'y1',
+        fill: false,
+      },
     ],
   };
 

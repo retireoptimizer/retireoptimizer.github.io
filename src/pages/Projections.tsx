@@ -224,6 +224,24 @@ export default function Projections() {
       <div className="page-body">
         <WhatIfBar />
 
+        {proj.overrideEvents.length > 0 && (() => {
+          const first = proj.overrideEvents[0];
+          const last = proj.overrideEvents[proj.overrideEvents.length - 1];
+          const ageRange = first.age === last.age ? `age ${first.age}` : `ages ${first.age}–${last.age}`;
+          return (
+            <div style={{
+              background: '#fff8e1', border: '1px solid #f59e0b', borderRadius: 6,
+              padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#78350f',
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 16, lineHeight: '18px' }}>⚠</span>
+              <div>
+                <strong>Bracket-fill ceiling overridden at {ageRange}</strong> — taxable and Roth accounts were depleted and spending could not be covered within the bracket-fill ceiling. Traditional draws exceeded the ceiling to prevent unfunded expenses. Without this override, the plan would stop funding retirement at age {first.age}.
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Annual Cash Flows ({mode === 'real' ? "Today's $" : 'Nominal $'})</div>

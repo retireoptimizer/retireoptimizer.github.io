@@ -18,6 +18,7 @@ export default function TaxPlanning() {
   const displayMode = usePlanStore((s) => s.displayMode);
   const real = displayMode === 'real';
   const stateProfile = STATE_PROFILES[plan.state] ?? STATE_PROFILES.IL;
+  const actualStateRate = plan.state === 'CUSTOM' ? (plan.customStateTaxRate ?? 0) : stateProfile.effectiveRate;
 
   // Honor ?tab=… from legacy /irmaa redirect.
   const initialTab: TaxTab = (() => {
@@ -82,16 +83,16 @@ export default function TaxPlanning() {
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display',serif" }}>
                     {stateProfile.code === 'NONE'
                       ? 'State Tax Excluded'
-                      : `${stateProfile.name}${stateProfile.effectiveRate === 0 ? ' — No State Income Tax' : ` — ${(stateProfile.effectiveRate * 100).toFixed(2)}%`}`}
+                      : `${stateProfile.name}${actualStateRate === 0 ? ' — No State Income Tax' : ` — ${(actualStateRate * 100).toFixed(2)}%`}`}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{stateProfile.note}</div>
                 </div>
               </div>
-              <div className={`insight-card ${stateProfile.effectiveRate === 0 ? 'success' : 'warning'}`} style={{ margin: 0, borderRadius: 8 }}>
-                <div className="insight-icon">{stateProfile.effectiveRate === 0 ? '✓' : '⚠'}</div>
+              <div className={`insight-card ${actualStateRate === 0 ? 'success' : 'warning'}`} style={{ margin: 0, borderRadius: 8 }}>
+                <div className="insight-icon">{actualStateRate === 0 ? '✓' : '⚠'}</div>
                 <div className="insight-content">
                   <div className="insight-title">
-                    {stateProfile.effectiveRate === 0
+                    {actualStateRate === 0
                       ? 'No state-tax drag on retirement income'
                       : stateProfile.retirementExempt
                       ? 'Retirement distributions are exempt'
@@ -104,7 +105,7 @@ export default function TaxPlanning() {
                   </div>
                 </div>
               </div>
-              {stateProfile.effectiveRate > 0 && (
+              {actualStateRate > 0 && (
                 <div style={{ marginTop: 20 }}>
                   <ChartFrame caption="Bars are dollars of state tax paid each year; the line is state tax as a % of total income (MAGI).">
                     <StateTaxDrag proj={proj} real={real} height={260} />
