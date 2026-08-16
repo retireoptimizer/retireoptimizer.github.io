@@ -16,7 +16,7 @@ export const RELEASES: Release[] = [
   {
     version: '1.6.0',
     date: '2026-08-16',
-    summary: 'Marginal tax rate on charts, nominal-dollar inputs for conversions and blends, and a more accurate ACA subsidy calculation.',
+    summary: 'Marginal tax rate on charts, nominal-dollar inputs for conversions and blends, bracket-fill funding gap safeguard, and a more accurate ACA subsidy calculation.',
     changes: [
       { kind: 'feature', text: 'Marginal tax rate now appears as a step-line on the Federal Tax Drag and State Tax Drag charts alongside the existing Effective Rate line. Shows the bracket your next dollar of income falls into, year by year — useful for spotting Roth conversion windows and RMD cliffs.' },
       { kind: 'feature', text: 'Custom Blend and Manual Conversion inputs now respect the Nominal/Real display toggle. When Nominal $ is selected, the Traditional Account Cap, Fixed Conversion Amount, and per-age manual conversion entries show and accept future nominal values; the engine converts them to today\'s dollars using your inflation assumption before running.' },
