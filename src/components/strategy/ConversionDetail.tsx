@@ -9,6 +9,7 @@ import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants
  *  For 'off' there's nothing to enter. Store-driven. */
 export default function ConversionDetail() {
   const plan = usePlanStore((s) => s.plan);
+  const displayMode = usePlanStore((s) => s.displayMode);
   const setConversion = usePlanStore((s) => s.setConversion);
   const conv = plan.conversion;
 
@@ -21,11 +22,17 @@ export default function ConversionDetail() {
     }));
 
   const startAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
+  const isNominal = displayMode === 'nominal';
+  const inflation = plan.assumptions.inflation;
+  const inflFactor = (age: number) => Math.pow(1 + inflation, Math.max(0, age - startAgeA));
+  const toDisplay = (real: number, age: number) => isNominal ? real * inflFactor(age) : real;
+  const fromDisplay = (display: number, age: number) => isNominal ? display / inflFactor(age) : display;
+  const dollarLabel = isNominal ? 'nominal $' : "today's $";
   const manualAges: number[] = [];
   for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.personA.planToAge; age++) manualAges.push(age);
 
-  const setManualForAge = (age: number, value: number) => {
-    setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: value } });
+  const setManualForAge = (age: number, displayValue: number) => {
+    setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: fromDisplay(displayValue, age) } });
   };
   const clearManual = () => setConversion({ manualSchedule: {} });
   const presetManual70K = () => {
@@ -33,7 +40,7 @@ export default function ConversionDetail() {
     for (let age = conv.startAge; age <= conv.endAge; age++) sched[String(age)] = 70000;
     setConversion({ manualSchedule: sched });
   };
-  const manualTotal = Object.values(conv.manualSchedule).reduce((s, v) => s + (v || 0), 0);
+  const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSchedule[String(age)] ?? 0, age), 0);
 
   if (conv.mode === 'off') {
     return (
@@ -104,32 +111,32 @@ export default function ConversionDetail() {
         <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-header">
             <div className="panel-title"><div className="panel-title-dot"></div>Manual Conversion Schedule</div>
-            <div className="panel-actions">
-              <button className="btn btn-outline" style={{ fontSize: 12, padding: '6px 12px' }} onClick={clearManual}>Clear All</button>
-              <button className="btn btn-outline" style={{ fontSize: 12, padding: '6px 12px' }} onClick={presetManual70K}>Preset: $70K × range</button>
-            </div>
           </div>
           <div className="panel-body" style={{ padding: 0 }}>
-            <div style={{ padding: '12px 18px', background: 'rgba(13,27,46,0.03)', fontSize: 12, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-light)' }}>
-              Enter conversion amounts <strong>in today's dollars</strong>. Engine inflates to nominal $.
+            <div style={{ padding: '10px 18px', background: 'rgba(13,27,46,0.03)', fontSize: 12, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span>Enter conversion amounts <strong>in {dollarLabel}</strong>.{isNominal ? '' : ' Engine inflates to nominal $.'}</span>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button className="btn btn-outline" style={{ fontSize: 11, padding: '4px 10px' }} onClick={clearManual}>Clear All</button>
+                <button className="btn btn-outline" style={{ fontSize: 11, padding: '4px 10px' }} onClick={presetManual70K}>Preset $70K</button>
+              </div>
             </div>
             <div style={{ maxHeight: 340, overflowY: 'auto' }}>
               <table className="data-table" style={{ margin: 0 }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--cream)', zIndex: 2 }}>
-                  <tr><th>Age</th><th>Conversion (Today's $)</th></tr>
+                  <tr><th>Age</th><th>Conversion ({isNominal ? 'Nominal $' : "Today's $"})</th></tr>
                 </thead>
                 <tbody>
                   {manualAges.map((age) => (
                     <tr key={age}>
                       <td><strong>{age}</strong></td>
-                      <td><NumberInput value={conv.manualSchedule[String(age)] ?? 0} min={0} onCommit={(v) => setManualForAge(age, v)} /></td>
+                      <td><NumberInput value={toDisplay(conv.manualSchedule[String(age)] ?? 0, age)} min={0} onCommit={(v) => setManualForAge(age, v)} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             <div style={{ padding: '12px 18px', background: 'rgba(201,168,76,0.05)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ color: 'var(--text-secondary)' }}>Total scheduled conversions (today's $):</div>
+              <div style={{ color: 'var(--text-secondary)' }}>Total scheduled conversions ({dollarLabel}):</div>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 700, color: 'var(--gold)' }}>{fmtUSD(manualTotal)}</div>
             </div>
           </div>

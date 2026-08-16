@@ -5,11 +5,19 @@ import { NumberInput } from '../inputs/NumberInput';
  *  Strategy page; now lives inside the Dashboard "Customize" side sheet. */
 export default function CustomBlendPanel() {
   const plan = usePlanStore((s) => s.plan);
+  const displayMode = usePlanStore((s) => s.displayMode);
   const setCustomPolicy = usePlanStore((s) => s.setCustomPolicy);
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
   const policy = plan.customPolicy;
   const retireAge = plan.personA.retirementAge;
   const planToAge = plan.personA.planToAge;
+  const isNominal = displayMode === 'nominal';
+  const inflation = plan.assumptions.inflation;
+  const currentAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
+  const inflFactor = (age: number) => Math.pow(1 + inflation, Math.max(0, age - currentAgeA));
+  const toDisplay = (real: number, age: number) => isNominal ? real * inflFactor(age) : real;
+  const fromDisplay = (display: number, age: number) => isNominal ? display / inflFactor(age) : display;
+  const dollarLabel = isNominal ? 'nominal $' : "today's $";
 
   const windows = policy?.windows ?? [{
     fromAge: retireAge, toAge: planToAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0,
@@ -59,7 +67,7 @@ export default function CustomBlendPanel() {
       </div>
       <div className="panel-body" style={{ padding: '16px 20px' }}>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
-          Define age windows with custom withdrawal percentages (must sum to 100%) and an optional yearly Roth conversion (today's $).
+          Define age windows with custom withdrawal percentages (must sum to 100%) and an optional yearly Roth conversion ({dollarLabel}).
           When a window has a conversion amount &gt; 0, it overrides the Roth Conversion Mode setting above.
         </div>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -71,8 +79,8 @@ export default function CustomBlendPanel() {
               <th style={{ minWidth: 95 }}>% Taxable</th>
               <th style={{ minWidth: 95 }}>% Pre-tax</th>
               <th style={{ minWidth: 95 }}>% Roth</th>
-              <th style={{ width: 120 }}>Trad Cap ($)</th>
-              <th style={{ width: 130 }}>Conv $/yr (today's $)</th>
+              <th style={{ width: 120 }}>Trad Cap ({dollarLabel})</th>
+              <th style={{ width: 130 }}>Conv $/yr ({dollarLabel})</th>
               <th style={{ width: 40 }}></th>
             </tr>
           </thead>
@@ -88,8 +96,8 @@ export default function CustomBlendPanel() {
                   <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctTaxable} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTaxable: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
                   <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctTraditional} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTraditional: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
                   <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctRoth} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctRoth: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
-                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.tradCap ?? 0} min={0} onCommit={(v) => updateWindow(idx, { tradCap: v > 0 ? v : undefined })} style={inp} /></td>
-                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.convAmt ?? 0} digits={0} min={0} onCommit={(v) => updateWindow(idx, { convAmt: v > 0 ? Math.round(v) : undefined })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={toDisplay(w.tradCap ?? 0, w.fromAge)} min={0} onCommit={(v) => updateWindow(idx, { tradCap: v > 0 ? fromDisplay(v, w.fromAge) : undefined })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={toDisplay(w.convAmt ?? 0, w.fromAge)} digits={0} min={0} onCommit={(v) => updateWindow(idx, { convAmt: v > 0 ? Math.round(fromDisplay(v, w.fromAge)) : undefined })} style={inp} /></td>
                   <td style={{ padding: '8px 6px', textAlign: 'center' }}>
                     {!sumOk
                       ? <button className="btn btn-outline" onClick={() => normalizeRow(idx)} style={{ fontSize: 11, padding: '4px 7px' }} title="Normalize to 100%">⟳</button>

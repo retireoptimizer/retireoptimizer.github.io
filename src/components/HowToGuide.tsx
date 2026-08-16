@@ -229,7 +229,7 @@ function GuideContent() {
         On the right side of that same bar are utility controls:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li><strong>Today&apos;s $ / Nominal $</strong> — switches how every chart and balance is displayed. <em>Today&apos;s $</em> adjusts for inflation so you can compare future numbers to what money is worth right now. <em>Nominal $</em> shows the raw future amounts as they would appear on an account statement. You can toggle this at any time.</li>
+        <li><strong>Today&apos;s $ / Nominal $</strong> — switches how every chart and balance is displayed. <em>Today&apos;s $</em> adjusts for inflation so you can compare future numbers to what money is worth right now. <em>Nominal $</em> shows the raw future amounts as they would appear on an account statement. The toggle also affects dollar inputs in the Custom Blend editor and Manual Conversion Schedule — when set to Nominal $, you enter future nominal amounts directly and the engine converts them to real dollars for storage. You can toggle this at any time.</li>
         <li><strong>Reset</strong> — clears all your inputs and starts fresh. You will be asked to confirm before anything is erased.</li>
         <li><strong>Import</strong> — loads a plan you previously exported as a JSON file.</li>
         <li><strong>Export</strong> — saves your current plan as a JSON file you can back up, share, or reload later.</li>
@@ -669,7 +669,7 @@ function GuideContent() {
             <li><strong>Traditional First</strong> — spend pre-tax accounts first, also reducing RMDs but increasing current taxable income.</li>
             <li><strong>Proportional</strong> — draw from all three account types in proportion to their balances. Simple but rarely the most tax-efficient.</li>
             <li><strong>Bracket-Fill</strong> — a dropdown that lets you pick a bracket ceiling. The engine pulls from traditional (pre-tax) accounts up to that ceiling each year, then covers remaining spending from Roth or taxable. Usually the most tax-efficient withdrawal approach over the long run.</li>
-            <li><strong>✎ Custom blend</strong> — opens an editor to define your own per-age-window blend. When the optimizer builds your plan, this is automatically active and reflects the optimizer's output.</li>
+            <li><strong>✎ Custom blend</strong> — opens an editor to define your own per-age-window blend. When the optimizer builds your plan, this is automatically active and reflects the optimizer's output. The Trad Cap and Conv $/yr columns follow the Today's $ / Nominal $ toggle — switch to Nominal $ to enter future dollar amounts directly.</li>
           </ul>
         </li>
         <li><strong>Roth conversions · instant</strong> — four pills (None, Bracket-Fill, Fixed Amount, Manual) switch the active conversion mode immediately. Bracket-Fill and Fixed Amount show an "Edit details →" link to configure the window and amount; Manual opens a per-year schedule editor.</li>
@@ -701,7 +701,7 @@ function GuideContent() {
         ["None", "Leave pre-tax money where it is. RMDs starting at age 73 may push you into higher brackets in later years.", "—"],
         ["Fixed Amount", "Convert a set dollar amount each year within an age window you define.", "$30,000/yr, ages 60–70"],
         ["Bracket-Fill", "Convert enough each year to fill the chosen bracket. Ceiling is automatically capped at or below the withdrawal Bracket-Fill ceiling.", "Top of 12% bracket"],
-        ["Manual", "Enter a custom conversion amount for each specific age. Maximum control.", "$50k at 62, $40k at 63"],
+        ["Manual", "Enter a custom conversion amount for each specific age. Maximum control. Amounts follow the Today's $ / Nominal $ toggle — switch to Nominal $ to enter future dollar figures directly.", "$50k at 62, $40k at 63"],
       ]} />
 
       <H3>How the two Bracket Fill controls interact</H3>
