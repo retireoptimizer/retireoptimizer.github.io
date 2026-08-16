@@ -377,7 +377,7 @@ export default function InputsPage() {
                   {plan.state === 'CUSTOM' && <div className="helper-text">Incl. SS &amp; retirement</div>}
                 </div>
               </div>
-              <div style={{ justifySelf: 'end' }}>
+              <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                   <div className="subsection-label" style={{ marginBottom: 0 }}>ACA Healthcare</div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 400, color: 'var(--text-secondary)' }}>
@@ -387,7 +387,7 @@ export default function InputsPage() {
                 </div>
                 {asm.modelACA && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '150px auto' : '150px 100px auto', gap: 10, alignItems: 'start' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '175px auto' : '175px 100px auto', gap: 10, alignItems: 'start' }}>
                       <div className="form-group">
                         <label>Annual Premium <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(per person)</span></label>
                         <div className="input-prefix-wrap"><span className="input-prefix">$</span>
