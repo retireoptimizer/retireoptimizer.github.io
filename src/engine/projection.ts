@@ -54,7 +54,9 @@ export interface ProjectionRow {
   stateMarginalRate: number;    // flat state rate when taxable state income > 0, else 0
   stdDeduction: number;  // base standard deduction + senior bonus combined
   seniorBonus: number;   // senior bonus deduction portion only ($6k/person 65+, OBBBA)
-  magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; used for IRMAA/ACA)
+  magi: number;          // MAGI = ordIncome + ltcg (pre-deduction; IRMAA definition)
+  acaMagi: number;       // ACA MAGI = magi + non-taxable SS (IRS ACA definition)
+  irmaaMagi: number;     // IRMAA MAGI actually used (2-year lookback; same as magi[i-2])
   acaPremium: number;    // net ACA premium after APTC (0 when modelACA=false or post-Medicare)
   // One-time events & surplus
   lumpSumInjectTaxable: number; // direct account injections from lump-sum events (taxable bucket)
@@ -404,7 +406,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // are accounted for as resources. Conversion CREATES tax; loop sizes withdrawals to cover it.
     let prevTax = 0, prevIRMAA = 0, prevNIIT = 0, prevStateAmt = 0, prevACA = 0;
     let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0, marginalRate = 0;
-    let irmaa = 0, niit = 0, acaPremiumYear = 0;
+    let irmaa = 0, niit = 0, acaPremiumYear = 0, taxableSSFinal = 0, irmaaMAGIFinal = 0;
     let gap = 0;
     let overrideFiredThisYear = false;
 
@@ -454,9 +456,11 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         standardDeduction: stdD + seniorBonus,
       });
       fedTax = t.fedTax; ordIncomeFinal = ordIncome; ltcgFinal = ltcg; effRate = t.effRate; marginalRate = t.marginalRate;
+      taxableSSFinal = taxableSS;
       // IRMAA 2-year lookback: year i's surcharge is based on MAGI from year i-2.
       // For the first two years, fall back to the current year's MAGI.
       const irmaaMAGI = i >= 2 ? magiHistory[i - 2] : magi;
+      irmaaMAGIFinal = irmaaMAGI;
       const irmaaFS = i >= 2 ? filingStatusHistory[i - 2] : filingStatus;
       irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus, irmaaFS) : 0;
       niit = annualNIIT(magi, ltcg, filingStatus);
@@ -479,7 +483,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
           const scaledPremium = plan.assumptions.acaBenchmarkPremium * inflationFactor * preMedicareCount;
           acaPremiumYear = plan.assumptions.acaNoSubsidy
             ? scaledPremium  // full cost, no APTC applied
-            : acaNetPremium({ magi, householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium });
+            : acaNetPremium({ magi: magi + (ss.total - taxableSS), householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium });
         }
       }
 
@@ -701,6 +705,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       stdDeduction: stdD + seniorBonus,
       seniorBonus,
       magi: ordIncomeFinal + ltcgFinal,
+      acaMagi: ordIncomeFinal + ltcgFinal + (ss.total - taxableSSFinal),
+      irmaaMagi: irmaaMAGIFinal,
       acaPremium: acaPremiumYear,
       lumpSumInjectTaxable, lumpSumInjectTrad, lumpSumInjectRoth,
       lumpSumOrdinaryIncome: lumpSumOrdIncome,

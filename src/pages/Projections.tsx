@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useProjection, usePlanStore } from '../store/usePlanStore';
 import type { DisplayMode } from '../store/usePlanStore';
-import { fmtUSD } from '../lib/format';
+import { fmtUSD, fmtFull } from '../lib/format';
 import CashFlowsBalanced from '../components/charts/CashFlowsBalanced';
 import WhatIfBar from '../components/WhatIfBar';
 import ChartFrame from '../components/charts/ChartFrame';
@@ -30,6 +30,7 @@ interface Column {
   essential: boolean;
   fmt?: 'money' | 'pct' | 'raw';
   get: (r: Row) => number | string;
+  tooltip?: (r: Row) => string;
   bg: string;
 }
 
@@ -70,18 +71,17 @@ const COLUMNS: Column[] = [
 
   // Spending — what you actually consume
   { key: 'netSpend',   label: 'Net Spend',   group: 'spending', essential: true,  fmt: 'money', get: (r) => r.netSpend,   bg: BG.spending },
-  { key: 'acaPremium', label: 'ACA Premium', group: 'spending', essential: false, fmt: 'money', get: (r) => r.acaPremium, bg: BG.spending },
+  { key: 'acaPremium', label: 'ACA Premium', group: 'spending', essential: false, fmt: 'money', get: (r) => r.acaPremium, tooltip: (r) => `ACA MAGI (AGI + non-taxable SS): ${fmtFull(r.acaMagi)}`, bg: BG.spending },
 
   // Taxes — inputs first (what creates the liability), then outputs (what you pay)
   { key: 'ordIncome',    label: 'Ord Income',  group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.ordIncome,                              bg: BG.taxes },
   { key: 'ltcg',         label: 'LTCG',        group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.ltcg,                                   bg: BG.taxes },
-  { key: 'magi',         label: 'MAGI',        group: 'taxes', essential: false, fmt: 'money', get: (r) => r.magi,                                   bg: BG.taxes },
   { key: 'stdDeduction', label: 'Std Deduct',  group: 'taxes', essential: false, fmt: 'money', get: (r) => r.stdDeduction - r.seniorBonus,             bg: BG.taxes },
   { key: 'seniorBonus',  label: 'Senior Bonus',group: 'taxes', essential: false, fmt: 'money', get: (r) => r.seniorBonus,                              bg: BG.taxes },
   { key: 'taxableIncome',label: 'Taxable Inc', group: 'taxes', essential: false, fmt: 'money', get: (r) => Math.max(0, r.magi - r.stdDeduction),     bg: BG.taxes },
   { key: 'fedTax',       label: 'Fed Tax',     group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.fedTax,                                 bg: BG.taxes },
   { key: 'stateTaxAmt',  label: 'State Tax',   group: 'taxes', essential: false, fmt: 'money', get: (r) => r.stateTaxAmt,                            bg: BG.taxes },
-  { key: 'irmaa',        label: 'IRMAA',       group: 'taxes', essential: false, fmt: 'money', get: (r) => r.irmaa,                                  bg: BG.taxes },
+  { key: 'irmaa',        label: 'IRMAA',       group: 'taxes', essential: false, fmt: 'money', get: (r) => r.irmaa,        tooltip: (r) => `IRMAA MAGI (AGI, 2-yr lookback): ${fmtFull(r.irmaaMagi)}`, bg: BG.taxes },
   { key: 'niit',         label: 'NIIT',        group: 'taxes', essential: false, fmt: 'money', get: (r) => r.niit,                                   bg: BG.taxes },
   { key: 'effRate',      label: 'Eff Rate',    group: 'taxes', essential: false, fmt: 'pct',   get: (r) => r.effRate * 100,                          bg: BG.taxes },
 
@@ -145,6 +145,7 @@ export default function Projections() {
   const [visibleKeys, setVisibleKeysState] = useState<Set<string>>(loadVisibleKeys);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ top: number; right: number; maxHeight: number }>({ top: 0, right: 0, maxHeight: 400 });
+  const [cellTip, setCellTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -375,10 +376,20 @@ export default function Projections() {
                         else if (c.fmt === 'money') display = fmt(v, mode, r.inflationFactor);
                         else if (c.fmt === 'pct') display = `${v.toFixed(1)}%`;
                         else display = v;
+                        const tipText = c.tooltip?.(r);
                         const style: React.CSSProperties = sticky
                           ? { ...stickyTd(leftOffsets[i] ?? 0), textAlign: 'center' }
-                          : { textAlign: 'right', fontWeight: c.key === 'endTotal' ? 700 : undefined };
-                        return <td key={c.key} style={style}>{display}</td>;
+                          : { textAlign: 'right', fontWeight: c.key === 'endTotal' ? 700 : undefined, cursor: tipText ? 'help' : undefined };
+                        return (
+                          <td
+                            key={c.key}
+                            style={style}
+                            onMouseEnter={tipText ? (e) => setCellTip({ x: e.clientX, y: e.clientY, text: tipText }) : undefined}
+                            onMouseLeave={tipText ? () => setCellTip(null) : undefined}
+                          >
+                            {display}
+                          </td>
+                        );
                       })}
                     </tr>
                   );
@@ -391,6 +402,16 @@ export default function Projections() {
           </div>
         </div>
       </div>
+      {cellTip && (
+        <div style={{
+          position: 'fixed', left: cellTip.x + 12, top: cellTip.y - 8,
+          background: '#1a2535', color: '#e8edf3', fontSize: 11,
+          padding: '5px 9px', borderRadius: 5, pointerEvents: 'none',
+          whiteSpace: 'nowrap', zIndex: 9999, boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+        }}>
+          {cellTip.text}
+        </div>
+      )}
     </div>
   );
 }
