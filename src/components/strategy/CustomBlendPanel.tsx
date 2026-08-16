@@ -15,7 +15,7 @@ export default function CustomBlendPanel() {
   const inflation = plan.assumptions.inflation;
   const currentAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
   const inflFactor = (age: number) => Math.pow(1 + inflation, Math.max(0, age - currentAgeA));
-  const toDisplay = (real: number, age: number) => isNominal ? real * inflFactor(age) : real;
+  const toDisplay = (real: number, age: number) => Math.round(isNominal ? real * inflFactor(age) : real);
   const fromDisplay = (display: number, age: number) => isNominal ? display / inflFactor(age) : display;
   const dollarLabel = isNominal ? 'nominal $' : "today's $";
 

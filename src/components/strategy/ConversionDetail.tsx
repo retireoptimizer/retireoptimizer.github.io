@@ -25,7 +25,7 @@ export default function ConversionDetail() {
   const isNominal = displayMode === 'nominal';
   const inflation = plan.assumptions.inflation;
   const inflFactor = (age: number) => Math.pow(1 + inflation, Math.max(0, age - startAgeA));
-  const toDisplay = (real: number, age: number) => isNominal ? real * inflFactor(age) : real;
+  const toDisplay = (real: number, age: number) => Math.round(isNominal ? real * inflFactor(age) : real);
   const fromDisplay = (display: number, age: number) => isNominal ? display / inflFactor(age) : display;
   const dollarLabel = isNominal ? 'nominal $' : "today's $";
   const manualAges: number[] = [];
@@ -35,12 +35,7 @@ export default function ConversionDetail() {
     setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: fromDisplay(displayValue, age) } });
   };
   const clearManual = () => setConversion({ manualSchedule: {} });
-  const presetManual70K = () => {
-    const sched: Record<string, number> = {};
-    for (let age = conv.startAge; age <= conv.endAge; age++) sched[String(age)] = 70000;
-    setConversion({ manualSchedule: sched });
-  };
-  const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSchedule[String(age)] ?? 0, age), 0);
+const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSchedule[String(age)] ?? 0, age), 0);
 
   if (conv.mode === 'off') {
     return (
@@ -115,10 +110,7 @@ export default function ConversionDetail() {
           <div className="panel-body" style={{ padding: 0 }}>
             <div style={{ padding: '10px 18px', background: 'rgba(13,27,46,0.03)', fontSize: 12, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <span>Enter conversion amounts <strong>in {dollarLabel}</strong>.{isNominal ? '' : ' Engine inflates to nominal $.'}</span>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button className="btn btn-outline" style={{ fontSize: 11, padding: '4px 10px' }} onClick={clearManual}>Clear All</button>
-                <button className="btn btn-outline" style={{ fontSize: 11, padding: '4px 10px' }} onClick={presetManual70K}>Preset $70K</button>
-              </div>
+              <button className="btn btn-outline" style={{ fontSize: 11, padding: '4px 10px' }} onClick={clearManual}>Clear All</button>
             </div>
             <div style={{ maxHeight: 340, overflowY: 'auto' }}>
               <table className="data-table" style={{ margin: 0 }}>
