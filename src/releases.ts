@@ -14,6 +14,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.6.0',
+    date: '2026-08-16',
+    summary: 'Marginal tax rate on charts, nominal-dollar inputs for conversions and blends, and a more accurate ACA subsidy calculation.',
+    changes: [
+      { kind: 'feature', text: 'Marginal tax rate now appears as a step-line on the Federal Tax Drag and State Tax Drag charts alongside the existing Effective Rate line. Shows the bracket your next dollar of income falls into, year by year — useful for spotting Roth conversion windows and RMD cliffs.' },
+      { kind: 'feature', text: 'Custom Blend and Manual Conversion inputs now respect the Nominal/Real display toggle. When Nominal $ is selected, the Traditional Account Cap, Fixed Conversion Amount, and per-age manual conversion entries show and accept future nominal values; the engine converts them to today\'s dollars using your inflation assumption before running.' },
+      { kind: 'feature', text: 'The optimizer now tests a bracket-fill withdrawal strategy with no Roth conversions as an explicit competitor. For plans with large traditional accounts, this catches cases where maximizing withdrawals from tax-deferred accounts beats a conversion-heavy approach that is locally optimal but not globally so.' },
+      { kind: 'fix', text: 'ACA subsidies were overstated in plans with Social Security income. ACA MAGI must include non-taxable Social Security (IRS definition), while IRMAA MAGI does not. The engine now uses the correct definition for each calculation, which may modestly reduce projected ACA subsidies for plans relying on SS income.' },
+      { kind: 'cosmetic', text: 'The MAGI column is removed from the Projections table. Instead, hovering over the ACA Premium and IRMAA columns shows a tooltip with the MAGI value used for that specific calculation.' },
+      { kind: 'cosmetic', text: 'A warning banner now appears on the Dashboard and Projections table when the bracket-fill withdrawal ceiling has been overridden by a conflicting constraint.' },
+      { kind: 'fix', text: 'The State Tax Drag chart was blank for plans using a custom flat-rate state tax. The chart now displays correctly and shows both effective and marginal state tax rates.' },
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-08-13',
     summary: 'Tax sourcing from brokerage, smarter ACA subsidy optimization, retirement-age shift improvements, and a redesigned Projections table.',
