@@ -389,7 +389,7 @@ export default function InputsPage() {
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: asm.acaNoSubsidy ? '150px auto' : '150px 100px auto', gap: 10, alignItems: 'start' }}>
                       <div className="form-group">
-                        <label>Annual Premium</label>
+                        <label>Annual Premium <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(per person)</span></label>
                         <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                           <NumberInput value={asm.acaBenchmarkPremium} digits={0} style={{ paddingLeft: 22 }} onCommit={(v) => setAssumptions({ acaBenchmarkPremium: v })} />
                         </div>
