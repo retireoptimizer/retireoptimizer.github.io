@@ -38,6 +38,7 @@ export interface ProjectionRow {
   wdTrd: number;
   wdRth: number;
   totalWD: number;
+  bracketOverridden: boolean;
   // Tax / conversions
   rmd: number;
   rothConv: number;
@@ -180,11 +181,21 @@ export interface ProjectionOptions {
 }
 
 /** Map a stored MFJ bracket-fill ceiling to its Single equivalent by bracket index. */
-function effectiveBracketCeiling(mfjCeiling: number, fs: FilingStatus): number {
+export function effectiveBracketCeiling(mfjCeiling: number, fs: FilingStatus): number {
   if (fs === 'MFJ') return mfjCeiling;
   const idx = FED_BRACKETS_MFJ.findIndex(([top]) => top >= mfjCeiling);
   if (idx < 0) return FED_BRACKETS_SINGLE[FED_BRACKETS_SINGLE.length - 1][0];
   return FED_BRACKETS_SINGLE[Math.min(idx, FED_BRACKETS_SINGLE.length - 1)][0];
+}
+
+/** Marginal rate of the bracket whose top equals the user-selected fill ceiling. */
+function rateAtBracketCeiling(ceilingMFJ: number, fs: FilingStatus): number {
+  const brackets = fs === 'MFJ' ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
+  const effCeiling = effectiveBracketCeiling(ceilingMFJ, fs);
+  for (const [top, rate] of brackets) {
+    if (top >= effCeiling) return rate;
+  }
+  return brackets[brackets.length - 1][1];
 }
 
 export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionResult {
@@ -313,11 +324,63 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // (the Pick-tab "mode") only when convAmt is undefined (e.g., a hand-edited custom blend
     // with a cleared cell). The optimizer always sets convAmt explicitly, so its trials never
     // hit the fallback — keeping the search independent of the Pick-tab settings.
-    // Approximate SS taxability for conv sizing (wdTrd=0; withdrawals unknown pre-loop).
-    const piForConv = other.taxableAmt + rmdAmt + 0.5 * ss.total;
-    const taxableSSForConv = taxableSocialSecurity(piForConv, ss.total, filingStatus);
-    const baseOrdIncForConv = taxableSSForConv + rmdAmt + other.taxableAmt;
+    // Two-pass estimate of the traditional withdrawal that conversion sizing must account for.
+    // Taxfirst/tradfirst pull from traditional when taxable is exhausted; when payTaxFromBrokerage
+    // is true, conversion taxes also draw from taxable — reducing spending capacity and forcing
+    // more traditional draws. Both effects tighten the headroom available for the conversion.
+    const contribToTaxEst  = contribA * pfA.contribSplit.taxable     + contribB * (pfB?.contribSplit.taxable     ?? 0);
+    const contribToTradEst = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
+    const contribToRothEst = contribA * pfA.contribSplit.roth        + contribB * (pfB?.contribSplit.roth        ?? 0);
+    const taxAvailEst   = Math.max(0, taxable * (1 + plan.assumptions.taxableReturn) + contribToTaxEst);
+    const tradAvailForEst = Math.max(0, trad * (1 + plan.assumptions.tradReturn) + contribToTradEst - rmdAmt);
+    const rothAvailForEst = Math.max(0, roth * (1 + plan.assumptions.rothReturn) + contribToRothEst);
+    const spendingGapEst = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt);
+    // Ordinary dividends from the taxable account are ordinary income (eat bracket space) but are
+    // reinvested — not a spending resource. Estimate them here so baseOrdIncForConv is complete.
+    const annualDivEst = (retiredA || retiredB) ? taxable * taxableDivYield : 0;
+    const ordDivEst    = annualDivEst * (1 - taxableQualifiedPct);
+    // Active policy window is needed here to pick the right withdrawal blend for the wdTrd estimate.
     const policyWindow = activePolicy ? findWindow(activePolicy, ageA) : undefined;
+    // Strategy-aware wdTrd estimate: how much traditional the actual withdrawal will draw.
+    // Uses the policy's pctTraditional when convAmt is absent (blend set, but not conv amount).
+    // Otherwise mirrors the plan's withdrawal strategy. taxAvail parameter varies by pass.
+    const _wdTrdEst = (gap: number, avTax: number): number => {
+      if (policyWindow != null && policyWindow.convAmt == null)
+        return policyWindow.pctTraditional * gap;
+      const total = avTax + tradAvailForEst + rothAvailForEst;
+      if (plan.withdrawalStrategy === 'tradfirst') return Math.min(tradAvailForEst, gap);
+      if (plan.withdrawalStrategy === 'proportional') return total > 0 ? (tradAvailForEst / total) * gap : 0;
+      // rothfirst and bracketfill (withdrawal) exhaust taxable + roth before touching traditional
+      if (plan.withdrawalStrategy === 'rothfirst' || plan.withdrawalStrategy === 'bracketfill')
+        return Math.max(0, gap - avTax - rothAvailForEst);
+      return Math.max(0, gap - avTax); // taxfirst
+    };
+    // Pass 1 — wdTrd estimate ignoring conversion taxes on taxable
+    const wdTrdEst1  = _wdTrdEst(spendingGapEst, taxAvailEst);
+    const piEst1     = other.taxableAmt + rmdAmt + wdTrdEst1 + annualDivEst + 0.5 * ss.total;
+    const baseOrdEst1 = taxableSocialSecurity(piEst1, ss.total, filingStatus) + rmdAmt + other.taxableAmt + wdTrdEst1 + ordDivEst;
+    const ceilForConv = effectiveBracketCeiling(plan.conversion.bracketCeiling, filingStatus) * inflationFactor;
+    const maxConvEst  = Math.max(0, trad * (1 + plan.assumptions.tradReturn) + contribToTradEst - rmdAmt);
+    // Senior bonus adds to the effective deduction for 65+ filers; MAGI proxy = baseOrdEst1 (pre-conversion).
+    const seniorBonusEst = seniorBonusDeduction(filingStatus, filerAge, ageB, baseOrdEst1, calYear);
+    const convEst    = Math.min(maxConvEst, Math.max(0, ceilForConv - (baseOrdEst1 - stdD - seniorBonusEst)));
+    // Pass 2 — taxes on convEst also draw from taxable (payTaxFromBrokerage), leaving less for spending
+    const convBracketRate = rateAtBracketCeiling(plan.conversion.bracketCeiling, filingStatus);
+    const convTaxFromBrok = (plan.payTaxFromBrokerage ?? false)
+      ? Math.min(convBracketRate * convEst, taxAvailEst) : 0;
+    const taxAvailForSpendingEst = Math.max(0, taxAvailEst - convTaxFromBrok);
+    const wdTrdEstForConv = _wdTrdEst(spendingGapEst, taxAvailForSpendingEst);
+    const piForConv = other.taxableAmt + rmdAmt + wdTrdEstForConv + annualDivEst + 0.5 * ss.total;
+    const taxableSSForConv = taxableSocialSecurity(piForConv, ss.total, filingStatus);
+    const baseOrdIncForConv0 = taxableSSForConv + rmdAmt + other.taxableAmt + wdTrdEstForConv + ordDivEst;
+    // Pass 3 — SS taxability feedback: if the conversion itself pushes PI above the 85% tier,
+    // SS becomes more taxable, adding to ordIncome. Compute SS gain at full headroom and absorb
+    // it into the base so rothConversion sizes conv to stay within the ceiling after the flip.
+    const headroomNominal = Math.max(0, ceilForConv - (baseOrdIncForConv0 - stdD - seniorBonusEst));
+    const piWithFullConv = other.taxableAmt + rmdAmt + wdTrdEstForConv + headroomNominal + annualDivEst + 0.5 * ss.total;
+    const taxableSSWithFullConv = taxableSocialSecurity(piWithFullConv, ss.total, filingStatus);
+    const ssGain = Math.max(0, taxableSSWithFullConv - taxableSSForConv);
+    const baseOrdIncForConv = baseOrdIncForConv0 + ssGain;
     const policyConv = policyWindow?.convAmt;
     // True conversion cap: what's actually available in Trad AFTER growth + contrib
     // and AFTER RMD has been satisfied. Capping at the bare begin-of-year balance
@@ -341,7 +404,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         inflationFactor,
         traditionalBalance: maxConv,
         baseOrdinaryIncome: baseOrdIncForConv,
-        stdDeduction: stdD,
+        stdDeduction: stdD + seniorBonusEst,
       });
     }
     lifetimeConversion += conv;
@@ -376,7 +439,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Base ordinary income for withdrawal bracket-fill sizing (conv now known; wdTrd unknown).
     const piForWd = other.taxableAmt + rmdAmt + conv + lumpSumOrdIncomeEst + 0.5 * ss.total;
     const taxableSSForWd = taxableSocialSecurity(piForWd, ss.total, filingStatus);
-    const baseOrdIncForWd = taxableSSForWd + rmdAmt + conv + other.taxableAmt + lumpSumOrdIncomeEst;
+    // Include ordinary dividends so bracketfill withdrawal sees the correct pre-wdTrd taxable income.
+    const baseOrdIncForWd = taxableSSForWd + rmdAmt + conv + other.taxableAmt + lumpSumOrdIncomeEst
+      + (eitherRetired ? taxable * taxableDivYield * (1 - taxableQualifiedPct) : 0);
 
     // Per-bucket "available to withdraw" caps. All three buckets are debited by the
     // end-of-year update `bucket = max(0, bucket*(1+g) + contrib +/- credits - withdrawal)`,
@@ -423,9 +488,15 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     for (let iter = 0; iter < 16; iter++) {
       // Cash needed from withdrawals: spending + all taxes/surcharges, less RMD/SS/other/inherited-dist cash.
       const taxBurden = prevTax + stateAmt + prevIRMAA + prevNIIT + prevACA;
-      // When payTaxFromBrokerage is on, pull the tax portion from brokerage first so the
-      // withdrawal strategy only needs to cover spending. Falls back to normal when brokerage is depleted.
-      const taxFromBrok = (plan.payTaxFromBrokerage ?? false) ? Math.min(taxBurden, taxAvail) : 0;
+      // When payTaxFromBrokerage is on, only pull the tax shortfall that income surplus cannot
+      // cover. Pulling the full burden when income already covers taxes generates unnecessary
+      // LTCG on the brokerage draw, which then increases the tax bill (NIIT, fed).
+      const incomeAvailForTax = Math.max(0,
+        ss.total + other.taxableAmt + rmdAmt + lumpSumOrdIncomeEst + lumpSumTaxFreeEst - netSpend
+      );
+      const taxFromBrok = (plan.payTaxFromBrokerage ?? false)
+        ? Math.min(Math.max(0, taxBurden - incomeAvailForTax), taxAvail)
+        : 0;
       gap = Math.max(0, netSpend - ss.total - other.taxableAmt - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + taxBurden - taxFromBrok);
       const w = activePolicy
         ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail - taxFromBrok, traditional: tradAvail, roth: rothAvail })
@@ -434,7 +505,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
             gap, taxable: taxAvail - taxFromBrok, traditional: tradAvail, roth: rothAvail,
             rmd: rmdAmt, baseOrdinaryIncome: baseOrdIncForWd,
             bracketCeiling: effectiveBracketCeiling(plan.withdrawalBracketCeiling, filingStatus),
-            stdD, inflationFactor,
+            stdD: stdD + seniorBonus, inflationFactor,
           });
       wdTax = w.wdTax + taxFromBrok; wdTrd = w.wdTrd; wdRth = w.wdRth;
       if (w.bracketOverridden) overrideFiredThisYear = true;
@@ -689,6 +760,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       netSpend,
       wdTax, wdTrd, wdRth,
       totalWD: wdTax + wdTrd + wdRth,
+      bracketOverridden: overrideFiredThisYear,
       rmd: rmdAmt,
       rothConv: conv,
       ordIncome: ordIncomeFinal,

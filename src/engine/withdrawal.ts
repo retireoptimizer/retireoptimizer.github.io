@@ -47,7 +47,9 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
     }
   } else if (preset.kind === 'bracketfill') {
     const ceilingNominal = bracketCeiling * inflationFactor;
-    const roomInBracket = Math.max(0, ceilingNominal - stdD - baseOrdinaryIncome);
+    // Room = how much more ordinary income can be added before hitting the taxable ceiling.
+    // Taxable = ordIncome - stdD, so: room = ceiling - (baseOrdIncome - stdD) = ceiling + stdD - baseOrdIncome.
+    const roomInBracket = Math.max(0, ceilingNominal + stdD - baseOrdinaryIncome);
     wdTrd = Math.min(traditional, Math.min(roomInBracket, rem));
     rem -= wdTrd;
     if (roth > 0 && rem > 0) { wdRth = Math.min(roth, rem); rem -= wdRth; }

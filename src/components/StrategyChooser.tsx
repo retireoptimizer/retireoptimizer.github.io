@@ -250,7 +250,7 @@ export default function StrategyChooser() {
         setPendingPlan(null);
         setPendingGoal(null);
         setTabFreshEntry('none');
-        setConversion({ mode: m, ...extra });
+        setConversion({ mode: m, optimize: false, ...extra });
       }
     };
 

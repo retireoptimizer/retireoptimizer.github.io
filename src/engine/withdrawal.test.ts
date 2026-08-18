@@ -41,10 +41,10 @@ describe('applyWithdrawalOrder', () => {
     expect(r.wdTrd).toBeCloseTo(70_000, 0);
   });
 
-  it('bracketfill fills bracket with traditional up to ceiling minus std deduction', () => {
+  it('bracketfill fills bracket with traditional so taxable ordinary = ceiling', () => {
     const r = applyWithdrawalOrder({ ...base, strategy: 'bracketfill', gap: 200_000 });
-    // ceiling MFJ_12 − std deduction $31,500 − baseOrdinaryIncome $0
-    expect(r.wdTrd).toBeCloseTo(MFJ_12 - 31500, -2);
+    // wdTrd + baseOrdIncome(0) - stdD = MFJ_12 → wdTrd = MFJ_12 + stdD = MFJ_12 + 31500
+    expect(r.wdTrd).toBeCloseTo(MFJ_12 + 31500, -2);
     expect(r.wdRth).toBeGreaterThan(0);
   });
 });
