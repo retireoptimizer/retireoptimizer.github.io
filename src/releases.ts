@@ -14,6 +14,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.7.0',
+    date: '2026-08-17',
+    summary: 'Bracket-fill accuracy fixes: correct withdrawal room formula, senior bonus deduction for 65+ filers, and smarter brokerage tax-sourcing.',
+    changes: [
+      { kind: 'fix', text: 'Bracket-fill withdrawals now correctly fill to the target bracket. An arithmetic error in the room calculation caused the engine to treat the standard deduction as consuming bracket space rather than creating it. As a result, bracket-fill was withdrawing significantly less from the Traditional account than intended. Plans using bracket-fill withdrawal will see higher traditional draws in retirement and more accurate tax projections.' },
+      { kind: 'fix', text: 'Senior bonus deduction (OBBBA) is now included in bracket-fill conversion and withdrawal sizing for taxpayers 65+. The ~$6,000/person deduction was omitted from all three bracket-ceiling calculations: the pre-loop conversion estimate, the final conversion amount, and the withdrawal room formula. This caused under-conversion and under-withdrawal for 65+ filers using bracket-fill strategy.' },
+      { kind: 'fix', text: 'Pay-taxes-from-brokerage no longer generates unnecessary capital gains when other income sources already cover part of the tax bill. Previously the engine pulled the full tax burden from the brokerage account even when Social Security, pension, or other income had already absorbed a portion, triggering avoidable LTCG and NIIT. Now only the net shortfall is drawn from brokerage.' },
+      { kind: 'fix', text: 'Changing the Roth conversion mode on the Goals page now correctly resets the optimizer result. Previously, switching modes (e.g. from Bracket-Fill to None) could silently retain a stale optimizer flag, causing the old conversion amounts to persist when you next ran a projection.' },
+    ],
+  },
+  {
     version: '1.6.0',
     date: '2026-08-16',
     summary: 'Marginal tax rate on charts, nominal-dollar inputs for conversions and blends, bracket-fill funding gap safeguard, and a more accurate ACA subsidy calculation.',
