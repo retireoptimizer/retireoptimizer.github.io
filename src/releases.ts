@@ -14,6 +14,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.7.1',
+    date: '2026-08-19',
+    summary: 'Fix: inherited IRA balance excluded from Roth conversion.',
+    changes: [
+      { kind: 'fix', text: 'Inherited pre-tax IRAs can no longer be used as a source for Roth conversions. The inherited balance (tracked separately under the SECURE Act 10-year depletion rules) was incorrectly included in the traditional account balance available for conversion, allowing both manual and bracket-fill conversions to draw from funds that are legally ineligible. The inherited balance is now excluded from the conversion cap in all modes.' },
+    ],
+  },
+  {
     version: '1.7.0',
     date: '2026-08-17',
     summary: 'Bracket-fill accuracy fixes: correct withdrawal room formula, senior bonus deduction for 65+ filers, and smarter brokerage tax-sourcing.',

@@ -360,7 +360,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const piEst1     = other.taxableAmt + rmdAmt + wdTrdEst1 + annualDivEst + 0.5 * ss.total;
     const baseOrdEst1 = taxableSocialSecurity(piEst1, ss.total, filingStatus) + rmdAmt + other.taxableAmt + wdTrdEst1 + ordDivEst;
     const ceilForConv = effectiveBracketCeiling(plan.conversion.bracketCeiling, filingStatus) * inflationFactor;
-    const maxConvEst  = Math.max(0, trad * (1 + plan.assumptions.tradReturn) + contribToTradEst - rmdAmt);
+    // Inherited pre-tax IRAs cannot be converted to Roth — exclude their tracked balance.
+    const inheritedTradBal = inheritedState
+      .filter(s => s.injected && s.remainingBal > 0 && s.ev.bucket === 'inheritedPreTaxIRA')
+      .reduce((sum, s) => {
+        const alive = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
+        return alive ? sum + s.remainingBal : sum;
+      }, 0);
+    const maxConvEst  = Math.max(0, (trad - inheritedTradBal) * (1 + plan.assumptions.tradReturn) + contribToTradEst - rmdAmt);
     // Senior bonus adds to the effective deduction for 65+ filers; MAGI proxy = baseOrdEst1 (pre-conversion).
     const seniorBonusEst = seniorBonusDeduction(filingStatus, filerAge, ageB, baseOrdEst1, calYear);
     const convEst    = Math.min(maxConvEst, Math.max(0, ceilForConv - (baseOrdEst1 - stdD - seniorBonusEst)));
@@ -391,7 +398,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const gRateTradYear = override ?? plan.assumptions.tradReturn;
     const gRateRothYear = override ?? plan.assumptions.rothReturn;
     const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
-    const maxConv = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt);
+    const maxConv = Math.max(0, (trad - inheritedTradBal) * (1 + gRateTradYear) + contribToTradEarly - rmdAmt);
     let conv: number;
     const eitherRetired = retiredA || retiredB;
     if (eitherRetired && policyConv != null) {
