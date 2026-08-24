@@ -96,7 +96,7 @@ describe('optimizeStrategy (smoke)', () => {
         source: 'manual',
       },
     });
-    expect(r.projection.endTotalReal).toBeGreaterThanOrEqual(baseline.endTotalReal - 1);
+    expect(r.projection.endTaxAdjustedReal).toBeGreaterThanOrEqual(baseline.endTaxAdjustedReal - 1);
   }, 60_000);
 
   it('max-sustainable-spending returns a multiplier and a strategy that does not deplete', () => {
@@ -256,6 +256,203 @@ describe('Inherited account types — one-time income events', () => {
     if (baseRow65 && injRow) {
       // Roth dists are tax-free, so inherited Roth year should have ≤ baseline fedTax.
       expect(injRow.fedTax).toBeLessThanOrEqual(baseRow65.fedTax + 1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tax-exempt income (MuniBond / VA / taxableExemptYield)
+// ---------------------------------------------------------------------------
+
+function baseTaxExemptPlan(): Plan {
+  const plan = defaultPlan();
+  plan.conversion.mode = 'off';
+  plan.conversion.optimize = false;
+  plan.lumpSumEvents = [];
+  return plan;
+}
+
+describe('MuniBond income stream', () => {
+  it('full gross reaches otherIncome; ordIncome and magi exclude it', () => {
+    const plan = baseTaxExemptPlan();
+    plan.incomeStreams = plan.incomeStreams.filter(s => s.type !== 'SS');
+    plan.incomeStreams.push({
+      id: 'muni-1', description: 'Muni', whose: 'Household', type: 'MuniBond',
+      startAge: 59, stopAge: 98, annualAmount: 20_000,
+      growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 1,
+    });
+    const proj = runProjection(plan);
+
+    // Only check rows while the stream is active (startAge=59, stopAge=98)
+    const muniActiveRows = proj.rows.filter(r =>
+      (r.phase === 'Retire' || r.phase === 'Survivor') && r.ageA >= 59 && r.ageA <= 98
+    );
+    expect(muniActiveRows.length).toBeGreaterThan(0);
+    for (const r of muniActiveRows) {
+      // Gross must be spendable: otherIncome >= 20_000 (fixed rate growth = 0)
+      expect(r.otherIncome).toBeGreaterThanOrEqual(19_500);
+      // Muni is federally tax-exempt: not in ordIncome
+      // otherIncomeTaxable should be 0 (no federal-taxable streams)
+      expect(r.otherIncomeTaxable).toBe(0);
+      // exemptInterest should capture the muni amount
+      expect(r.exemptInterest).toBeGreaterThanOrEqual(19_500);
+    }
+  });
+
+  it('exemptInterest routes to acaMagi but not magi (IRMAA/ACA vs NIIT routing)', () => {
+    // Test the routing invariant directly on a single plan:
+    // acaMagi = magi + exemptInterest + non-taxable SS (§36B)
+    // magi = ordIncome + ltcg (exempt interest excluded)
+    const plan = baseTaxExemptPlan();
+    plan.incomeStreams = plan.incomeStreams.filter(s => s.type !== 'SS');
+    plan.incomeStreams.push({
+      id: 'muni-2', description: 'Muni', whose: 'Household', type: 'MuniBond',
+      startAge: 59, stopAge: 98, annualAmount: 30_000,
+      growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 0,
+    });
+    const proj = runProjection(plan);
+    const retiredRows = proj.rows.filter(r => r.phase === 'Retire' && r.totalSS === 0);
+    expect(retiredRows.length).toBeGreaterThan(0);
+    for (const r of retiredRows) {
+      // acaMagi must exceed magi by the exempt interest (since SS=0 here, non-taxable SS=0 too)
+      expect(r.acaMagi).toBeCloseTo(r.magi + r.exemptInterest, -1);
+      // magi excludes exempt interest
+      expect(r.magi).toBeCloseTo(r.ordIncome + r.ltcg, -1);
+      // exemptInterest > 0 (the muni is active)
+      expect(r.exemptInterest).toBeGreaterThan(25_000);
+    }
+  });
+
+  it('muni stream raises SS taxability — exemptInterest is included in provisional income', () => {
+    // A plan with SS starting at 65 but zero spending beyond SS income.
+    // Without muni: PI ≈ 0.5 * SS → near/below §86 threshold.
+    // With muni: PI += exempt interest → above threshold → higher taxable SS → higher ordIncome.
+    const plan = baseTaxExemptPlan();
+    plan.personA.dob = '1961-01-01'; // age 65 in 2026
+    plan.personA.retirementAge = 65;
+    plan.personA.planToAge = 90;
+    plan.personA.ssPIA = 24_000;
+    plan.personA.ssClaimAge = 65;
+    plan.personB = undefined;
+    plan.expenseStreams = [
+      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 20_000, inflationPct: { mode: 'fixed', rate: 0 } },
+    ];
+    plan.incomeStreams = [];
+    plan.portfolio = { personA: { taxable: 0, taxableBasis: 0, traditional: 500_000, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0, traditional: 1, roth: 0 } } };
+    plan.assumptions = { ...plan.assumptions, taxableExemptYield: 0, taxableExemptStatePct: 1 };
+
+    const planWithMuni = { ...plan, incomeStreams: [...plan.incomeStreams] };
+    planWithMuni.incomeStreams = [{
+      id: 'muni-ss', description: 'Muni', whose: 'Household', type: 'MuniBond' as const,
+      startAge: 65, stopAge: 90, annualAmount: 30_000,
+      growthPct: { mode: 'fixed', rate: 0 } as const, taxablePct: 0, stateTaxablePct: 0,
+    }];
+
+    const projBase = runProjection(plan);
+    const projMuni = runProjection(planWithMuni);
+
+    const rowBase = projBase.rows.find(r => r.ageA === 65)!;
+    const rowMuni = projMuni.rows.find(r => r.ageA === 65)!;
+    if (rowBase && rowMuni) {
+      // Muni adds exempt interest → more SS taxable → higher ordIncome
+      expect(rowMuni.ordIncome).toBeGreaterThan(rowBase.ordIncome);
+      // Muni appears in exemptInterest
+      expect(rowMuni.exemptInterest).toBeCloseTo(30_000, -2);
+    }
+  });
+});
+
+describe('VA / Disability income stream', () => {
+  it('VA gross in otherIncome but otherIncomeTaxable = 0 and no exemptInterest', () => {
+    // VA income is in gross but exempt from EVERY tax surface — not in ordIncome, not in
+    // exemptInterest (§103), not in state tax. Test routing directly without comparing plans.
+    const plan = baseTaxExemptPlan();
+    plan.personA.dob = '1961-01-01';
+    plan.personA.retirementAge = 65;
+    plan.personA.planToAge = 90;
+    plan.personA.passingAge = 90;
+    plan.personA.ssPIA = 0;
+    plan.personA.ssClaimAge = 65;
+    plan.personB = undefined;
+    plan.incomeStreams = [{
+      id: 'va-1', description: 'VA', whose: 'A', type: 'VA',
+      startAge: 65, stopAge: 90, annualAmount: 20_000,
+      growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 0,
+    }];
+    plan.expenseStreams = [
+      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 15_000, inflationPct: { mode: 'fixed', rate: 0 } },
+    ];
+    plan.portfolio = { personA: { taxable: 0, taxableBasis: 0, traditional: 300_000, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0, traditional: 1, roth: 0 } } };
+    plan.assumptions = { ...plan.assumptions, taxableExemptYield: 0, taxableExemptStatePct: 1 };
+
+    const proj = runProjection(plan);
+    // dob='1961-01-01' → startAgeA=65 in 2026; first row is ageA=65
+    const row = proj.rows.find(r => r.ageA === 65);
+    expect(row).toBeDefined();
+    if (row) {
+      // VA cash appears as otherIncome (gross)
+      expect(row.otherIncome).toBeGreaterThanOrEqual(19_500);
+      // But not in the taxable portion
+      expect(row.otherIncomeTaxable).toBe(0);
+      // VA is not §103 exempt interest (it's exempt via 38 U.S.C. §5301 — different surface)
+      expect(row.exemptInterest).toBe(0);
+      // acaMagi = magi (no exempt interest, no non-taxable SS)
+      expect(row.acaMagi).toBeCloseTo(row.magi, -1);
+    }
+  });
+});
+
+describe('Annuity taxablePct regression (dropped income bug)', () => {
+  it('taxablePct:0.7 annuity contributes full gross to otherIncome', () => {
+    const plan = baseTaxExemptPlan();
+    plan.incomeStreams = [];
+    plan.incomeStreams.push({
+      id: 'ann-1', description: 'Annuity', whose: 'Household', type: 'Annuity',
+      startAge: 59, stopAge: 98, annualAmount: 24_000,
+      growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0.7, stateTaxablePct: 1,
+    });
+
+    const proj = runProjection(plan);
+    const row = proj.rows.find(r => r.ageA === 62 && r.phase === 'Retire')!;
+    if (row) {
+      // Full 24_000 must be spendable (gross), not just the 70% taxable portion
+      expect(row.otherIncome).toBeGreaterThanOrEqual(23_500);
+      // Federal-taxable portion is 70%
+      expect(row.otherIncomeTaxable).toBeCloseTo(24_000 * 0.7, -1);
+    }
+  });
+});
+
+describe('taxableExemptYield', () => {
+  it('exempt interest is in exemptInterest field and acaMagi but not in magi or ordIncome', () => {
+    // Test the routing invariant: acaMagi = magi + exemptInterest (when SS=0).
+    // taxableExemptYield income is §103 exempt from AGI, so ordIncome and magi exclude it.
+    const plan = baseTaxExemptPlan();
+    plan.personA.dob = '1961-01-01';
+    plan.personA.retirementAge = 65;
+    plan.personA.planToAge = 90;
+    plan.personA.passingAge = 90;
+    plan.personA.ssPIA = 0;
+    plan.personA.ssClaimAge = 65;
+    plan.personB = undefined;
+    plan.incomeStreams = [];
+    plan.expenseStreams = [
+      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 40_000, inflationPct: { mode: 'fixed', rate: 0 } },
+    ];
+    plan.portfolio = { personA: { taxable: 500_000, taxableBasis: 300_000, traditional: 200_000, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 1, traditional: 0, roth: 0 } } };
+    plan.assumptions = { ...plan.assumptions, taxableReturn: 0.05, taxableDivYield: 0, taxableExemptYield: 0.02, taxableExemptStatePct: 1 };
+
+    const proj = runProjection(plan);
+    // dob='1961-01-01' → startAgeA=65 in 2026; first row is ageA=65
+    const row = proj.rows.find(r => r.ageA === 65);
+    expect(row).toBeDefined();
+    if (row) {
+      // Portfolio-yield exempt interest should appear in exemptInterest
+      expect(row.exemptInterest).toBeGreaterThan(5_000); // ~500k * 2% * inflationFactor
+      // acaMagi = magi + exemptInterest (no SS in this plan)
+      expect(row.acaMagi).toBeCloseTo(row.magi + row.exemptInterest, -2);
+      // Exempt interest not in ordIncome (not in AGI)
+      expect(row.magi).toBeCloseTo(row.ordIncome + row.ltcg, -1);
     }
   });
 });

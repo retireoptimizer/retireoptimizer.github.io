@@ -60,7 +60,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     }
   }, 120_000);
 
-  it('score round-trip: optimizer.metric equals projection(optimizer.policy).endTotalReal', () => {
+  it('score round-trip: optimizer.metric equals projection(optimizer.policy).endTaxAdjustedReal', () => {
     // The optimizer's reported score must match what a fresh projection computes from the
     // optimizer's own returned policy. If these diverge, the optimizer is searching against
     // a phantom projection — historically caused by the row-indexing bug.
@@ -68,16 +68,16 @@ describe('Optimizer ↔ Projection coordination', () => {
     const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
     const verify = runProjection(plan, { policy: r.perYearPolicy });
     expect(
-      verify.endTotalReal,
-      `Optimizer-reported endTotalReal ${r.projection.endTotalReal} does not match re-projection ${verify.endTotalReal}`
-    ).toBeCloseTo(r.projection.endTotalReal, 0);
-    expect(verify.endTotalReal).toBeCloseTo(r.metric, 0);
+      verify.endTaxAdjustedReal,
+      `Optimizer-reported endTaxAdjustedReal ${r.projection.endTaxAdjustedReal} does not match re-projection ${verify.endTaxAdjustedReal}`
+    ).toBeCloseTo(r.projection.endTaxAdjustedReal, 0);
+    expect(verify.endTaxAdjustedReal).toBeCloseTo(r.metric, 0);
   }, 60_000);
 
-  it('strict dominance: optimizer beats every preset baseline on the same plan', () => {
+  it('strict dominance: optimizer beats every preset baseline on tax-adjusted balance', () => {
     // The optimizer's policy space strictly subsumes the presets, so it should never lose
-    // to one. If it does, the optimizer has converged to a worse local optimum or its
-    // evaluator disagrees with the projection.
+    // to one on the metric it is scoring. Now that max-end scores endTaxAdjustedReal,
+    // the dominance comparison must use the same metric.
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
     const presets: Plan['withdrawalStrategy'][] = ['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill'];
@@ -88,9 +88,9 @@ describe('Optimizer ↔ Projection coordination', () => {
       presetPlan.withdrawalStrategy = strat;
       const baseline = runProjection(presetPlan);
       expect(
-        opt.projection.endTotalReal,
-        `Optimizer ${opt.projection.endTotalReal} < preset ${strat} ${baseline.endTotalReal}`
-      ).toBeGreaterThanOrEqual(baseline.endTotalReal - 1);
+        opt.projection.endTaxAdjustedReal,
+        `Optimizer tax-adj ${opt.projection.endTaxAdjustedReal} < preset ${strat} tax-adj ${baseline.endTaxAdjustedReal}`
+      ).toBeGreaterThanOrEqual(baseline.endTaxAdjustedReal - 1);
     }
   }, 120_000);
 
@@ -122,7 +122,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     const planWithCustom = clone(plan);
     planWithCustom.customPolicy = { ...r.perYearPolicy, source: 'optimizer' };
     const applied = runProjection(planWithCustom, { policy: r.perYearPolicy });
-    expect(applied.endTotalReal).toBeCloseTo(r.projection.endTotalReal, 0);
+    expect(applied.endTaxAdjustedReal).toBeCloseTo(r.projection.endTaxAdjustedReal, 0);
     expect(applied.lifetimeFedTax).toBeCloseTo(r.projection.lifetimeFedTax, -1);
   }, 60_000);
 
@@ -311,6 +311,38 @@ describe('Monte Carlo basic sanity', () => {
     for (const s of mc.stressScenarios) {
       expect(s.successRate, `${s.name}`).toBeGreaterThanOrEqual(0);
       expect(s.successRate, `${s.name}`).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('Tax-adjusted balance objective', () => {
+  it('zero rates: endTaxAdjustedReal === endTotalReal (escape hatch)', () => {
+    const plan = defaultPlan();
+    plan.assumptions.taxAdjOrdRate = 0;
+    plan.assumptions.taxAdjLtcgRate = 0;
+    const proj = runProjection(plan);
+    expect(proj.endTaxAdjustedReal).toBeCloseTo(proj.endTotalReal, 2);
+    expect(proj.endTaxAdjustedNominal).toBeCloseTo(proj.endTotalNominal, 2);
+  });
+
+  it('optimizer with zero rates reports same metric as gross endTotalReal', () => {
+    const plan = defaultPlan();
+    plan.assumptions.taxAdjOrdRate = 0;
+    plan.assumptions.taxAdjLtcgRate = 0;
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    expect(r.metric).toBeCloseTo(r.projection.endTotalReal, 0);
+  }, 60_000);
+
+  it('tax-adjusted is strictly lower than gross when rates > 0 and portfolio has pre-tax', () => {
+    const plan = defaultPlan();
+    // samplePlan has a large traditional balance
+    plan.assumptions.taxAdjOrdRate = 0.22;
+    plan.assumptions.taxAdjLtcgRate = 0.15;
+    const proj = runProjection(plan);
+    // If plan has any traditional or taxable gain, tax-adjusted must be lower
+    const lastRow = proj.rows[proj.rows.length - 1];
+    if (lastRow && (lastRow.endTraditional > 0 || lastRow.endTaxable > (lastRow.endTaxableBasis ?? 0))) {
+      expect(proj.endTaxAdjustedReal).toBeLessThan(proj.endTotalReal);
     }
   });
 });

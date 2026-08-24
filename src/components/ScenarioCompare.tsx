@@ -30,6 +30,8 @@ const METRICS: MetricDef[] = [
     pick: (proj) => initialWithdrawalRate(proj) },
   { key: 'ranOut', label: 'Plan Runs Out?', format: (v) => v > 0 ? 'Yes' : 'No', better: 'lower',
     pick: (proj) => proj.ranOut ? 1 : 0 },
+  { key: 'endTaxAdjReal', label: 'End Balance (Tax-Adj)', format: fmtM, better: 'higher',
+    pick: (proj) => proj.endTaxAdjustedReal },
 ];
 
 interface Props {

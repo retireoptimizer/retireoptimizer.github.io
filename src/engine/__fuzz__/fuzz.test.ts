@@ -86,4 +86,29 @@ describe('Property-based fuzz: projection invariants', () => {
       { numRuns: NUM_RUNS, verbose: true },
     );
   }, 120_000);
+
+  it(`endTaxAdjustedReal satisfies two-sided bound for generated rates (${NUM_RUNS} runs)`, () => {
+    fc.assert(
+      fc.property(arbPlan(), (plan) => {
+        const proj = runProjection(plan);
+        const ordRate = plan.assumptions.taxAdjOrdRate ?? 0.22;
+        const ltcgRate = plan.assumptions.taxAdjLtcgRate ?? 0.15;
+        const tol = 1;
+        // Upper bound: tax-adjusted can never exceed gross
+        if (proj.endTaxAdjustedReal > proj.endTotalReal + tol) {
+          throw new Error(
+            `endTaxAdjustedReal ${proj.endTaxAdjustedReal.toFixed(2)} exceeds endTotalReal ${proj.endTotalReal.toFixed(2)}`
+          );
+        }
+        // Lower bound: must be >= gross * (1 - max(ordRate, ltcgRate)) with 10% plan-mix margin
+        const floor = proj.endTotalReal * (1 - Math.max(ordRate, ltcgRate)) - proj.endTotalReal * 0.10 - tol;
+        if (proj.endTaxAdjustedReal < floor) {
+          throw new Error(
+            `endTaxAdjustedReal ${proj.endTaxAdjustedReal.toFixed(2)} below floor ${floor.toFixed(2)} (rates: ord=${ordRate}, ltcg=${ltcgRate})`
+          );
+        }
+      }),
+      { numRuns: NUM_RUNS, verbose: true },
+    );
+  }, 120_000);
 });

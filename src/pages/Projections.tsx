@@ -90,9 +90,11 @@ const COLUMNS: Column[] = [
   { key: 'begTaxable',     label: 'Beg Tax',   group: 'balances', essential: false, fmt: 'money', get: (r) => r.begTaxable,     bg: BG.balances },
   { key: 'begTraditional', label: 'Beg Trd',   group: 'balances', essential: false, fmt: 'money', get: (r) => r.begTraditional, bg: BG.balances },
   { key: 'begRoth',        label: 'Beg Roth',  group: 'balances', essential: false, fmt: 'money', get: (r) => r.begRoth,        bg: BG.balances },
-  { key: 'endTaxable',     label: 'End Tax',   group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTaxable,     bg: BG.balances },
-  { key: 'endTraditional', label: 'End Trd',   group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTraditional, bg: BG.balances },
-  { key: 'endRoth',        label: 'End Roth',  group: 'balances', essential: false, fmt: 'money', get: (r) => r.endRoth,        bg: BG.balances },
+  { key: 'endTaxable',     label: 'End Tax',    group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTaxable,        bg: BG.balances },
+  { key: 'endTraditional', label: 'End Trd',    group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTraditional,    bg: BG.balances },
+  { key: 'endRoth',        label: 'End Roth',   group: 'balances', essential: false, fmt: 'money', get: (r) => r.endRoth,           bg: BG.balances },
+  { key: 'endTaxableBasis',label: 'End Basis',  group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTaxableBasis ?? 0, tooltip: (r) => `Unrealized gain: ${fmtFull(Math.max(0, r.endTaxable - (r.endTaxableBasis ?? 0)))}`, bg: BG.balances },
+  { key: 'endTaxAdjusted', label: 'End Tax-Adj',group: 'balances', essential: false, fmt: 'money', get: (r) => r.endTaxAdjusted ?? 0, tooltip: (r) => `Gross ${fmtFull(r.endTotal)} less est. tax on pre-tax balance and unrealized gains`, bg: BG.balances },
 ];
 
 const GROUP_LABELS: Record<GroupKey, string> = {

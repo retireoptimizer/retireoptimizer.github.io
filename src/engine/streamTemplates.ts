@@ -57,6 +57,28 @@ export const INCOME_TEMPLATES: IncomeTemplate[] = [
       annualAmount: 18000, growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0.7, stateTaxablePct: 1,
     }),
   },
+  {
+    id: 'muni',
+    label: 'Muni Bond',
+    hint: 'External bond ladder — federally tax-free; still counts toward SS taxability, ACA & IRMAA',
+    make: ({ retirementAge, planToAge }) => ({
+      id: nid('stream'), description: 'Muni Bond Interest',
+      whose: 'Household', type: 'MuniBond',
+      startAge: retirementAge, stopAge: planToAge,
+      annualAmount: 10000, growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 1,
+    }),
+  },
+  {
+    id: 'va',
+    label: 'VA / Disability',
+    hint: 'Fully exempt from federal and state tax (38 U.S.C. §5301); CPI-indexed',
+    make: ({ retirementAge, planToAge }) => ({
+      id: nid('stream'), description: 'VA Disability Compensation',
+      whose: 'A', type: 'VA',
+      startAge: retirementAge, stopAge: planToAge,
+      annualAmount: 20000, growthPct: { mode: 'cpi' }, taxablePct: 0, stateTaxablePct: 0,
+    }),
+  },
 ];
 
 export const EXPENSE_TEMPLATES: ExpenseTemplate[] = [

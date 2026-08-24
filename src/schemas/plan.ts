@@ -34,6 +34,21 @@ export const AssumptionsSchema = z.object({
   taxableDivYield: z.number().min(0).max(1).default(0),
   /** Fraction of taxableDivYield that is qualified dividends (taxed at LTCG rates). Remainder is ordinary income. */
   taxableQualifiedPct: z.number().min(0).max(1).default(0.80),
+  /** Fraction of the taxable balance paid as IRC §103 tax-exempt interest (munis held in the
+   *  brokerage). Excluded from federal AGI but added back for SS provisional income, ACA MAGI,
+   *  and IRMAA MAGI. Reinvested annually (adds to basis) like taxableDivYield. */
+  taxableExemptYield: z.number().min(0).max(1).default(0),
+  /** Share of taxableExemptYield interest taxable by the resident state.
+   *  1 = out-of-state bonds (default); 0 = in-state / state-exempt. */
+  taxableExemptStatePct: z.number().min(0).max(1).default(1),
+  /** Blended effective rate assumed for pre-tax (401k/IRA) balances at liquidation.
+   *  Applied to the entire traditional balance as a flat haircut — not a bracket calculation.
+   *  Setting to 0 disables the tax-adjusted balance feature. */
+  taxAdjOrdRate: z.number().min(0).max(0.6).default(0.22),
+  /** Blended effective rate assumed for taxable unrealized gains at liquidation.
+   *  Applied to gain above cost basis only — basis is already-taxed money and is untouched.
+   *  Roth is never haircut. Setting to 0 along with taxAdjOrdRate disables tax-adjusted balance. */
+  taxAdjLtcgRate: z.number().min(0).max(0.4).default(0.15),
   tradReturn: z.number().default(0.055),
   rothReturn: z.number().default(0.055),
   inflation: z.number(),
@@ -97,7 +112,7 @@ export const IncomeStreamSchema = z.object({
   id: z.string(),
   description: z.string(),
   whose: z.enum(['A', 'B', 'Household']),
-  type: z.enum(['SS', 'Pension', 'Annuity', 'Other']),
+  type: z.enum(['SS', 'Pension', 'Annuity', 'MuniBond', 'VA', 'Other']),
   startAge: z.number().int().min(0).max(110),
   stopAge: z.number().int().min(0).max(115),
   annualAmount: z.number().nonnegative(),
@@ -214,6 +229,10 @@ export const defaultPlan = (): Plan => ({
     taxableReturn: 0.055,
     taxableDivYield: 0,
     taxableQualifiedPct: 0.80,
+    taxableExemptYield: 0,
+    taxableExemptStatePct: 1,
+    taxAdjOrdRate: 0.22,
+    taxAdjLtcgRate: 0.15,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
@@ -282,6 +301,10 @@ export const samplePlan = (): Plan => ({
     taxableReturn: 0.055,
     taxableDivYield: 0,
     taxableQualifiedPct: 0.80,
+    taxableExemptYield: 0,
+    taxableExemptStatePct: 1,
+    taxAdjOrdRate: 0.22,
+    taxAdjLtcgRate: 0.15,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,

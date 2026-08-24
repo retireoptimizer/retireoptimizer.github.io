@@ -105,7 +105,7 @@ const compact = (windows: BlendWindow[]): BlendWindow[] => {
 interface InnerEval {
   policy: BlendPolicy;
   proj: ProjectionResult;
-  score: number;        // 'max-end' direction: higher endTotalReal is better
+  score: number;        // 'max-end' direction: higher endTaxAdjustedReal is better
   ranOut: boolean;
 }
 
@@ -155,9 +155,9 @@ const buildConstantSeed = (
 };
 
 /**
- * Inner optimizer. Scoring: max endTotalReal (inflation-adjusted), with ranOut
- * strictly worse than any non-depleting plan. Used as the per-evaluation goal
- * for all three user-facing outer goals.
+ * Inner optimizer. Scoring: max endTaxAdjustedReal (inflation-adjusted, after estimated
+ * tax on pre-tax and unrealized-gain balances), with ranOut strictly worse than any
+ * non-depleting plan. Used as the per-evaluation goal for all three user-facing outer goals.
  *
  * seedWindows: optional starting per-year policy. Each window is matched by fromAge;
  *   ages not covered fall back to the cold-start (taxable-first). Allows warm-starting
@@ -808,7 +808,7 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
       conversion: { ...plan.conversion, mode: 'off', optimize: false },
     };
     const bfCheckProj = runProjection(bfCheckPlan);
-    if (!bfCheckProj.ranOut && bfCheckProj.endTotalReal > best.score) {
+    if (!bfCheckProj.ranOut && REC_GOALS['max-end'].score(bfCheckProj) > best.score) {
       const bfSeed: BlendWindow[] = [];
       for (let age = retireAge; age <= planToAge; age++) {
         const row = bfCheckProj.rows.find((r) => r.ageA === age);
@@ -847,9 +847,9 @@ export interface OptimizerRunResult {
 
 export interface OptimalityGapResult {
   runs: OptimizerRunResult[];
-  /** Best end-balance (endTotalReal) among non-depleting runs. */
+  /** Best tax-adjusted end-balance (endTaxAdjustedReal) among non-depleting runs. */
   bestScore: number;
-  /** Worst end-balance among non-depleting runs. */
+  /** Worst tax-adjusted end-balance among non-depleting runs. */
   worstScore: number;
   /** (best − worst) / |best| × 100. How far the weakest start is from the best. */
   spreadPct: number;
@@ -934,10 +934,10 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // Prevents coordinate descent from being stuck in a single local basin.
     const inner = multiStartInner(plan, opts, evalCounter);
     opts.onProgress?.(1, 'Done');
-    const endReal = inner.proj.endTotalReal;
+    const endTaxAdj = inner.proj.endTaxAdjustedReal;
     return packageResult(inner, goal, evalCounter.n, {
-      headline: fmtM(endReal),
-      headlineLabel: 'End balance (today\'s $)',
+      headline: fmtM(endTaxAdj),
+      headlineLabel: 'Tax-adjusted balance (today\'s $)',
     });
   }
 
@@ -1109,7 +1109,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
         }
         bestFeasible = {
           age,
-          inner: { policy: clampedPolicy, proj: clampedProj, score: clampedProj.endTotalReal, ranOut: false },
+          inner: { policy: clampedPolicy, proj: clampedProj, score: REC_GOALS['max-end'].score(clampedProj), ranOut: false },
         };
       } else {
         bestFeasible = { age, inner };

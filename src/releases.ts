@@ -14,6 +14,34 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.9.0',
+    date: '2026-08-22',
+    summary: 'Tax-adjusted ending balance: optimizer now maximizes after-tax portfolio value, with a new Tax-Adj Balance tile and user-editable haircut rates.',
+    changes: [
+      { kind: 'feature', text: 'Tax-Adjusted Balance tile added to the Plan Summary banner on the Dashboard, showing portfolio value after subtracting estimated tax on pre-tax (401k/IRA) balances and taxable unrealized gains. Roth is untouched. Click "breakdown →" beneath the tile to see the per-bucket arithmetic, including the flat-rate model assumptions and what is not captured (state tax, NIIT, IRMAA).' },
+      { kind: 'feature', text: 'Two new inputs in Portfolio settings — Pre-Tax Accounts rate (default 22%) and Unrealized Gains rate (default 15%) — control the blended effective haircut applied to each bucket. These are flat rates on whole balances, not bracket math. Setting both to 0% hides the tile and restores raw-balance optimization exactly.' },
+      { kind: 'feature', text: 'Max End Balance optimizer objective changed to maximize tax-adjusted ending balance (endTaxAdjustedReal) instead of gross ending balance. The optimizer now sees $1 of Roth as more valuable than $1 of pre-tax, which was not true before. This corrects a known bias toward under-converting. The escape hatch — setting both rates to 0% — restores the prior gross-balance objective bit-for-bit.' },
+      { kind: 'fix', text: 'Two off-objective reads in the optimizer (bracketfill competitor check at line 811, and clamped candidate scoring in min-retirement-age at line 1112) were routing through endTotalReal instead of the spec scorer. Both were correct only by coincidence when the score was endTotalReal; they became live defects the moment the objective changed. Both now route through REC_GOALS[\'max-end\'].score.' },
+      { kind: 'cosmetic', text: 'Years Funded tile removed from Plan Summary (it was redundant with the status badge). The badge now includes the years ratio (e.g., "✓ Fully Funded · 30 yrs").' },
+      { kind: 'feature', text: 'End Basis and End Tax-Adj columns added to the Projections table (hidden by default, toggle via the column selector). End Basis tooltip shows the unrealized gain; End Tax-Adj tooltip shows the gross total for comparison.' },
+      { kind: 'feature', text: 'End Balance (Tax-Adj) metric added to Scenario Compare.' },
+      { kind: 'feature', text: 'Migration v22: existing plans receive the 22% / 15% defaults automatically. The next optimize run on an existing plan will use the new objective. This is intentional — the tax-adjusted score is strictly more accurate for max-end-balance optimization.' },
+    ],
+  },
+  {
+    version: '1.8.0',
+    date: '2026-08-22',
+    summary: 'Tax-exempt income: Muni Bond and VA/Disability stream types, brokerage exempt yield, and MAGI routing fixes.',
+    changes: [
+      { kind: 'feature', text: 'New income stream types: Muni Bond and VA / Disability. Muni Bond income is federally tax-exempt (IRC §103) but correctly flows through Social Security provisional income, ACA MAGI (IRC §36B), and IRMAA MAGI (42 U.S.C. §1395r(i)(4)) — the three surcharges that depend on it. VA / Disability income is fully exempt from federal and state tax (38 U.S.C. §5301) and invisible to every tax surface.' },
+      { kind: 'feature', text: 'Tax-Exempt Yield field in Portfolio: enter the fraction of your brokerage return that comes from muni interest held inside the account. Like dividend yield, it is reinvested into cost basis (IRC §1012) to prevent double-taxation on future withdrawals, while still being included in the MAGI surfaces that require it.' },
+      { kind: 'feature', text: 'Double-count guardrail: a prominent warning appears in both the Portfolio and Income & Expenses sections when you have both a tax-exempt portfolio yield and a Muni Bond income stream active simultaneously, pointing to the other section so you can remove the duplicate entry.' },
+      { kind: 'fix', text: 'Non-taxable income was silently dropped from spendable cash. Any income stream with taxablePct < 1 — including the existing Annuity template at 70% — was contributing only its taxable portion to withdrawals and spending. The non-taxable fraction never reached the cash-flow model, effectively making those dollars disappear. The engine now uses the full gross amount for cash flow and portfolio draw sizing, while continuing to pass only the taxable portion through tax calculations.' },
+      { kind: 'fix', text: 'IRMAA MAGI and ACA MAGI now correctly include tax-exempt interest per statute, while the NIIT MAGI and OBBBA senior-bonus phase-out continue to exclude it. The engine previously used a single MAGI figure for all four calculations; it now maintains separate MAGI variants: clean AGI-based MAGI for NIIT and the senior bonus, and a surcharge MAGI (AGI + exempt interest) for IRMAA lookback and ACA subsidy sizing.' },
+      { kind: 'cosmetic', text: 'Portfolio yield fields redesigned: a full-width composition strip below the three return fields labels each yield as a sub-component of Taxable Return, with paired sub-fields (% Qualified under Div Yield; % State-taxable under Tax-Exempt Yield) immediately adjacent to their parent. The relationship between total return, dividend yield, exempt yield, and price appreciation is now explicit.' },
+    ],
+  },
+  {
     version: '1.7.1',
     date: '2026-08-19',
     summary: 'Fix: inherited IRA balance excluded from Roth conversion.',

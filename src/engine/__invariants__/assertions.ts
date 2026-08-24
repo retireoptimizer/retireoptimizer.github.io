@@ -2,6 +2,7 @@ import type { Plan } from '../../schemas/plan';
 import type { ProjectionRow, ProjectionResult } from '../projection';
 import { runProjection } from '../projection';
 import { rmdStartAgeForDob } from '../rmd';
+import { taxAdjustedRates } from '../taxAdjusted';
 
 /**
  * Per-row dollar-flow invariants. Each row's bucket motion is independently checked
@@ -70,6 +71,9 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   if (Math.abs(r.endTotal - expectedEndTotal) > tol) {
     out.push(`endTotal MISMATCH: $${r.endTotal.toFixed(2)} != sum-of-buckets $${expectedEndTotal.toFixed(2)}`);
   }
+
+  // 3b. endTaxableBasis non-negative (basis can exceed balance but not go negative)
+  if (r.endTaxableBasis < -tol) out.push(`endTaxableBasis negative: ${r.endTaxableBasis}`);
 
   // 4. TAX SANITY
   if (r.fedTax < -tol) out.push(`fedTax negative: ${r.fedTax}`);
@@ -180,6 +184,19 @@ export function assertProjectionInvariants(
   const sumConv = proj.rows.reduce((s, r) => s + r.rothConv, 0);
   if (Math.abs(proj.lifetimeConversion - sumConv) > Math.max(tol, proj.rows.length * tol)) {
     throw new Error(`lifetimeConversion aggregate inconsistent: ${proj.lifetimeConversion} vs row-sum ${sumConv}`);
+  }
+
+  // Tax-adjusted two-sided bound.
+  // Upper: endTaxAdjustedReal <= endTotalReal (tax-adjusted can't exceed gross)
+  if (proj.endTaxAdjustedReal > proj.endTotalReal + tol) {
+    throw new Error(`endTaxAdjustedReal (${proj.endTaxAdjustedReal.toFixed(2)}) exceeds endTotalReal (${proj.endTotalReal.toFixed(2)})`);
+  }
+  // Lower: endTaxAdjustedReal >= endTotalReal * (1 - max(ordRate, ltcgRate)) approximately.
+  //   Allow a 10% margin because the bucket mix is unknown at aggregate level.
+  const { ordRate, ltcgRate } = taxAdjustedRates(plan.assumptions);
+  const lowerFloor = proj.endTotalReal * (1 - Math.max(ordRate, ltcgRate)) - tol;
+  if (proj.endTaxAdjustedReal < lowerFloor - proj.endTotalReal * 0.10) {
+    throw new Error(`endTaxAdjustedReal (${proj.endTaxAdjustedReal.toFixed(2)}) below floor ${lowerFloor.toFixed(2)} (endTotalReal=${proj.endTotalReal.toFixed(2)}, maxRate=${Math.max(ordRate, ltcgRate)})`);
   }
 }
 

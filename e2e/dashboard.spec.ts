@@ -14,7 +14,8 @@ test('Dashboard loads with default plan and shows Plan Summary banner', async ({
   // Plan Summary banner KPI stats are visible.
   await expect(page.getByText(/End Balance/i).first()).toBeVisible();
   await expect(page.getByText('Initial WR', { exact: true })).toBeVisible();
-  await expect(page.getByText('Years Funded', { exact: true })).toBeVisible();
+  // Tax-Adj Balance tile is visible when rates > 0 (default: 22%/15%)
+  await expect(page.getByText('Tax-Adj Balance', { exact: true })).toBeVisible();
 });
 
 test('Personal Details page renders the client-profile inputs', async ({ page }) => {

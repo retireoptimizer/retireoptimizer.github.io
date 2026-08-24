@@ -24,10 +24,10 @@ export const REC_GOALS: Record<RecGoal, RecGoalSpec> = {
   },
   'max-end': {
     key: 'max-end',
-    label: 'Maximize End Balance',
-    description: 'Total portfolio at plan-to age, in today\'s dollars.',
+    label: 'Maximize Tax-Adjusted End Balance',
+    description: 'Tax-adjusted portfolio value at plan-to age, in today\'s dollars. Pre-tax balances are haircut by your assumed effective rate; Roth is untouched. Set both rates to 0% in Portfolio settings to optimize gross balance instead.',
     direction: 'max',
-    score: (r) => r.endTotalReal,
+    score: (r) => r.endTaxAdjustedReal,
     format: fmtK,
   },
   'min-rmd': {
@@ -57,7 +57,7 @@ export const REC_GOALS: Record<RecGoal, RecGoalSpec> = {
     score: (r) => {
       let lastFundedAge = 0;
       for (const x of r.rows) if (x.endTotal > 0) lastFundedAge = x.ageA;
-      return lastFundedAge * 1_000_000 + r.endTotalReal;
+      return lastFundedAge * 1_000_000 + r.endTaxAdjustedReal;
     },
     format: (m) => `Age ${Math.floor(m / 1_000_000)}`,
   },
@@ -65,8 +65,8 @@ export const REC_GOALS: Record<RecGoal, RecGoalSpec> = {
 
 // ─── User-facing optimizer goals (linopt-style plain English) ──────────────────
 // These wrap the inner optimizer. The inner search always uses the 'max-end' spec
-// (so the inner picks the strategy that maximizes ending balance, with depletion
-// strictly worse). Outer loops vary spending or retirement age.
+// (so the inner picks the strategy that maximizes tax-adjusted ending balance, with
+// depletion strictly worse). Outer loops vary spending or retirement age.
 
 export type UserGoal = 'max-end-balance' | 'max-sustainable-spending' | 'min-retirement-age';
 

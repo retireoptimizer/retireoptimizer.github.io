@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { useWhatIfStore } from '../store/useWhatIfStore';
@@ -16,6 +16,7 @@ import CashFlowSankey from '../components/charts/CashFlowSankey';
 import ChartFrame from '../components/charts/ChartFrame';
 import { compareWithWithoutConversion } from '../engine/comparison';
 import { explainPolicy } from '../engine/explain/optimizerRationale';
+import TaxAdjustedBreakdown from '../components/TaxAdjustedBreakdown';
 
 const GOAL_LABELS: Record<string, string> = {
   'max-end-balance': 'Max End Balance',
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const addScenario = usePlanStore((s) => s.addScenario);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [rationaleOpen, setRationaleOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const optimizerResult = useOptimizerStore((s) => s.result);
   const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const pendingGoal = useOptimizerStore((s) => s.pendingGoal);
@@ -75,6 +77,8 @@ export default function Dashboard() {
   const retirementYears = A.planToAge - A.retirementAge;
   const yearsFunded = planLasts ? retirementYears : (depAge ?? A.planToAge) - A.retirementAge;
   const rothActive = proj.lifetimeConversion > 1000;
+  const asm = effectivePlan.assumptions;
+  const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0.15) > 0;
   const retireRows = proj.rows.filter((r) => r.phase === 'Retire' || r.phase === 'Survivor');
   const initialRow = retireRows.find((r) => r.totalSS > 0) ?? retireRows[Math.floor(retireRows.length / 2)] ?? retireRow;
   const defaultYearIdx = Math.max(0, proj.rows.findIndex((r) => r.ageA === (initialRow?.ageA ?? A.retirementAge)));
@@ -153,7 +157,7 @@ export default function Dashboard() {
               Plan Summary
             </span>
             <span className={`badge ${planLasts ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: 11, padding: '4px 10px' }}>
-              {planLasts ? '✓ Fully Funded' : `⚠ Funded through Age ${longevityAge}`}
+              {planLasts ? `✓ Fully Funded · ${retirementYears} yrs` : `⚠ Funded through Age ${longevityAge} · ${yearsFunded}/${retirementYears} yrs`}
             </span>
             {optimizerResult && (
               <button
@@ -167,11 +171,19 @@ export default function Dashboard() {
 
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 1, flexWrap: 'wrap' }}>
-            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`age ${A.planToAge} · ${real ? "today's $" : 'nominal $'}`} />
+            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`age ${A.planToAge} · ${real ? "today's $" : 'nominal $'}`} title="Ending portfolio value at your plan-to age, before any adjustment for tax still owed on it." />
+            {taxAdjActive && <>
+              <Divider />
+              <HeroStat
+                label="Tax-Adj Balance"
+                value={fmtM(real ? proj.endTaxAdjustedReal : proj.endTaxAdjustedNominal)}
+                valueColor="#c9a84c"
+                sub={<button onClick={() => setBreakdownOpen(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.72)', cursor: 'pointer', fontSize: 10, padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>end bal after tax · breakdown →</button>}
+                title="The same ending balance, less estimated tax still owed on pre-tax accounts and unrealized gains. Roth is untaxed. Click breakdown for detail."
+              />
+            </>}
             <Divider />
             <HeroStat label="Annual Spending" value={annualSpend > 0 ? fmtM(annualSpend) : '—'} sub={real ? "today's $" : 'nominal $'} />
-            <Divider />
-            <HeroStat label="Years Funded" value={`${yearsFunded} / ${retirementYears}`} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub="retirement yrs" />
             <Divider />
             <HeroStat label="Initial WR" value={wdRate > 0 ? (wdRate * 100).toFixed(2) + '%' : '—'} sub="year-1 draw" />
             <Divider />
@@ -325,6 +337,16 @@ export default function Dashboard() {
 
       </div>
 
+      {/* Tax-Adjusted Breakdown Modal */}
+      {breakdownOpen && taxAdjActive && (
+        <TaxAdjustedBreakdown
+          proj={proj}
+          plan={effectivePlan}
+          real={real}
+          onClose={() => setBreakdownOpen(false)}
+        />
+      )}
+
       {/* Optimizer Rationale Modal */}
       {rationaleOpen && (
         <div
@@ -365,9 +387,9 @@ export default function Dashboard() {
   );
 }
 
-function HeroStat({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
+function HeroStat({ label, value, sub, valueColor, title }: { label: string; value: string; sub?: React.ReactNode; valueColor?: string; title?: string }) {
   return (
-    <div style={{ flex: 1, minWidth: 80, padding: '2px 8px' }}>
+    <div style={{ flex: 1, minWidth: 80, padding: '2px 8px' }} title={title}>
       <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'rgba(255,255,255,0.58)' }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Playfair Display',serif", color: valueColor ?? 'rgba(255,255,255,0.95)', lineHeight: 1.2 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.72)', marginTop: 2 }}>{sub}</div>}

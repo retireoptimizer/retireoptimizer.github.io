@@ -11,7 +11,7 @@ import type { Plan } from '../../schemas/plan';
 const STATES = ['IL', 'CA', 'NY', 'TX', 'FL', 'WA'] as const;
 const STRATEGIES: Plan['withdrawalStrategy'][] = ['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill'];
 const CONV_MODES: Plan['conversion']['mode'][] = ['off', 'manual', 'auto-window', 'bracket-fill'];
-const STREAM_TYPES = ['SS', 'Pension', 'Annuity', 'Other'] as const;
+const STREAM_TYPES = ['SS', 'Pension', 'Annuity', 'MuniBond', 'VA', 'Other'] as const;
 const EXPENSE_WHO = ['A', 'B', 'Household'] as const;
 
 /** A contribSplit that sums to exactly 1.0 (within float epsilon). */
@@ -77,6 +77,8 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
     tradReturn: fc.double({ min: 0.02, max: 0.10, noNaN: true, noDefaultInfinity: true }),
     rothReturn: fc.double({ min: 0.02, max: 0.10, noNaN: true, noDefaultInfinity: true }),
     inflation: fc.double({ min: 0.005, max: 0.05, noNaN: true, noDefaultInfinity: true }),
+    taxAdjOrdRate: fc.double({ min: 0, max: 0.50, noNaN: true, noDefaultInfinity: true }),
+    taxAdjLtcgRate: fc.double({ min: 0, max: 0.35, noNaN: true, noDefaultInfinity: true }),
     pfA: personPortfolio(),
     pfB: personPortfolio(),
     hasPersonB: fc.boolean(),
@@ -120,6 +122,10 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           taxableReturn: s.taxableReturn,
           taxableDivYield: 0,
           taxableQualifiedPct: 0.80,
+          taxableExemptYield: 0,
+          taxableExemptStatePct: 1,
+          taxAdjOrdRate: s.taxAdjOrdRate,
+          taxAdjLtcgRate: s.taxAdjLtcgRate,
           tradReturn: s.tradReturn,
           rothReturn: s.rothReturn,
           inflation: s.inflation,

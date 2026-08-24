@@ -27,6 +27,10 @@ function goldenBase(): Plan {
       tradReturn: 0.065,
       rothReturn: 0.065,
       inflation: 0.025,
+      taxableExemptYield: 0,
+      taxableExemptStatePct: 1,
+      taxAdjOrdRate: 0.22,
+      taxAdjLtcgRate: 0.15,
     },
     portfolio: {
       personA: {
@@ -431,7 +435,7 @@ export function planP_tightPlan(): Plan {
     ...p,
     personA: { ...p.personA, dob: '1968-01-01', retirementAge: 62, planToAge: 95, passingAge: 90, ssPIA: 28000, ssClaimAge: 67 },
     personB: { ...p.personB!, dob: '1971-01-01', retirementAge: 60, planToAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
-    assumptions: { taxableReturn: 0.055, tradReturn: 0.055, rothReturn: 0.055, inflation: 0.025 },
+    assumptions: { taxableReturn: 0.055, tradReturn: 0.055, rothReturn: 0.055, inflation: 0.025, taxableExemptYield: 0, taxableExemptStatePct: 1, taxAdjOrdRate: 0.22, taxAdjLtcgRate: 0.15 },
     portfolio: {
       personA: { taxable: 150000, taxableBasis: 75000, traditional: 450000, roth: 50000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 100000, taxableBasis: 50000, traditional: 300000, roth: 50000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },

@@ -130,10 +130,23 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 20,
+      version: 22,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v22: tax-adjusted balance rates. 22% / 15% are the new modeling defaults; the
+        // pre-v22 behavior is exactly 0% / 0% (no tax adjustment).
+        if (fromVersion < 22 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {
+          const asm = ps.plan.assumptions as Record<string, unknown>;
+          asm.taxAdjOrdRate  ??= 0.22;
+          asm.taxAdjLtcgRate ??= 0.15;
+        }
+        // v21: tax-exempt income (MuniBond/VA streams + portfolio exempt yield). Defaults preserve existing behavior.
+        if (fromVersion < 21 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {
+          const asm = ps.plan.assumptions as Record<string, unknown>;
+          asm.taxableExemptYield    ??= 0;
+          asm.taxableExemptStatePct ??= 1;
+        }
         // v20: add payTaxFromBrokerage (default false — preserves existing behavior).
         if (fromVersion < 20 && ps.plan && typeof ps.plan === 'object') {
           const planObj = ps.plan as Record<string, unknown>;
