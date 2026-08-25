@@ -130,10 +130,15 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 22,
+      version: 23,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v23: dividend payout election. Default 0 = full reinvestment (DRIP), preserving pre-v23 behavior.
+        if (fromVersion < 23 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {
+          const asm = ps.plan.assumptions as Record<string, unknown>;
+          asm.taxableDistributePct ??= 0;
+        }
         // v22: tax-adjusted balance rates. 22% / 15% are the new modeling defaults; the
         // pre-v22 behavior is exactly 0% / 0% (no tax adjustment).
         if (fromVersion < 22 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {

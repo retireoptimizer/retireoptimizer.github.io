@@ -41,6 +41,11 @@ export const AssumptionsSchema = z.object({
   /** Share of taxableExemptYield interest taxable by the resident state.
    *  1 = out-of-state bonds (default); 0 = in-state / state-exempt. */
   taxableExemptStatePct: z.number().min(0).max(1).default(1),
+  /** Share of the taxable account's annual yield (dividends + tax-exempt interest) paid out as
+   *  spendable cash rather than reinvested. 0 = full DRIP (default); 1 = all yield swept to
+   *  checking and spent before any shares are sold. Tax treatment is identical either way —
+   *  this moves cash and cost basis, not taxable income. */
+  taxableDistributePct: z.number().min(0).max(1).default(0),
   /** Blended effective rate assumed for pre-tax (401k/IRA) balances at liquidation.
    *  Applied to the entire traditional balance as a flat haircut — not a bracket calculation.
    *  Setting to 0 disables the tax-adjusted balance feature. */
@@ -231,6 +236,7 @@ export const defaultPlan = (): Plan => ({
     taxableQualifiedPct: 0.80,
     taxableExemptYield: 0,
     taxableExemptStatePct: 1,
+    taxableDistributePct: 0,
     taxAdjOrdRate: 0.22,
     taxAdjLtcgRate: 0.15,
     tradReturn: 0.055,
@@ -303,6 +309,7 @@ export const samplePlan = (): Plan => ({
     taxableQualifiedPct: 0.80,
     taxableExemptYield: 0,
     taxableExemptStatePct: 1,
+    taxableDistributePct: 0,
     taxAdjOrdRate: 0.22,
     taxAdjLtcgRate: 0.15,
     tradReturn: 0.055,

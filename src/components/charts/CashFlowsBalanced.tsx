@@ -126,6 +126,13 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
         backgroundColor: palette.incomeOther,
         stack: 'in',
       },
+      ...(rows.some((r) => (r.distributedCash ?? 0) > 0) ? [{
+        type: 'bar' as const,
+        label: 'Dividends (paid out)',
+        data: rows.map((r) => scale(r.distributedCash ?? 0, r.inflationFactor)),
+        backgroundColor: palette.goldLight,
+        stack: 'in',
+      }] : []),
       {
         type: 'bar',
         label: 'One-Time Events',

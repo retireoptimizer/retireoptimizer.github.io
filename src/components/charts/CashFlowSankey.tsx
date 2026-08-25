@@ -23,6 +23,7 @@ export default function CashFlowSankey({ row, real = true, height = 320 }: Props
     { id: 'wdRth', label: 'Withdrawal · Roth', value: scale(row.wdRth), color: palette.gold },
     { id: 'ss',    label: 'Social Security', value: scale(row.totalSS), color: palette.goldLight },
     { id: 'oth',   label: 'Other Income', value: scale(row.otherIncome), color: palette.incomeOther },
+    { id: 'div',   label: 'Dividends (paid out)', value: scale(row.distributedCash ?? 0), color: palette.goldLight },
     { id: 'lump',  label: 'One-Time Events', value: scale((row.lumpSumInjectTaxable ?? 0) + (row.lumpSumInjectTrad ?? 0) + (row.lumpSumInjectRoth ?? 0)), color: palette.gold },
   ].filter((n) => n.value > 0);
 

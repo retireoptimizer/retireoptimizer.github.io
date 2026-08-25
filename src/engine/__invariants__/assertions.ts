@@ -104,7 +104,7 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   //    In SemiRetire, working person's contributions offset expense draws, so the coverage
   //    check still holds. Allow 5% slack for gross-up convergence drift.
   if (semiRetired && r.endTotal > 1 && !opts.skipSpendingCoverage) {
-    const cashIn = r.wdTax + r.wdTrd + r.wdRth + r.totalSS + r.otherIncome + r.rmd + (r.lumpSumOrdinaryIncome ?? 0) + (r.lumpSumForcedRothDist ?? 0);
+    const cashIn = r.wdTax + r.wdTrd + r.wdRth + r.totalSS + r.otherIncome + (r.distributedCash ?? 0) + r.rmd + (r.lumpSumOrdinaryIncome ?? 0) + (r.lumpSumForcedRothDist ?? 0);
     const cashOut = r.netSpend + r.fedTax + r.stateTaxAmt + r.irmaa;
     // 5% slack: pathological first-retirement-year scenarios (high marginal-bracket
     // crossings combined with low starting balance) can have gross-up convergence

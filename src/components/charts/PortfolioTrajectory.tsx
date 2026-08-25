@@ -59,7 +59,7 @@ export default function PortfolioTrajectory({ proj, real = true, height = 320 }:
   const ageRetire = rows.find((r) => r.phase === 'Retire')?.ageA;
   const ageSS = rows.find((r) => r.totalSS > 0)?.ageA;
   const ageRMD = rows.find((r) => r.rmd > 0)?.ageA;
-  const ageDeplete = rows.find((r) => r.endTotal <= 0 && r.phase === 'Retire')?.ageA;
+  const ageDeplete = rows.find((r) => r.ranOut && r.phase === 'Retire')?.ageA;
 
   const markers: Marker[] = [];
   if (ageRetire !== undefined) markers.push({ age: ageRetire, label: 'Retire', color: palette.gold });

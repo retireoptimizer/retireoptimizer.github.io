@@ -423,6 +423,98 @@ describe('Annuity taxablePct regression (dropped income bug)', () => {
   });
 });
 
+describe('taxableDistributePct', () => {
+  const basePlan = (): Plan => {
+    const p = defaultPlan();
+    p.personA.dob = '1961-01-01';
+    p.personA.retirementAge = 65;
+    p.personA.planToAge = 90;
+    p.personA.passingAge = 90;
+    p.personA.ssPIA = 0;
+    p.personA.ssClaimAge = 65;
+    p.personB = undefined;
+    p.incomeStreams = [];
+    p.expenseStreams = [{ id: 'e', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 50_000, inflationPct: { mode: 'fixed', rate: 0 } }];
+    p.portfolio = { personA: { taxable: 800_000, taxableBasis: 400_000, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 1, traditional: 0, roth: 0 } } };
+    p.assumptions = { ...p.assumptions, taxableReturn: 0.07, taxableDivYield: 0.03, taxableExemptYield: 0, taxableExemptStatePct: 1, taxableDistributePct: 0, inflation: 0 };
+    return p;
+  };
+
+  it('distributedCash is nonzero in retirement and zero pre-retirement', () => {
+    const p = basePlan();
+    p.assumptions = { ...p.assumptions, taxableDistributePct: 0.5 };
+    const rows = runProjection(p).rows;
+    const retRow = rows.find(r => r.ageA === 65)!;
+    expect(retRow.distributedCash).toBeGreaterThan(0);
+    // distribution is retirement-gated (eitherRetired): there are no pre-retirement rows
+    // in this plan (retirementAge = 65 = startAgeA), so we just confirm the retirement value.
+    expect(retRow.distributedCash).toBeCloseTo(800_000 * 0.03 * 0.5, -2);
+  });
+
+  it('cash substitution: distributing reduces wdTax while ordinaryDiv and qualifiedDiv are unchanged', () => {
+    // Distributing replaces portfolio withdrawal with dividend cash — same tax on dividends,
+    // but fewer shares sold so less LTCG from wdTax * gainFraction.
+    const p0 = basePlan();
+    p0.assumptions = { ...p0.assumptions, taxableDistributePct: 0 };
+
+    const p1 = basePlan();
+    p1.assumptions = { ...p1.assumptions, taxableDistributePct: 1 };
+
+    const row0 = runProjection(p0).rows.find(r => r.ageA === 65)!;
+    const row1 = runProjection(p1).rows.find(r => r.ageA === 65)!;
+
+    // Distributed cash reduces brokerage withdrawal.
+    expect(row1.wdTax).toBeLessThan(row0.wdTax - 1);
+    // Dividend tax surface is unchanged — distributePct moves cash, not tax treatment.
+    expect(row1.ordinaryDiv).toBeCloseTo(row0.ordinaryDiv, -1);
+    expect(row1.qualifiedDiv).toBeCloseTo(row0.qualifiedDiv, -1);
+  });
+
+  it('LTCG reduction: distributing lowers ltcg because fewer shares are sold', () => {
+    const p0 = basePlan();
+    p0.assumptions = { ...p0.assumptions, taxableDistributePct: 0 };
+
+    const p1 = basePlan();
+    p1.assumptions = { ...p1.assumptions, taxableDistributePct: 1 };
+
+    const row0 = runProjection(p0).rows.find(r => r.ageA === 65)!;
+    const row1 = runProjection(p1).rows.find(r => r.ageA === 65)!;
+    // Less wdTax → wdTax * gainFraction smaller → ltcg lower (qualifiedDiv is same).
+    expect(row1.ltcg).toBeLessThan(row0.ltcg);
+  });
+
+  it('accumulation no-op: distributedCash is zero pre-retirement (yield is reinvested)', () => {
+    // annualDiv and exemptInt are retirement-gated; distributePct must not fire in accumulation.
+    const p = basePlan();
+    p.personA.retirementAge = 70; // 5 accumulation years before retirement
+    p.assumptions = { ...p.assumptions, taxableDistributePct: 1 };
+    const rows = runProjection(p).rows;
+    // All rows before retirementAge must have distributedCash = 0.
+    const preRetRows = rows.filter(r => r.ageA < 70);
+    expect(preRetRows.length).toBeGreaterThan(0);
+    preRetRows.forEach(r => expect(r.distributedCash).toBe(0));
+  });
+
+  it('exemptInterest is unchanged when distributePct changes (tax surface, not MAGI routing, is what matters)', () => {
+    // Distributing exempt yield moves cash but does not change the §103 income flowing
+    // into SS provisional income and ACA/IRMAA MAGI.
+    const p0 = basePlan();
+    p0.assumptions = { ...p0.assumptions, taxableExemptYield: 0.01, taxableDistributePct: 0 };
+
+    const p1 = basePlan();
+    p1.assumptions = { ...p1.assumptions, taxableExemptYield: 0.01, taxableDistributePct: 1 };
+
+    const row0 = runProjection(p0).rows.find(r => r.ageA === 65)!;
+    const row1 = runProjection(p1).rows.find(r => r.ageA === 65)!;
+    // Exempt interest amount in the projection row should be the same.
+    expect(row1.exemptInterest).toBeCloseTo(row0.exemptInterest, -2);
+    // acaMagi - magi (the exemptInterest premium) should be the same.
+    const premium0 = row0.acaMagi - row0.magi;
+    const premium1 = row1.acaMagi - row1.magi;
+    expect(premium1).toBeCloseTo(premium0, -2);
+  });
+});
+
 describe('taxableExemptYield', () => {
   it('exempt interest is in exemptInterest field and acaMagi but not in magi or ordIncome', () => {
     // Test the routing invariant: acaMagi = magi + exemptInterest (when SS=0).

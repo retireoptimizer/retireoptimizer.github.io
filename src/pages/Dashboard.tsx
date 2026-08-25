@@ -79,6 +79,14 @@ export default function Dashboard() {
   const rothActive = proj.lifetimeConversion > 1000;
   const asm = effectivePlan.assumptions;
   const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0.15) > 0;
+  const lastRow = proj.rows[proj.rows.length - 1];
+  const endAgeSub = (() => {
+    if (!lastRow) return `age ${A.planToAge}`;
+    const B = effectivePlan.personB;
+    if (B && lastRow.phase === 'Survivor' && lastRow.ageB !== undefined)
+      return `${B.name} age ${lastRow.ageB}`;
+    return `age ${lastRow.ageA}`;
+  })();
   const retireRows = proj.rows.filter((r) => r.phase === 'Retire' || r.phase === 'Survivor');
   const initialRow = retireRows.find((r) => r.totalSS > 0) ?? retireRows[Math.floor(retireRows.length / 2)] ?? retireRow;
   const defaultYearIdx = Math.max(0, proj.rows.findIndex((r) => r.ageA === (initialRow?.ageA ?? A.retirementAge)));
@@ -171,7 +179,7 @@ export default function Dashboard() {
 
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 1, flexWrap: 'wrap' }}>
-            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`age ${A.planToAge} · ${real ? "today's $" : 'nominal $'}`} title="Ending portfolio value at your plan-to age, before any adjustment for tax still owed on it." />
+            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`${endAgeSub} · ${real ? "today's $" : 'nominal $'}`} title="Ending portfolio value at the end of the plan horizon, before any adjustment for tax still owed on it." />
             {taxAdjActive && <>
               <Divider />
               <HeroStat

@@ -64,6 +64,16 @@ export default function IncomeSourcesArea({ proj, real = true, height = 240 }: P
         pointRadius: 0,
         tension: 0.2,
       },
+      ...(rows.some((r) => (r.distributedCash ?? 0) > 0) ? [{
+        label: 'Dividends (paid out)',
+        data: rows.map((r) => scale(r.distributedCash ?? 0, r.inflationFactor)),
+        backgroundColor: palette.goldLight + 'd0',
+        borderColor: palette.goldLight,
+        borderWidth: 0,
+        fill: '-1',
+        pointRadius: 0,
+        tension: 0.2,
+      }] : []),
     ],
   };
 

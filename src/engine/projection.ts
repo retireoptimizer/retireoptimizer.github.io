@@ -49,6 +49,7 @@ export interface ProjectionRow {
   ltcg: number;
   ordinaryDiv: number;     // ordinary (non-qualified) dividends from taxable account
   qualifiedDiv: number;    // qualified dividends from taxable account (subset of ltcg)
+  distributedCash: number; // yield paid out in cash (not reinvested); taxed same as reinvested yield
   fedTax: number;
   stateTaxAmt: number;
   irmaa: number;
@@ -80,6 +81,7 @@ export interface ProjectionRow {
   endTotal: number;
   endTaxableBasis: number;
   endTaxAdjusted: number;
+  ranOut: boolean;          // true from the first year spending could not be funded from the portfolio
 }
 
 export interface ProjectionResult {
@@ -252,6 +254,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const taxableQualifiedPct = plan.assumptions.taxableQualifiedPct ?? 0.80;
   const taxableExemptYield  = plan.assumptions.taxableExemptYield  ?? 0;
   const exemptStatePct      = plan.assumptions.taxableExemptStatePct ?? 1;
+  const distributePct       = plan.assumptions.taxableDistributePct ?? 0;
   const taxAdjRates = taxAdjustedRates(plan.assumptions);
   // Per-year MAGI + filing-status history for IRMAA 2-year lookback.
   // Stores surchargeMAGI (magi + exemptIncome) per 42 U.S.C. §1395r(i)(4).
@@ -358,7 +361,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // a muni stream correctly hits ACA MAGI for a pre-retirement marketplace enrollee.
     const exemptIntEst = (retiredA || retiredB) ? taxable * taxableExemptYield : 0;
     const exemptIncomeEst = other.exemptInterest + exemptIntEst;
-    const spendingGapEst = Math.max(0, netSpend - ss.total - other.gross - rmdAmt);
+    const annualDivEstForDist = (retiredA || retiredB) ? taxable * taxableDivYield : 0;
+    const exemptIntEstForDist = (retiredA || retiredB) ? taxable * taxableExemptYield : 0;
+    const distributedCashEst  = (annualDivEstForDist + exemptIntEstForDist) * distributePct;
+    const spendingGapEst = Math.max(0, netSpend - ss.total - other.gross - rmdAmt - distributedCashEst);
     // Ordinary dividends from the taxable account are ordinary income (eat bracket space) but are
     // reinvested — not a spending resource. Estimate them here so baseOrdIncForConv is complete.
     const annualDivEst = (retiredA || retiredB) ? taxable * taxableDivYield : 0;
@@ -497,10 +503,15 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const annualDiv    = eitherRetired ? annualDivForBasis : 0;
     const ordinaryDiv  = annualDiv * (1 - taxableQualifiedPct);
     const qualifiedDiv = annualDiv * taxableQualifiedPct;
-    const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTaxEarly);
-    // Include annualDiv and exemptInt in basis: reinvested interest/dividends reduce gain fraction.
-    // exemptInt adds to basis per IRC §1012 (reinvested exempt interest is a cost-basis purchase).
-    const preBasisThisYear = taxableBasis + contribToTaxEarly + annualDiv + exemptInt;
+    // Payout election: distributed yield leaves the account as cash instead of compounding.
+    // Tax treatment is unchanged — only cash flow and basis are affected.
+    const divDistributed    = annualDiv * distributePct;
+    const exemptDistributed = exemptInt * distributePct;
+    const distributedCash   = divDistributed + exemptDistributed;
+    // taxAvail reduced by distributed cash — it's already out of the account.
+    const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTaxEarly - distributedCash);
+    // Only the reinvested portion adds to basis; distributed cash does not compound.
+    const preBasisThisYear = taxableBasis + contribToTaxEarly + (annualDiv - divDistributed) + (exemptInt - exemptDistributed);
     const gainFraction = taxAvail > 0 ? Math.max(0, Math.min(1, 1 - preBasisThisYear / taxAvail)) : 0;
     const tradAvail = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt - conv);
     const rothAvail = Math.max(0, roth * (1 + gRateRothYear) + contribToRothEarly + conv);
@@ -531,12 +542,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // cover. Pulling the full burden when income already covers taxes generates unnecessary
       // LTCG on the brokerage draw, which then increases the tax bill (NIIT, fed).
       const incomeAvailForTax = Math.max(0,
-        ss.total + other.gross + rmdAmt + lumpSumOrdIncomeEst + lumpSumTaxFreeEst - netSpend
+        ss.total + other.gross + distributedCash + rmdAmt + lumpSumOrdIncomeEst + lumpSumTaxFreeEst - netSpend
       );
       const taxFromBrok = (plan.payTaxFromBrokerage ?? false)
         ? Math.min(Math.max(0, taxBurden - incomeAvailForTax), taxAvail)
         : 0;
-      gap = Math.max(0, netSpend - ss.total - other.gross - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + taxBurden - taxFromBrok);
+      gap = Math.max(0, netSpend - ss.total - other.gross - distributedCash - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + taxBurden - taxFromBrok);
       const w = activePolicy
         ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail - taxFromBrok, traditional: tradAvail, roth: rothAvail })
         : applyWithdrawalOrder({
@@ -640,7 +651,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const contribToTax = contribA * splitAtoTax + contribB * splitBtoTax;
     const contribToRoth = contribA * splitAtoRoth + contribB * splitBtoRoth;
 
-    taxable = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - wdTax);
+    taxable = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - wdTax - distributedCash);
     // Split withdrawals and conversions pro-rata by each person's trad balance.
     // Combined max(0, ...) preserves the single-pool mass-balance invariant; tradANext
     // is clamped to [0, tradCombined] so tradA+tradB == tradCombined exactly even when
@@ -652,7 +663,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     tradA = tradCombined > 0 ? Math.max(0, Math.min(tradCombined, tradANext)) : 0;
     tradB = tradCombined - tradA;
     roth  = Math.max(0, roth  * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
-    taxableBasis = Math.max(0, taxableBasis + contribToTax + annualDivForBasis + exemptIntForBasis - wdTax * (1 - gainFraction));
+    taxableBasis = Math.max(0, taxableBasis + contribToTax + (annualDivForBasis - divDistributed) + (exemptIntForBasis - exemptDistributed) - wdTax * (1 - gainFraction));
 
     // One-time income events: inject directly into target account.
     // Amount is stored in plan-start-year (today's) dollars — inflate to nominal at event year,
@@ -760,7 +771,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 
     // Surplus sweep: when SS + other income + RMD exceed spending + all taxes, the leftover
     // cash is already received and taxed — sweep it into the taxable account at full basis.
-    const cashSurplus = Math.max(0, ss.total + other.gross + rmdAmt - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear);
+    const cashSurplus = Math.max(0, ss.total + other.gross + distributedCash + rmdAmt - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear);
     if (cashSurplus > 0) { taxable += cashSurplus; taxableBasis += cashSurplus; }
 
     const endTotal = taxable + tradA + tradB + roth;
@@ -809,6 +820,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       ltcg: ltcgFinal,
       ordinaryDiv,
       qualifiedDiv,
+      distributedCash,
       fedTax,
       stateTaxAmt: stateAmt,
       irmaa,
@@ -832,6 +844,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       endTotal,
       endTaxableBasis: taxableBasis,
       endTaxAdjusted: taxAdjustedValue(taxable, taxableBasis, tradA + tradB, roth, taxAdjRates.ordRate, taxAdjRates.ltcgRate),
+      ranOut,
     });
   }
 
@@ -860,13 +873,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
 }
 
 /**
- * First retirement-phase age where the portfolio hits zero, or null if it never does.
- * Use to drive "Plan Lasts To" / depletion warnings.
+ * Last age through which retirement spending is fully funded, or null if the plan lasts
+ * the full horizon. Returns (first-underfunded-age − 1) so callers can display
+ * "Funded through Age X" without off-by-one.
  */
 export function depletionAge(proj: ProjectionResult): number | null {
   for (const r of proj.rows) {
-    if ((r.phase === 'Retire' || r.phase === 'Survivor') && r.endTotal <= 0) {
-      return r.ageA;
+    if ((r.phase === 'Retire' || r.phase === 'Survivor') && r.ranOut) {
+      return r.ageA - 1;
     }
   }
   return null;

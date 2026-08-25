@@ -124,6 +124,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           taxableQualifiedPct: 0.80,
           taxableExemptYield: 0,
           taxableExemptStatePct: 1,
+          taxableDistributePct: 0,
           taxAdjOrdRate: s.taxAdjOrdRate,
           taxAdjLtcgRate: s.taxAdjLtcgRate,
           tradReturn: s.tradReturn,

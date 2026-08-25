@@ -162,10 +162,10 @@ function MuniDoubleCountWarning({ exemptYield, where }: { exemptYield: number; w
           Muni income may be counted twice
         </strong>
         You have both a tax-exempt portfolio yield of <strong>{fmtPct(exemptYield, 2)}</strong> and a{' '}
-        <strong>Muni Bond</strong> income stream
-        {where === 'income' ? ' below' : ' in Income & Expenses'}. Use the <em>portfolio yield</em> for
-        munis held inside the brokerage balance, and a <em>stream</em> only for bonds held outside it —
-        not both for the same bonds.
+        <strong>Tax-Exempt Income</strong> stream
+        {where === 'income' ? ' below' : ' in Income & Expenses'}. Use the <em>Tax-Exempt Yield</em> in
+        Portfolio for munis held inside the brokerage balance, and the stream only for bonds held
+        outside it — not both for the same bonds.
       </div>
     </div>
   );
@@ -488,7 +488,7 @@ export default function InputsPage() {
                 <div style={headerStyle}>Stop age</div>
                 <div style={headerStyle}>Annual amt</div>
                 <div style={headerStyle}>Growth %</div>
-                <div style={headerStyle}>State taxable % <span title="Only applies when using a Custom flat-rate state. Named states (IL, CA, NY…) apply their own built-in exemption rules regardless of this value. For Muni Bond streams: 0% for in-state bonds, 100% for out-of-state." style={{ cursor: 'help', opacity: 0.55 }}>ⓘ</span></div>
+                <div style={headerStyle}>State taxable % <span title="Only applies when using a Custom flat-rate state. Named states (IL, CA, NY…) apply their own built-in exemption rules regardless of this value. For Tax-Exempt Income streams: 0% for in-state bonds, 100% for out-of-state." style={{ cursor: 'help', opacity: 0.55 }}>ⓘ</span></div>
                 <div></div>
               </div>
               {plan.incomeStreams.length === 0 && (
@@ -516,7 +516,7 @@ export default function InputsPage() {
                     <option value="SS">SS</option>
                     <option value="Pension">Pension</option>
                     <option value="Annuity">Annuity</option>
-                    <option value="MuniBond">Muni Bond</option>
+                    <option value="MuniBond">Tax-Exempt Income</option>
                     <option value="VA">VA / Disability</option>
                     <option value="Other">Other</option>
                   </select>
@@ -660,7 +660,7 @@ export default function InputsPage() {
                       borderTop: '2px solid rgba(13,27,46,0.16)',
                     }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.02em' }}>
-                        ↳ Of the {fmtPct(asm.taxableReturn, 1)} Taxable return, how much is paid out as income each year?
+                        ↳ Yield breakdown
                       </div>
                       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
                         <div style={{ display: 'flex', gap: 10, flex: 1, width: isMobile ? '100%' : undefined }}>
@@ -725,9 +725,27 @@ export default function InputsPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="helper-text" style={{ marginTop: 8, marginBottom: exemptYield > 0 && plan.incomeStreams.some((s) => s.type === 'MuniBond') ? 10 : 0 }}>
-                        The rest ({fmtPct(Math.max(0, asm.taxableReturn - divYield - exemptYield), 1)}) is price appreciation — untaxed until you sell.
-                      </div>
+                      {/* Payout election — applies jointly to both yield types */}
+                      {(divYield > 0 || exemptYield > 0) && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(13,27,46,0.10)' }}>
+                          <div className="form-group" style={{ marginBottom: 0, flex: '0 0 120px' }}>
+                            <label style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>→ % Reinvested</label>
+                            <div className="input-suffix-wrap">
+                              <NumberInput
+                                value={1 - (asm.taxableDistributePct ?? 0)}
+                                scale={100}
+                                digits={0}
+                                onCommit={(v) => setAssumptions({ taxableDistributePct: Math.min(Math.max(1 - v, 0), 1) })}
+                              />
+                              <span className="input-suffix">%</span>
+                            </div>
+                          </div>
+                          <div className="helper-text" style={{ marginTop: 22, flex: 1 }}>
+                            100% = full DRIP — yield compounds into cost basis. Lower values sweep dividends to checking before selling shares. Tax is the same either way.
+                          </div>
+                        </div>
+                      )}
+
                       {exemptYield > 0 && plan.incomeStreams.some((s) => s.type === 'MuniBond') && (
                         <MuniDoubleCountWarning exemptYield={exemptYield} where="portfolio" />
                       )}
@@ -747,61 +765,6 @@ export default function InputsPage() {
                     <span className="input-suffix">%</span>
                   </div>
                   <div className="helper-text">Annual CPI</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tax-adjusted rates: full-width strip rather than stacked in the narrow
-                inflation column, which left the taller Returns column with dead space. */}
-            <div style={{
-              marginTop: -8, marginBottom: 20, padding: '10px 12px', borderRadius: 8,
-              background: 'rgba(13,27,46,0.03)',
-              border: '1px solid rgba(13,27,46,0.08)',
-              borderTop: '2px solid rgba(13,27,46,0.16)',
-            }}>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
-                <div style={{ flex: 2, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '0.02em' }}>
-                    End-Balance Tax Adjustment
-                  </div>
-                  <div className="helper-text" style={{ marginTop: 0 }}>
-                    Applies only to the <strong>ending balance</strong> at your plan-to age — the tax still owed on what&apos;s left over. Year-by-year taxes are unaffected. Blended effective rates, not brackets: they drive the Tax-Adj Balance on the Dashboard and what the optimizer maximizes. Set both to 0% to go back to raw end balances.
-                  </div>
-                </div>
-
-                <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(13,27,46,0.12)', display: isMobile ? 'none' : 'block' }} />
-
-                <div style={{ display: 'flex', gap: 10, flex: 2, width: isMobile ? '100%' : undefined }}>
-                  <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                    <label style={{ color: 'var(--text-muted)' }}>Pre-Tax Accounts</label>
-                    <div className="input-suffix-wrap" title="Blended effective rate applied to the ending 401(k) / IRA balance — not a tax bracket, and not used in the year-by-year tax engine.">
-                      <NumberInput
-                        value={asm.taxAdjOrdRate ?? 0.22}
-                        scale={100}
-                        digits={1}
-                        min={0}
-                        max={60}
-                        onCommit={(v) => setAssumptions({ taxAdjOrdRate: Math.min(0.6, Math.max(0, v)) })}
-                      />
-                      <span className="input-suffix">%</span>
-                    </div>
-                    <div className="helper-text">on the ending 401(k) / IRA balance</div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                    <label style={{ color: 'var(--text-muted)' }}>Unrealized Gains</label>
-                    <div className="input-suffix-wrap" title="Blended effective rate applied to the ending brokerage gain above basis — not a tax bracket, and not used in the year-by-year tax engine.">
-                      <NumberInput
-                        value={asm.taxAdjLtcgRate ?? 0.15}
-                        scale={100}
-                        digits={1}
-                        min={0}
-                        max={40}
-                        onCommit={(v) => setAssumptions({ taxAdjLtcgRate: Math.min(0.4, Math.max(0, v)) })}
-                      />
-                      <span className="input-suffix">%</span>
-                    </div>
-                    <div className="helper-text">on ending gains above basis — Roth untaxed</div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -877,6 +840,40 @@ export default function InputsPage() {
                   style={inputPillStyle(!conv.optimize && conv.mode === 'manual')}>
                   {!conv.optimize && conv.mode === 'manual' && <Chk />}Manual
                 </button>
+              </div>
+            </div>
+
+            <div style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: 'rgba(13,27,46,0.03)',
+              border: '1px solid rgba(13,27,46,0.08)',
+              borderTop: '2px solid rgba(13,27,46,0.16)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.02em' }}>
+                ↳ End balance effective tax rates
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ marginBottom: 0, flex: '0 0 110px' }}>
+                  <label style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>IRA / 401(k)</label>
+                  <div className="input-suffix-wrap" title="Blended effective rate on the ending pre-tax balance — not a bracket, not used in year-by-year taxes.">
+                    <NumberInput value={asm.taxAdjOrdRate ?? 0.22} scale={100} digits={1} min={0} max={60}
+                      onCommit={(v) => setAssumptions({ taxAdjOrdRate: Math.min(0.6, Math.max(0, v)) })} />
+                    <span className="input-suffix">%</span>
+                  </div>
+                  <div className="helper-text" style={{ whiteSpace: 'nowrap' }}>income tax when withdrawn</div>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0, flex: '0 0 110px' }}>
+                  <label style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Brokerage gains</label>
+                  <div className="input-suffix-wrap" title="Blended effective rate on the ending brokerage gain above basis — not a bracket, not used in year-by-year taxes.">
+                    <NumberInput value={asm.taxAdjLtcgRate ?? 0.15} scale={100} digits={1} min={0} max={40}
+                      onCommit={(v) => setAssumptions({ taxAdjLtcgRate: Math.min(0.4, Math.max(0, v)) })} />
+                    <span className="input-suffix">%</span>
+                  </div>
+                  <div className="helper-text" style={{ whiteSpace: 'nowrap' }}>capital gains on unrealized gains</div>
+                </div>
+                <div className="helper-text" style={{ alignSelf: 'center', flex: 1, minWidth: 160 }}>
+                  Roth is worth face value. Pre-tax and brokerage gains still owe taxes — these rates let the optimizer score all three on equal footing. Set both to 0% for raw balances.
+                </div>
               </div>
             </div>
 

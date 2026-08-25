@@ -16,7 +16,7 @@ const METRICS: MetricDef[] = [
   { key: 'longevity', label: 'Plan Longevity', format: (v) => `Age ${Math.round(v)}`, better: 'higher',
     pick: (proj) => {
       let age = 0;
-      for (const r of proj.rows) { age = r.ageA; if (r.phase === 'Retire' && r.endTotal <= 0) return age; }
+      for (const r of proj.rows) { age = r.ageA; if (r.phase === 'Retire' && r.ranOut) return age; }
       return age;
     },
   },
