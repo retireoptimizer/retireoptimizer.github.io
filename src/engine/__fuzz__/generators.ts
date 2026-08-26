@@ -75,8 +75,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
   fc.record({
     ageDeltaB: fc.integer({ min: -10, max: 10 }),                       // personB age relative to personA
     aRetireAge: fc.integer({ min: 50, max: 70 }),
-    aPlanThroughAge: fc.integer({ min: 80, max: 105 }),
-    aPassingAge: fc.integer({ min: 70, max: 100 }),
+    aPlanThroughAge: fc.integer({ min: 75, max: 100 }),
     aSsPIA: fc.integer({ min: 0, max: 55_000 }),
     aSsClaimAge: fc.integer({ min: 62, max: 70 }),
     bSsPIA: fc.integer({ min: 0, max: 55_000 }),
@@ -98,20 +97,17 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
     incomes: fc.array(incomeStream(), { minLength: 0, maxLength: 3 }),
   })
     .filter((s) => s.aPlanThroughAge > s.aRetireAge + 5)
-    .filter((s) => s.aPassingAge >= 70)
     .map((s): Plan => {
       const aBirthYear = 1970;
       const bBirthYear = aBirthYear + s.ageDeltaB;
       const bRetire = Math.max(50, Math.min(70, s.aRetireAge - s.ageDeltaB));
-      const bPlanTo = Math.max(s.aPlanThroughAge, 80);
-      const bPassing = Math.max(70, Math.min(100, s.aPassingAge - 1));
+      const bPlanTo = Math.max(s.aPlanThroughAge - 2, 75);
       return {
         personA: {
           name: 'A',
           dob: `${aBirthYear}-01-01`,
           retirementAge: s.aRetireAge,
           planThroughAge: s.aPlanThroughAge,
-          passingAge: Math.min(s.aPassingAge, s.aPlanThroughAge),
           ssPIA: s.aSsPIA,
           ssClaimAge: s.aSsClaimAge,
         },
@@ -121,7 +117,6 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
               dob: `${bBirthYear}-01-01`,
               retirementAge: bRetire,
               planThroughAge: bPlanTo,
-              passingAge: Math.min(bPassing, bPlanTo),
               ssPIA: s.bSsPIA,
               ssClaimAge: s.bSsClaimAge,
             }

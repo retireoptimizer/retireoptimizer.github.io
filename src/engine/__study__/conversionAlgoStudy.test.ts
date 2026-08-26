@@ -73,9 +73,14 @@ function buildRegimeBreaks(plan: Plan): number[] {
   if (plan.personB && (plan.personB.ssPIA ?? 0) > 0) ssAges.add(plan.personB.ssClaimAge);
   for (const a of ssAges) if (a > plan.personA.retirementAge && a <= plan.personA.planThroughAge) breaks.add(a);
 
-  if (plan.personA.passingAge < plan.personA.planThroughAge) breaks.add(plan.personA.passingAge + 1);
-  if (plan.personB && (plan.personB.passingAge ?? plan.personA.planThroughAge) < plan.personA.planThroughAge) {
-    breaks.add((plan.personB.passingAge ?? plan.personA.planThroughAge) + 1);
+  // Filing status shift: the year after each person's planThroughAge is a break point.
+  const horizonA = plan.personA.planThroughAge;
+  if (plan.personB) {
+    const birthYearA = parseInt(plan.personA.dob.slice(0, 4), 10);
+    const birthYearB = parseInt(plan.personB.dob.slice(0, 4), 10);
+    const bEndInAFrame = plan.personB.planThroughAge + (birthYearB - birthYearA);
+    if (plan.personA.planThroughAge < bEndInAFrame) breaks.add(plan.personA.planThroughAge + 1);
+    if (bEndInAFrame < horizonA) breaks.add(bEndInAFrame + 1);
   }
 
   const rmdA = rmdStartAgeForDob(plan.personA.dob);

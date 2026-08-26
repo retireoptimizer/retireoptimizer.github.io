@@ -27,7 +27,7 @@ export interface ProjectionRow {
   year: number;            // 1-indexed plan year
   ageA: number;
   ageB?: number;
-  phase: 'Accum.' | 'SemiRetire' | 'Retire' | 'Survivor' | 'Past Plan';
+  phase: 'Accum.' | 'SemiRetire' | 'Retire' | 'Survivor';
   filingStatus: FilingStatus;
   inflationFactor: number;
   // Contributions
@@ -230,8 +230,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const startYear = new Date().getFullYear();
   const startAgeA = ageAt(plan.personA.dob, startYear);
   const startAgeB = plan.personB ? ageAt(plan.personB.dob, startYear) : undefined;
-  const passingA = plan.personA.passingAge;
-  const passingB = plan.personB?.passingAge;
+  const passingA = plan.personA.planThroughAge;
+  const passingB = plan.personB?.planThroughAge;
   const retireAgeA = plan.personA.retirementAge;
   const retireAgeB = plan.personB?.retirementAge ?? retireAgeA;
   const frame = householdAgeFrame(plan);
@@ -291,8 +291,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const filingStatus = filingStatusForYear(i, startAgeA, passingA, startAgeB, passingB);
 
     let phase: ProjectionRow['phase'];
-    if (!aliveA && !aliveB) phase = 'Past Plan';
-    else if (!aliveA || !aliveB) phase = 'Survivor';
+    if (!aliveA || !aliveB) phase = 'Survivor';
     else if (retired) phase = 'Retire';
     else if (retiredA || retiredB) phase = 'SemiRetire';
     else phase = 'Accum.';

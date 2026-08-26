@@ -129,8 +129,7 @@ function buildACACliffPlan(): Plan {
       name: 'ACA Test',
       dob: '1971-01-01',  // age 55 in 2026; retires at 60; Medicare at 65 = 5 ACA years
       retirementAge: 60,
-      planThroughAge: 90,
-      passingAge: 88,
+      planThroughAge: 88,
       ssPIA: 28000,       // SS at 67
       ssClaimAge: 67,
     },
@@ -284,8 +283,7 @@ function buildIRMAAPlan(): Plan {
       name: 'IRMAA Test',
       dob: '1956-01-01',   // age 70 in 2026
       retirementAge: 70,   // already retired
-      planThroughAge: 92,
-      passingAge: 90,
+      planThroughAge: 90,
       ssPIA: 38000,        // $38K PIA → $47,120/yr at age-70 delay
       ssClaimAge: 70,
     },

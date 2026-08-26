@@ -35,8 +35,10 @@ export const PersonSchema = z.object({
   name: z.string().min(1),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   retirementAge: z.number().int().min(40).max(80),
-  planThroughAge: z.number().int().min(70).max(115),
-  passingAge: z.number().int().min(60).max(115),
+  /** Mortality age and projection horizon for this person. The simulation runs to the later of all
+   *  persons' plan-through ages. Streams tagged to this person stop (or reduce) when this age is
+   *  reached, filing status shifts to Single, and their IRA rolls to the surviving spouse. */
+  planThroughAge: z.number().int().min(60).max(115),
   ssPIA: z.number().nonnegative(),
   ssClaimAge: z.number().int().min(62).max(70),
 });
@@ -242,7 +244,6 @@ export const defaultPlan = (): Plan => ({
     dob: '1975-01-01',
     retirementAge: 65,
     planThroughAge: 90,
-    passingAge: 90,
     ssPIA: 0,
     ssClaimAge: 67,
   },
@@ -307,7 +308,6 @@ export const samplePlan = (): Plan => ({
     dob: '1974-05-03',
     retirementAge: 59,
     planThroughAge: 98,
-    passingAge: 100,
     ssPIA: 44000,
     ssClaimAge: 70,
   },
@@ -316,7 +316,6 @@ export const samplePlan = (): Plan => ({
     dob: '1977-08-26',
     retirementAge: 56,
     planThroughAge: 98,
-    passingAge: 100,
     ssPIA: 18000,
     ssClaimAge: 62,
   },

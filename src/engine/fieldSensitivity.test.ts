@@ -62,9 +62,9 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
 
-    it('personA.passingAge (affects survivor SS and filing status)', () => {
+    it('personA.planThroughAge (affects projection horizon and survivor filing status)', () => {
       const d = sensitivity(defaultPlan(), (p) => ({
-        ...p, personA: { ...p.personA, passingAge: 85 },
+        ...p, personA: { ...p.personA, planThroughAge: 85 },
       }));
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });

@@ -53,8 +53,8 @@ describe('Property-based fuzz: projection invariants', () => {
         for (const r of proj.rows) {
           const i = r.ageA - startAgeA;
           const ageB = startAgeB !== undefined ? startAgeB + i : undefined;
-          const aliveA = r.ageA <= plan.personA.passingAge;
-          const aliveB = ageB !== undefined && plan.personB !== undefined && ageB <= plan.personB.passingAge;
+          const aliveA = r.ageA <= plan.personA.planThroughAge;
+          const aliveB = ageB !== undefined && plan.personB !== undefined && ageB <= plan.personB.planThroughAge;
           const aCanRMD = aliveA && r.ageA >= rmdStartAgeA;
           const bCanRMD = aliveB && ageB !== undefined && ageB >= rmdStartAgeB;
           if (!aCanRMD && !bCanRMD && r.rmd > 1) {

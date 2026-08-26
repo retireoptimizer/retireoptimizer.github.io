@@ -337,12 +337,8 @@ export default function InputsPage() {
                 <NumberInput value={A.retirementAge} digits={0} min={40} max={80} onCommit={(v) => setPersonA({ retirementAge: Math.round(v) })} />
               </div>
               <div className="form-group">
-                <label>Plan-To Age</label>
-                <NumberInput value={A.planThroughAge} digits={0} min={70} max={115} onCommit={(v) => setPersonA({ planThroughAge: Math.round(v) })} />
-              </div>
-              <div className="form-group">
-                <label>Passing Age</label>
-                <NumberInput value={A.passingAge} digits={0} min={60} max={115} onCommit={(v) => setPersonA({ passingAge: Math.round(v) })} />
+                <label>Plan Through Age</label>
+                <NumberInput value={A.planThroughAge} digits={0} min={60} max={115} onCommit={(v) => setPersonA({ planThroughAge: Math.round(v) })} />
               </div>
               {B && (<>
                 <div className="form-group">
@@ -364,12 +360,8 @@ export default function InputsPage() {
                   <NumberInput value={B.retirementAge} digits={0} min={40} max={80} onCommit={(v) => setPersonB({ retirementAge: Math.round(v) })} />
                 </div>
                 <div className="form-group">
-                  <label>Plan-To Age</label>
-                  <NumberInput value={B.planThroughAge} digits={0} min={70} max={115} onCommit={(v) => setPersonB({ planThroughAge: Math.round(v) })} />
-                </div>
-                <div className="form-group">
-                  <label>Passing Age</label>
-                  <NumberInput value={B.passingAge} digits={0} min={60} max={115} onCommit={(v) => setPersonB({ passingAge: Math.round(v) })} />
+                  <label>Plan Through Age</label>
+                  <NumberInput value={B.planThroughAge} digits={0} min={60} max={115} onCommit={(v) => setPersonB({ planThroughAge: Math.round(v) })} />
                 </div>
               </>)}
             </div>

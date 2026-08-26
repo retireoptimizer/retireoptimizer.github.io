@@ -21,7 +21,11 @@ export function survivorRule(ctx: InsightContext): Insight | null {
   const rateAfter = after.effRate;
   if (rateAfter - rateBefore < 0.03) return null;
 
-  const survivorIsA = plan.personA.passingAge > (plan.personB.passingAge ?? 0);
+  // Compare who outlives whom: convert B's planThroughAge to A's age-frame for comparison.
+  const birthYearA = parseInt(plan.personA.dob.slice(0, 4), 10);
+  const birthYearB = parseInt(plan.personB.dob.slice(0, 4), 10);
+  const bEndInAFrame = plan.personB.planThroughAge + (birthYearB - birthYearA);
+  const survivorIsA = plan.personA.planThroughAge >= bEndInAFrame;
   const passingName = survivorIsA ? plan.personB.name : plan.personA.name;
 
   return {

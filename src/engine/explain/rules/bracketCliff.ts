@@ -16,7 +16,7 @@ export function bracketCliffRule(ctx: InsightContext): Insight | null {
   let driverRmd = 0;
 
   for (const r of proj.rows) {
-    if (r.phase === 'Accum.' || r.phase === 'Past Plan') continue;
+    if (r.phase === 'Accum.') continue;
     // Survivor phase counts as retirement-side here (single-filer years).
     const brackets = r.filingStatus === 'MFJ' ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
     const taxable = Math.max(0, r.ordIncome - r.stdDeduction);

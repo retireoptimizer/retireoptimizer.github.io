@@ -92,8 +92,8 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   const rmdStartAgeA = rmdStartAgeForDob(plan.personA.dob);
   const rmdStartAgeB = plan.personB ? rmdStartAgeForDob(plan.personB.dob) : rmdStartAgeA;
   const ageB = r.ageB;
-  const aliveA = r.ageA <= plan.personA.passingAge;
-  const aliveB = ageB !== undefined && plan.personB !== undefined && ageB <= plan.personB.passingAge;
+  const aliveA = r.ageA <= plan.personA.planThroughAge;
+  const aliveB = ageB !== undefined && plan.personB !== undefined && ageB <= plan.personB.planThroughAge;
   const aCanRMD = aliveA && r.ageA >= rmdStartAgeA;
   const bCanRMD = aliveB && ageB !== undefined && ageB >= rmdStartAgeB;
   if (!aCanRMD && !bCanRMD && r.rmd > tol) {

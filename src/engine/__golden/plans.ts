@@ -8,8 +8,7 @@ function goldenBase(): Plan {
       name: 'Person A',
       dob: '1973-01-01',
       retirementAge: 65,
-      planThroughAge: 95,
-      passingAge: 90,
+      planThroughAge: 90,
       ssPIA: 45000,
       ssClaimAge: 67,
     },
@@ -17,8 +16,7 @@ function goldenBase(): Plan {
       name: 'Person B',
       dob: '1975-01-01',
       retirementAge: 63,
-      planThroughAge: 95,
-      passingAge: 92,
+      planThroughAge: 92,
       ssPIA: 28000,
       ssClaimAge: 67,
     },
@@ -154,7 +152,7 @@ export function planD_singleFIRE(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, name: 'FIRE Solo', dob: '1985-01-01', retirementAge: 45, planThroughAge: 95, passingAge: 92, ssPIA: 32000, ssClaimAge: 70 },
+    personA: { ...p.personA, name: 'FIRE Solo', dob: '1985-01-01', retirementAge: 45, planThroughAge: 92, ssPIA: 32000, ssClaimAge: 70 },
     personB: undefined,
     assumptions: { ...p.assumptions, taxableReturn: 0.07, tradReturn: 0.07, rothReturn: 0.07 },
     portfolio: {
@@ -262,8 +260,8 @@ export function planH_survivorMidPlan(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, planThroughAge: 95, passingAge: 92 },
-    personB: { ...p.personB!, planThroughAge: 95, passingAge: 75 },
+    personA: { ...p.personA, planThroughAge: 92 },
+    personB: { ...p.personB!, planThroughAge: 75 },
     portfolio: {
       personA: { taxable: 300000, taxableBasis: 150000, traditional: 500000, roth: 150000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 200000, taxableBasis: 100000, traditional: 300000, roth: 100000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
@@ -296,8 +294,8 @@ export function planJ_personBZeroBalance(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1974-05-03', retirementAge: 58, planThroughAge: 100, passingAge: 90, ssPIA: 45000, ssClaimAge: 70 },
-    personB: { ...p.personB!, dob: '1977-08-26', retirementAge: 55, planThroughAge: 100, passingAge: 92, ssPIA: 28000, ssClaimAge: 62 },
+    personA: { ...p.personA, dob: '1974-05-03', retirementAge: 58, planThroughAge: 90, ssPIA: 45000, ssClaimAge: 70 },
+    personB: { ...p.personB!, dob: '1977-08-26', retirementAge: 55, planThroughAge: 92, ssPIA: 28000, ssClaimAge: 62 },
     assumptions: { ...p.assumptions, taxableReturn: 0.08, tradReturn: 0.08, rothReturn: 0.08, inflation: 0.025 },
     portfolio: {
       personA: { taxable: 585000, taxableBasis: 292500, traditional: 885000, roth: 615000, annualContribution: 60000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
@@ -326,8 +324,8 @@ export function planK_wideAgeGap(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1968-03-15', retirementAge: 65, planThroughAge: 95, passingAge: 90 },
-    personB: { ...p.personB!, dob: '1957-06-01', retirementAge: 65, planThroughAge: 95, passingAge: 88 },
+    personA: { ...p.personA, dob: '1968-03-15', retirementAge: 65, planThroughAge: 90 },
+    personB: { ...p.personB!, dob: '1957-06-01', retirementAge: 65, planThroughAge: 88 },
     portfolio: {
       personA: { taxable: 200000, taxableBasis: 100000, traditional: 600000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.8, roth: 0 } },
       personB: { taxable: 200000, taxableBasis: 100000, traditional: 500000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.8, roth: 0 } },
@@ -348,8 +346,8 @@ export function planL_survivorARMD(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1962-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 80 },
-    personB: { ...p.personB!, dob: '1960-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 90 },
+    personA: { ...p.personA, dob: '1962-01-01', retirementAge: 65, planThroughAge: 80 },
+    personB: { ...p.personB!, dob: '1960-01-01', retirementAge: 65, planThroughAge: 90 },
     portfolio: {
       personA: { taxable: 100000, taxableBasis: 50000, traditional: 400000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
       personB: { taxable: 100000, taxableBasis: 50000, traditional: 600000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
@@ -370,8 +368,8 @@ export function planM_survivorBRMD(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1960-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 90 },
-    personB: { ...p.personB!, dob: '1962-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 78 },
+    personA: { ...p.personA, dob: '1960-01-01', retirementAge: 65, planThroughAge: 90 },
+    personB: { ...p.personB!, dob: '1962-01-01', retirementAge: 65, planThroughAge: 78 },
     portfolio: {
       personA: { taxable: 100000, taxableBasis: 50000, traditional: 600000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
       personB: { taxable: 100000, taxableBasis: 50000, traditional: 400000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
@@ -392,8 +390,8 @@ export function planN_shortLivedA(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1963-01-01', retirementAge: 62, planThroughAge: 95, passingAge: 68, ssPIA: 42000, ssClaimAge: 67 },
-    personB: { ...p.personB!, dob: '1966-01-01', retirementAge: 62, planThroughAge: 95, passingAge: 92, ssPIA: 26000, ssClaimAge: 67 },
+    personA: { ...p.personA, dob: '1963-01-01', retirementAge: 62, planThroughAge: 68, ssPIA: 42000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1966-01-01', retirementAge: 62, planThroughAge: 92, ssPIA: 26000, ssClaimAge: 67 },
     portfolio: {
       personA: { taxable: 250000, taxableBasis: 125000, traditional: 750000, roth: 100000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 180000, taxableBasis: 90000, traditional: 350000, roth: 80000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
@@ -417,8 +415,8 @@ export function planO_largePension(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1973-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 90, ssPIA: 35000, ssClaimAge: 67 },
-    personB: { ...p.personB!, dob: '1975-01-01', retirementAge: 63, planThroughAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
+    personA: { ...p.personA, dob: '1973-01-01', retirementAge: 65, planThroughAge: 90, ssPIA: 35000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1975-01-01', retirementAge: 63, planThroughAge: 92, ssPIA: 22000, ssClaimAge: 67 },
     portfolio: {
       personA: { taxable: 300000, taxableBasis: 150000, traditional: 400000, roth: 150000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.3, roth: 0.4 } },
       personB: { taxable: 200000, taxableBasis: 100000, traditional: 250000, roth: 100000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.3, roth: 0.4 } },
@@ -448,8 +446,8 @@ export function planP_tightPlan(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1968-01-01', retirementAge: 62, planThroughAge: 95, passingAge: 90, ssPIA: 28000, ssClaimAge: 67 },
-    personB: { ...p.personB!, dob: '1971-01-01', retirementAge: 60, planThroughAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
+    personA: { ...p.personA, dob: '1968-01-01', retirementAge: 62, planThroughAge: 90, ssPIA: 28000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1971-01-01', retirementAge: 60, planThroughAge: 92, ssPIA: 22000, ssClaimAge: 67 },
     assumptions: { taxableReturn: 0.055, taxableDivYield: 0, taxableQualifiedPct: 0.80, taxableExemptYield: 0, taxableExemptStatePct: 1, taxableDistributePct: 0, taxAdjOrdRate: 0.22, taxAdjLtcgRate: 0.15, tradReturn: 0.055, rothReturn: 0.055, inflation: 0.025, equityPct: 0.6, modelACA: false, acaHouseholdSize: 2, acaBenchmarkPremium: 0, acaNoSubsidy: false },
     portfolio: {
       personA: { taxable: 150000, taxableBasis: 75000, traditional: 450000, roth: 50000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },

@@ -78,7 +78,7 @@ export const usePlanStore = create<PlanState>()(
       addPersonB: () => set((s) => ({
         plan: {
           ...s.plan,
-          personB: { name: 'Person B', dob: '1975-01-01', retirementAge: 65, planThroughAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
+          personB: { name: 'Person B', dob: '1975-01-01', retirementAge: 65, planThroughAge: 90, ssPIA: 0, ssClaimAge: 67 },
           portfolio: { ...s.plan.portfolio, personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: { mode: 'cpi' }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
         },
       })),

@@ -163,7 +163,7 @@ export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCa
   // Stress scenarios: real worst-case retirement cohorts. The historical sequence starts
   // at the first retirement year — sequence-of-returns risk is a withdrawal-phase phenomenon.
   // Pre-retirement years use the plan's tradReturn as a representative accumulation rate.
-  const retireYearIdx = Math.max(0, baseline.rows.findIndex((r) => r.phase !== 'Accum.' && r.phase !== 'Past Plan'));
+  const retireYearIdx = Math.max(0, baseline.rows.findIndex((r) => r.phase !== 'Accum.'));
   const nStressYears = nYears - retireYearIdx;
 
   const cohorts = [
@@ -300,7 +300,7 @@ export function runHistoricalSweep(plan: Plan, opts: { equityPct?: number } = {}
   const nYears = baseline.rows.length;
   const ages = baseline.rows.map((r) => r.ageA);
 
-  const retireYearIdx = Math.max(0, baseline.rows.findIndex((r) => r.phase !== 'Accum.' && r.phase !== 'Past Plan'));
+  const retireYearIdx = Math.max(0, baseline.rows.findIndex((r) => r.phase !== 'Accum.'));
   const nStressYears = nYears - retireYearIdx;
   const preRet = plan.assumptions.tradReturn;
   const preRetInf = plan.assumptions.inflation;
