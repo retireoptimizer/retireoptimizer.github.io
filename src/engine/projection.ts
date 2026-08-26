@@ -232,6 +232,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const startAgeB = plan.personB ? ageAt(plan.personB.dob, startYear) : undefined;
   const passingA = plan.personA.planThroughAge;
   const passingB = plan.personB?.planThroughAge;
+  // B's death age in A-frame: used by householdSS for survivor stream clamping.
+  const passingBInAFrame = passingB !== undefined && startAgeB !== undefined
+    ? passingB + (startAgeA - startAgeB)
+    : undefined;
   const retireAgeA = plan.personA.retirementAge;
   const retireAgeB = plan.personB?.retirementAge ?? retireAgeA;
   const frame = householdAgeFrame(plan);
@@ -317,6 +321,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       inflation: planInflation,
       ssStreams: rIncome,
       yearIndex: i,
+      planThroughAgeA: passingA,
+      planThroughAgeB: passingBInAFrame,
     });
 
     // Other income streams
