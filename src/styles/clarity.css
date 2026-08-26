@@ -676,7 +676,7 @@ input[type="text"], input[type="number"], input[type="date"], select, textarea {
   background: var(--white);
   border: 1.5px solid rgba(13,27,46,0.22);
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
   color: var(--text-primary);
@@ -684,6 +684,7 @@ input[type="text"], input[type="number"], input[type="date"], select, textarea {
   outline: none;
   width: 100%;
 }
+select { padding-right: 20px; }
 input:focus, select:focus, textarea:focus {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(201,168,76,0.1);
@@ -697,17 +698,17 @@ input:disabled, select:disabled, textarea:disabled {
 .input-prefix-wrap { position: relative; }
 .input-prefix {
   position: absolute;
-  left: 14px;
+  left: 9px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 14px;
   color: var(--text-muted);
   pointer-events: none;
 }
-.input-prefix-wrap input { padding-left: 28px; }
+.input-prefix-wrap input { padding-left: 20px; }
 .input-suffix {
   position: absolute;
-  right: 10px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 13px;
@@ -715,7 +716,7 @@ input:disabled, select:disabled, textarea:disabled {
   pointer-events: none;
 }
 .input-suffix-wrap { position: relative; }
-.input-suffix-wrap input { padding-right: 28px; }
+.input-suffix-wrap input { padding-right: 22px; }
 .helper-text { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 
 /* ─── TOGGLE GROUP ───────────────────────── */
