@@ -16,11 +16,26 @@ export function resolveGrowthRate(gr: GrowthRate, inflation: number): number {
   return gr.rate;
 }
 
+export const EndRuleSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('life') }),
+  z.object({ mode: z.literal('lastSurvivor') }),
+  /**
+   * Fixed age in the owner's frame. For `whose: 'Household'`, this is Person A's age.
+   */
+  z.object({ mode: z.literal('age'), age: z.number().int().min(0).max(115) }),
+  /**
+   * Period-certain: `n` payments starting at `startAge`. Resolves to `startAge + n - 1`.
+   * n is the number of payments, not an offset — {startAge:65, n:1} pays only at age 65.
+   */
+  z.object({ mode: z.literal('years'), n: z.number().int().min(1).max(60) }),
+]);
+export type EndRule = z.infer<typeof EndRuleSchema>;
+
 export const PersonSchema = z.object({
   name: z.string().min(1),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   retirementAge: z.number().int().min(40).max(80),
-  planToAge: z.number().int().min(70).max(110),
+  planThroughAge: z.number().int().min(70).max(115),
   passingAge: z.number().int().min(60).max(115),
   ssPIA: z.number().nonnegative(),
   ssClaimAge: z.number().int().min(62).max(70),
@@ -119,7 +134,8 @@ export const IncomeStreamSchema = z.object({
   whose: z.enum(['A', 'B', 'Household']),
   type: z.enum(['SS', 'Pension', 'Annuity', 'MuniBond', 'VA', 'Other']),
   startAge: z.number().int().min(0).max(110),
-  stopAge: z.number().int().min(0).max(115),
+  end: EndRuleSchema,
+  survivorPct: z.number().min(0).max(1),
   annualAmount: z.number().nonnegative(),
   growthPct: GrowthRateSchema,
   taxablePct: z.number().min(0).max(1),
@@ -142,7 +158,8 @@ export const ExpenseStreamSchema = z.object({
   description: z.string(),
   whose: z.enum(['A', 'B', 'Household']),
   startAge: z.number().int().min(0).max(110),
-  stopAge: z.number().int().min(0).max(115),
+  end: EndRuleSchema,
+  survivorPct: z.number().min(0).max(1),
   annualAmount: z.number().nonnegative(),
   inflationPct: GrowthRateSchema,
 });
@@ -224,7 +241,7 @@ export const defaultPlan = (): Plan => ({
     name: 'Person A',
     dob: '1975-01-01',
     retirementAge: 65,
-    planToAge: 90,
+    planThroughAge: 90,
     passingAge: 90,
     ssPIA: 0,
     ssClaimAge: 67,
@@ -261,11 +278,11 @@ export const defaultPlan = (): Plan => ({
     personB: undefined,
   },
   incomeStreams: [
-    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, stopAge: 90, annualAmount: 0, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-default-1', description: 'New Income Stream', whose: 'Household', type: 'Other', startAge: 65, end: { mode: 'age', age: 90 }, survivorPct: 0, annualAmount: 0, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
   ],
   lumpSumEvents: [],
   expenseStreams: [
-    { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 0, inflationPct: { mode: 'cpi' } },
+    { id: 'expense-default-1', description: 'New Expense', whose: 'Household', startAge: 65, end: { mode: 'age', age: 90 }, survivorPct: 1, annualAmount: 0, inflationPct: { mode: 'cpi' } },
   ],
   withdrawalStrategy: 'taxfirst',
   withdrawalBracketCeiling: BRACKET_12_TOP_MFJ,
@@ -289,7 +306,7 @@ export const samplePlan = (): Plan => ({
     name: 'Person A',
     dob: '1974-05-03',
     retirementAge: 59,
-    planToAge: 98,
+    planThroughAge: 98,
     passingAge: 100,
     ssPIA: 44000,
     ssClaimAge: 70,
@@ -298,7 +315,7 @@ export const samplePlan = (): Plan => ({
     name: 'Person B',
     dob: '1977-08-26',
     retirementAge: 56,
-    planToAge: 98,
+    planThroughAge: 98,
     passingAge: 100,
     ssPIA: 18000,
     ssClaimAge: 62,
@@ -343,12 +360,12 @@ export const samplePlan = (): Plan => ({
   },
   lumpSumEvents: [],
   incomeStreams: [
-    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, stopAge: 98, annualAmount: 55000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, stopAge: 98, annualAmount: 15000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-a', description: 'Person A SS', whose: 'A', type: 'SS', startAge: 70, end: { mode: 'age', age: 98 }, survivorPct: 0, annualAmount: 55000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-b-early', description: 'Person B SS early', whose: 'B', type: 'SS', startAge: 62, end: { mode: 'age', age: 67 }, survivorPct: 0, annualAmount: 12000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+    { id: 'stream-ss-b-late', description: 'Person B SS late', whose: 'B', type: 'SS', startAge: 68, end: { mode: 'age', age: 98 }, survivorPct: 0, annualAmount: 15000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
   ],
   expenseStreams: [
-    { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, stopAge: 98, annualAmount: 150000, inflationPct: { mode: 'cpi' } },
+    { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 59, end: { mode: 'age', age: 98 }, survivorPct: 1, annualAmount: 150000, inflationPct: { mode: 'cpi' } },
   ],
   withdrawalStrategy: 'taxfirst',
   withdrawalBracketCeiling: BRACKET_12_TOP_MFJ,

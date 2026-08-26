@@ -8,7 +8,7 @@ function goldenBase(): Plan {
       name: 'Person A',
       dob: '1973-01-01',
       retirementAge: 65,
-      planToAge: 95,
+      planThroughAge: 95,
       passingAge: 90,
       ssPIA: 45000,
       ssClaimAge: 67,
@@ -17,7 +17,7 @@ function goldenBase(): Plan {
       name: 'Person B',
       dob: '1975-01-01',
       retirementAge: 63,
-      planToAge: 95,
+      planThroughAge: 95,
       passingAge: 92,
       ssPIA: 28000,
       ssClaimAge: 67,
@@ -62,9 +62,9 @@ function goldenBase(): Plan {
     },
     incomeStreams: [],
     expenseStreams: [
-      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 95000, inflationPct: { mode: 'fixed', rate: 0.025 } },
-      { id: 'health', description: 'Healthcare', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 28000, inflationPct: { mode: 'fixed', rate: 0.048 } },
-      { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, stopAge: 82, annualAmount: 18000, inflationPct: { mode: 'fixed', rate: 0.03 } },
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 95000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'health', description: 'Healthcare', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 28000, inflationPct: { mode: 'fixed', rate: 0.048 } },
+      { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 82 }, survivorPct: 1, annualAmount: 18000, inflationPct: { mode: 'fixed', rate: 0.03 } },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
@@ -75,9 +75,12 @@ function goldenBase(): Plan {
       autoAmount: 70000,
       bracketCeiling: 211400,
       manualSchedule: {},
+      optimize: false,
     },
     state: 'IL',
     goals: [],
+    lumpSumEvents: [],
+    payTaxFromBrokerage: false,
   };
 }
 
@@ -91,7 +94,7 @@ export function planB_largeTradSingle(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, name: 'Solo', planToAge: 95, ssClaimAge: 67, ssPIA: 38000 },
+    personA: { ...p.personA, name: 'Solo', planThroughAge: 95, ssClaimAge: 67, ssPIA: 38000 },
     personB: undefined,
     portfolio: {
       personA: {
@@ -106,7 +109,7 @@ export function planB_largeTradSingle(): Plan {
       personB: undefined,
     },
     expenseStreams: [
-      { id: 'core', description: 'Core', whose: 'A', startAge: 65, stopAge: 95, annualAmount: 75000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'core', description: 'Core', whose: 'A', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 75000, inflationPct: { mode: 'fixed', rate: 0.025 } },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
@@ -135,11 +138,11 @@ export function planC_bracketFillConv(): Plan {
         traditional: 500000,
         roth: 100000,
         annualContribution: p.portfolio.personB?.annualContribution ?? 0,
-        contribGrowth: p.portfolio.personB?.contribGrowth ?? 0,
+        contribGrowth: p.portfolio.personB?.contribGrowth ?? { mode: 'fixed' as const, rate: 0 },
         contribSplit: p.portfolio.personB?.contribSplit ?? { taxable: 0.2, traditional: 0.4, roth: 0.4 },
       },
     },
-    conversion: { mode: 'bracket-fill', startAge: 60, endAge: 73, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    conversion: { mode: 'bracket-fill', startAge: 60, endAge: 73, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {}, optimize: false },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
     state: 'IL',
@@ -151,7 +154,7 @@ export function planD_singleFIRE(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, name: 'FIRE Solo', dob: '1985-01-01', retirementAge: 45, planToAge: 95, passingAge: 92, ssPIA: 32000, ssClaimAge: 70 },
+    personA: { ...p.personA, name: 'FIRE Solo', dob: '1985-01-01', retirementAge: 45, planThroughAge: 95, passingAge: 92, ssPIA: 32000, ssClaimAge: 70 },
     personB: undefined,
     assumptions: { ...p.assumptions, taxableReturn: 0.07, tradReturn: 0.07, rothReturn: 0.07 },
     portfolio: {
@@ -167,7 +170,7 @@ export function planD_singleFIRE(): Plan {
       personB: undefined,
     },
     expenseStreams: [
-      { id: 'core', description: 'FIRE Core', whose: 'A', startAge: 45, stopAge: 95, annualAmount: 55000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'core', description: 'FIRE Core', whose: 'A', startAge: 45, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 55000, inflationPct: { mode: 'fixed', rate: 0.025 } },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
@@ -183,6 +186,7 @@ export function planE_allRothCouple(): Plan {
     portfolio: {
       personA: {
         taxable: 0,
+        taxableBasis: 0,
         traditional: 0,
         roth: 1_200_000,
         annualContribution: 14000,
@@ -191,6 +195,7 @@ export function planE_allRothCouple(): Plan {
       },
       personB: {
         taxable: 0,
+        taxableBasis: 0,
         traditional: 0,
         roth: 800_000,
         annualContribution: 14000,
@@ -212,6 +217,7 @@ export function planF_allTradCouple(): Plan {
     portfolio: {
       personA: {
         taxable: 0,
+        taxableBasis: 0,
         traditional: 1_800_000,
         roth: 0,
         annualContribution: 23000,
@@ -220,6 +226,7 @@ export function planF_allTradCouple(): Plan {
       },
       personB: {
         taxable: 0,
+        taxableBasis: 0,
         traditional: 900_000,
         roth: 0,
         annualContribution: 18000,
@@ -227,7 +234,7 @@ export function planF_allTradCouple(): Plan {
         contribSplit: { taxable: 0, traditional: 1, roth: 0 },
       },
     },
-    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 74, autoAmount: 80000, bracketCeiling: 100800, manualSchedule: {} },
+    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 74, autoAmount: 80000, bracketCeiling: 100800, manualSchedule: {}, optimize: false },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
     state: 'IL',
@@ -243,7 +250,7 @@ export function planG_californiaCouple(): Plan {
       personA: { taxable: 400000, taxableBasis: 200000, traditional: 800000, roth: 200000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
       personB: { taxable: 300000, taxableBasis: 150000, traditional: 500000, roth: 120000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.35, roth: 0.35 } },
     },
-    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 73, autoAmount: 60000, bracketCeiling: 100800, manualSchedule: {} },
+    conversion: { mode: 'bracket-fill', startAge: 65, endAge: 73, autoAmount: 60000, bracketCeiling: 100800, manualSchedule: {}, optimize: false },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
     state: 'CA',
@@ -255,8 +262,8 @@ export function planH_survivorMidPlan(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, planToAge: 95, passingAge: 92 },
-    personB: { ...p.personB!, planToAge: 95, passingAge: 75 },
+    personA: { ...p.personA, planThroughAge: 95, passingAge: 92 },
+    personB: { ...p.personB!, planThroughAge: 95, passingAge: 75 },
     portfolio: {
       personA: { taxable: 300000, taxableBasis: 150000, traditional: 500000, roth: 150000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 200000, taxableBasis: 100000, traditional: 300000, roth: 100000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
@@ -273,10 +280,10 @@ export function planI_multiStreamIncome(): Plan {
   return {
     ...p,
     incomeStreams: [
-      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 32000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'pension', description: 'A Pension', whose: 'A', type: 'Pension', startAge: 65, stopAge: 95, annualAmount: 18000, growthPct: { mode: 'fixed', rate: 0.01 }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'rental', description: 'Rental Net', whose: 'Household', type: 'Other', startAge: 65, stopAge: 80, annualAmount: 12000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 32000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'pension', description: 'A Pension', whose: 'A', type: 'Pension', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 18000, growthPct: { mode: 'fixed', rate: 0.01 }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'rental', description: 'Rental Net', whose: 'Household', type: 'Other', startAge: 65, end: { mode: 'age' as const, age: 80 }, survivorPct: 0, annualAmount: 12000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1, stateTaxablePct: 1 },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
@@ -289,24 +296,24 @@ export function planJ_personBZeroBalance(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1974-05-03', retirementAge: 58, planToAge: 100, passingAge: 90, ssPIA: 45000, ssClaimAge: 70 },
-    personB: { ...p.personB!, dob: '1977-08-26', retirementAge: 55, planToAge: 100, passingAge: 92, ssPIA: 28000, ssClaimAge: 62 },
+    personA: { ...p.personA, dob: '1974-05-03', retirementAge: 58, planThroughAge: 100, passingAge: 90, ssPIA: 45000, ssClaimAge: 70 },
+    personB: { ...p.personB!, dob: '1977-08-26', retirementAge: 55, planThroughAge: 100, passingAge: 92, ssPIA: 28000, ssClaimAge: 62 },
     assumptions: { ...p.assumptions, taxableReturn: 0.08, tradReturn: 0.08, rothReturn: 0.08, inflation: 0.025 },
     portfolio: {
       personA: { taxable: 585000, taxableBasis: 292500, traditional: 885000, roth: 615000, annualContribution: 60000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 40000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
     },
     expenseStreams: [
-      { id: 'core', description: 'Core', whose: 'Household', startAge: 59, stopAge: 100, annualAmount: 150000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'core', description: 'Core', whose: 'Household', startAge: 59, end: { mode: 'age' as const, age: 100 }, survivorPct: 1, annualAmount: 150000, inflationPct: { mode: 'fixed', rate: 0.025 } },
     ],
     incomeStreams: [
-      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 70, stopAge: 100, annualAmount: 55000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'ssb1', description: 'SS B early', whose: 'B', type: 'SS', startAge: 62, stopAge: 67, annualAmount: 12000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'ssb2', description: 'SS B FRA', whose: 'B', type: 'SS', startAge: 67, stopAge: 100, annualAmount: 15000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 70, end: { mode: 'age' as const, age: 100 }, survivorPct: 0, annualAmount: 55000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb1', description: 'SS B early', whose: 'B', type: 'SS', startAge: 62, end: { mode: 'age' as const, age: 67 }, survivorPct: 0, annualAmount: 12000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb2', description: 'SS B FRA', whose: 'B', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 100 }, survivorPct: 0, annualAmount: 15000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
-    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {}, optimize: false },
     state: 'IL',
   };
 }
@@ -319,13 +326,13 @@ export function planK_wideAgeGap(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1968-03-15', retirementAge: 65, planToAge: 95, passingAge: 90 },
-    personB: { ...p.personB!, dob: '1957-06-01', retirementAge: 65, planToAge: 95, passingAge: 88 },
+    personA: { ...p.personA, dob: '1968-03-15', retirementAge: 65, planThroughAge: 95, passingAge: 90 },
+    personB: { ...p.personB!, dob: '1957-06-01', retirementAge: 65, planThroughAge: 95, passingAge: 88 },
     portfolio: {
       personA: { taxable: 200000, taxableBasis: 100000, traditional: 600000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.8, roth: 0 } },
       personB: { taxable: 200000, taxableBasis: 100000, traditional: 500000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.8, roth: 0 } },
     },
-    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {}, optimize: false },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
     state: 'IL',
@@ -341,13 +348,13 @@ export function planL_survivorARMD(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1962-01-01', retirementAge: 65, planToAge: 95, passingAge: 80 },
-    personB: { ...p.personB!, dob: '1960-01-01', retirementAge: 65, planToAge: 95, passingAge: 90 },
+    personA: { ...p.personA, dob: '1962-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 80 },
+    personB: { ...p.personB!, dob: '1960-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 90 },
     portfolio: {
       personA: { taxable: 100000, taxableBasis: 50000, traditional: 400000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
       personB: { taxable: 100000, taxableBasis: 50000, traditional: 600000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
     },
-    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {}, optimize: false },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
     state: 'IL',
@@ -363,13 +370,13 @@ export function planM_survivorBRMD(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1960-01-01', retirementAge: 65, planToAge: 95, passingAge: 90 },
-    personB: { ...p.personB!, dob: '1962-01-01', retirementAge: 65, planToAge: 95, passingAge: 78 },
+    personA: { ...p.personA, dob: '1960-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 90 },
+    personB: { ...p.personB!, dob: '1962-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 78 },
     portfolio: {
       personA: { taxable: 100000, taxableBasis: 50000, traditional: 600000, roth: 0, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
       personB: { taxable: 100000, taxableBasis: 50000, traditional: 400000, roth: 0, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.1, traditional: 0.9, roth: 0 } },
     },
-    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 211400, manualSchedule: {}, optimize: false },
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
     state: 'IL',
@@ -385,19 +392,19 @@ export function planN_shortLivedA(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1963-01-01', retirementAge: 62, planToAge: 95, passingAge: 68, ssPIA: 42000, ssClaimAge: 67 },
-    personB: { ...p.personB!, dob: '1966-01-01', retirementAge: 62, planToAge: 95, passingAge: 92, ssPIA: 26000, ssClaimAge: 67 },
+    personA: { ...p.personA, dob: '1963-01-01', retirementAge: 62, planThroughAge: 95, passingAge: 68, ssPIA: 42000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1966-01-01', retirementAge: 62, planThroughAge: 95, passingAge: 92, ssPIA: 26000, ssClaimAge: 67 },
     portfolio: {
       personA: { taxable: 250000, taxableBasis: 125000, traditional: 750000, roth: 100000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 180000, taxableBasis: 90000, traditional: 350000, roth: 80000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
     },
     incomeStreams: [],
     expenseStreams: [
-      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 62, stopAge: 95, annualAmount: 100000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 62, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 100000, inflationPct: { mode: 'fixed', rate: 0.025 } },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
-    conversion: { mode: 'off', startAge: 62, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 62, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {}, optimize: false },
     state: 'IL',
   };
 }
@@ -410,25 +417,25 @@ export function planO_largePension(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1973-01-01', retirementAge: 65, planToAge: 95, passingAge: 90, ssPIA: 35000, ssClaimAge: 67 },
-    personB: { ...p.personB!, dob: '1975-01-01', retirementAge: 63, planToAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
+    personA: { ...p.personA, dob: '1973-01-01', retirementAge: 65, planThroughAge: 95, passingAge: 90, ssPIA: 35000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1975-01-01', retirementAge: 63, planThroughAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
     portfolio: {
       personA: { taxable: 300000, taxableBasis: 150000, traditional: 400000, roth: 150000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.3, roth: 0.4 } },
       personB: { taxable: 200000, taxableBasis: 100000, traditional: 250000, roth: 100000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0.03 }, contribSplit: { taxable: 0.3, traditional: 0.3, roth: 0.4 } },
     },
     incomeStreams: [
-      { id: 'pension', description: 'Federal Pension', whose: 'A', type: 'Pension', startAge: 65, stopAge: 95, annualAmount: 75000, growthPct: { mode: 'fixed', rate: 0.01 }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 35000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'pension', description: 'Federal Pension', whose: 'A', type: 'Pension', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 75000, growthPct: { mode: 'fixed', rate: 0.01 }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 35000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
     ],
     expenseStreams: [
-      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 95000, inflationPct: { mode: 'fixed', rate: 0.025 } },
-      { id: 'health', description: 'Healthcare', whose: 'Household', startAge: 65, stopAge: 95, annualAmount: 28000, inflationPct: { mode: 'fixed', rate: 0.048 } },
-      { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, stopAge: 82, annualAmount: 18000, inflationPct: { mode: 'fixed', rate: 0.03 } },
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 95000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'health', description: 'Healthcare', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 28000, inflationPct: { mode: 'fixed', rate: 0.048 } },
+      { id: 'travel', description: 'Travel & Leisure', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 82 }, survivorPct: 1, annualAmount: 18000, inflationPct: { mode: 'fixed', rate: 0.03 } },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
-    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 65, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {}, optimize: false },
     state: 'IL',
   };
 }
@@ -441,23 +448,23 @@ export function planP_tightPlan(): Plan {
   const p = goldenBase();
   return {
     ...p,
-    personA: { ...p.personA, dob: '1968-01-01', retirementAge: 62, planToAge: 95, passingAge: 90, ssPIA: 28000, ssClaimAge: 67 },
-    personB: { ...p.personB!, dob: '1971-01-01', retirementAge: 60, planToAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
+    personA: { ...p.personA, dob: '1968-01-01', retirementAge: 62, planThroughAge: 95, passingAge: 90, ssPIA: 28000, ssClaimAge: 67 },
+    personB: { ...p.personB!, dob: '1971-01-01', retirementAge: 60, planThroughAge: 95, passingAge: 92, ssPIA: 22000, ssClaimAge: 67 },
     assumptions: { taxableReturn: 0.055, taxableDivYield: 0, taxableQualifiedPct: 0.80, taxableExemptYield: 0, taxableExemptStatePct: 1, taxableDistributePct: 0, taxAdjOrdRate: 0.22, taxAdjLtcgRate: 0.15, tradReturn: 0.055, rothReturn: 0.055, inflation: 0.025, equityPct: 0.6, modelACA: false, acaHouseholdSize: 2, acaBenchmarkPremium: 0, acaNoSubsidy: false },
     portfolio: {
       personA: { taxable: 150000, taxableBasis: 75000, traditional: 450000, roth: 50000, annualContribution: 23000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
       personB: { taxable: 100000, taxableBasis: 50000, traditional: 300000, roth: 50000, annualContribution: 18000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } },
     },
     incomeStreams: [
-      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 28000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
-      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, stopAge: 95, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssa', description: 'SS A', whose: 'A', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 28000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
+      { id: 'ssb', description: 'SS B', whose: 'B', type: 'SS', startAge: 67, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 22000, growthPct: { mode: 'cpi' }, taxablePct: 1, stateTaxablePct: 1 },
     ],
     expenseStreams: [
-      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 62, stopAge: 95, annualAmount: 130000, inflationPct: { mode: 'fixed', rate: 0.025 } },
+      { id: 'core', description: 'Core Household Spending', whose: 'Household', startAge: 62, end: { mode: 'age' as const, age: 95 }, survivorPct: 1, annualAmount: 130000, inflationPct: { mode: 'fixed', rate: 0.025 } },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
-    conversion: { mode: 'off', startAge: 62, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 62, endAge: 72, autoAmount: 70000, bracketCeiling: 100800, manualSchedule: {}, optimize: false },
     state: 'IL',
   };
 }

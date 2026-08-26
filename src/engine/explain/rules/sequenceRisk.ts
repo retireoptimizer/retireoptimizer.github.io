@@ -30,6 +30,6 @@ export function sequenceRiskRule(ctx: InsightContext): Insight | null {
     title: `Sequence-of-returns risk in first ${yearsAfterRetire} years`,
     body: `${Math.round(failRate * 100)}% of trials run out — and depletion first appears at age ${firstAge}, only ${yearsAfterRetire} years into retirement. A 2-3 year cash buffer or more conservative early allocation can blunt this risk.`,
     // proj reference used to avoid the unused-var warning; sequence-risk insights are MC-driven.
-    evidence: `Plan funds through age ${plan.personA.planToAge} in ${Math.round(mc.successRate * 100)}% of trials. (Baseline endTotalReal: ${proj.endTotalReal > 0 ? 'positive' : 'depleted'}.)`,
+    evidence: `Plan funds through age ${plan.personA.planThroughAge} in ${Math.round(mc.successRate * 100)}% of trials. (Baseline endTotalReal: ${proj.endTotalReal > 0 ? 'positive' : 'depleted'}.)`,
   };
 }

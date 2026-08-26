@@ -92,7 +92,7 @@ describe('optimizeStrategy (smoke)', () => {
     // End balance should be >= a 100%-taxable baseline (the optimizer can't do worse than its starting point).
     const baseline = runProjection(plan, {
       policy: {
-        windows: [{ fromAge: plan.personA.retirementAge, toAge: plan.personA.planToAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0 }],
+        windows: [{ fromAge: plan.personA.retirementAge, toAge: plan.personA.planThroughAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0 }],
         source: 'manual',
       },
     });
@@ -278,7 +278,7 @@ describe('MuniBond income stream', () => {
     plan.incomeStreams = plan.incomeStreams.filter(s => s.type !== 'SS');
     plan.incomeStreams.push({
       id: 'muni-1', description: 'Muni', whose: 'Household', type: 'MuniBond',
-      startAge: 59, stopAge: 98, annualAmount: 20_000,
+      startAge: 59, end: { mode: 'age' as const, age: 98 }, survivorPct: 0, annualAmount: 20_000,
       growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 1,
     });
     const proj = runProjection(plan);
@@ -307,7 +307,7 @@ describe('MuniBond income stream', () => {
     plan.incomeStreams = plan.incomeStreams.filter(s => s.type !== 'SS');
     plan.incomeStreams.push({
       id: 'muni-2', description: 'Muni', whose: 'Household', type: 'MuniBond',
-      startAge: 59, stopAge: 98, annualAmount: 30_000,
+      startAge: 59, end: { mode: 'age' as const, age: 98 }, survivorPct: 0, annualAmount: 30_000,
       growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 0,
     });
     const proj = runProjection(plan);
@@ -330,12 +330,12 @@ describe('MuniBond income stream', () => {
     const plan = baseTaxExemptPlan();
     plan.personA.dob = '1961-01-01'; // age 65 in 2026
     plan.personA.retirementAge = 65;
-    plan.personA.planToAge = 90;
+    plan.personA.planThroughAge = 90;
     plan.personA.ssPIA = 24_000;
     plan.personA.ssClaimAge = 65;
     plan.personB = undefined;
     plan.expenseStreams = [
-      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 20_000, inflationPct: { mode: 'fixed', rate: 0 } },
+      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 1, annualAmount: 20_000, inflationPct: { mode: 'fixed', rate: 0 } },
     ];
     plan.incomeStreams = [];
     plan.portfolio = { personA: { taxable: 0, taxableBasis: 0, traditional: 500_000, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0, traditional: 1, roth: 0 } } };
@@ -344,7 +344,7 @@ describe('MuniBond income stream', () => {
     const planWithMuni = { ...plan, incomeStreams: [...plan.incomeStreams] };
     planWithMuni.incomeStreams = [{
       id: 'muni-ss', description: 'Muni', whose: 'Household', type: 'MuniBond' as const,
-      startAge: 65, stopAge: 90, annualAmount: 30_000,
+      startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 0, annualAmount: 30_000,
       growthPct: { mode: 'fixed', rate: 0 } as const, taxablePct: 0, stateTaxablePct: 0,
     }];
 
@@ -369,18 +369,18 @@ describe('VA / Disability income stream', () => {
     const plan = baseTaxExemptPlan();
     plan.personA.dob = '1961-01-01';
     plan.personA.retirementAge = 65;
-    plan.personA.planToAge = 90;
+    plan.personA.planThroughAge = 90;
     plan.personA.passingAge = 90;
     plan.personA.ssPIA = 0;
     plan.personA.ssClaimAge = 65;
     plan.personB = undefined;
     plan.incomeStreams = [{
       id: 'va-1', description: 'VA', whose: 'A', type: 'VA',
-      startAge: 65, stopAge: 90, annualAmount: 20_000,
+      startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 0, annualAmount: 20_000,
       growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0, stateTaxablePct: 0,
     }];
     plan.expenseStreams = [
-      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 15_000, inflationPct: { mode: 'fixed', rate: 0 } },
+      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 1, annualAmount: 15_000, inflationPct: { mode: 'fixed', rate: 0 } },
     ];
     plan.portfolio = { personA: { taxable: 0, taxableBasis: 0, traditional: 300_000, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0, traditional: 1, roth: 0 } } };
     plan.assumptions = { ...plan.assumptions, taxableExemptYield: 0, taxableExemptStatePct: 1 };
@@ -408,7 +408,7 @@ describe('Annuity taxablePct regression (dropped income bug)', () => {
     plan.incomeStreams = [];
     plan.incomeStreams.push({
       id: 'ann-1', description: 'Annuity', whose: 'Household', type: 'Annuity',
-      startAge: 59, stopAge: 98, annualAmount: 24_000,
+      startAge: 59, end: { mode: 'age' as const, age: 98 }, survivorPct: 0, annualAmount: 24_000,
       growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0.7, stateTaxablePct: 1,
     });
 
@@ -428,13 +428,13 @@ describe('taxableDistributePct', () => {
     const p = defaultPlan();
     p.personA.dob = '1961-01-01';
     p.personA.retirementAge = 65;
-    p.personA.planToAge = 90;
+    p.personA.planThroughAge = 90;
     p.personA.passingAge = 90;
     p.personA.ssPIA = 0;
     p.personA.ssClaimAge = 65;
     p.personB = undefined;
     p.incomeStreams = [];
-    p.expenseStreams = [{ id: 'e', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 50_000, inflationPct: { mode: 'fixed', rate: 0 } }];
+    p.expenseStreams = [{ id: 'e', description: 'Spending', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 1, annualAmount: 50_000, inflationPct: { mode: 'fixed', rate: 0 } }];
     p.portfolio = { personA: { taxable: 800_000, taxableBasis: 400_000, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 1, traditional: 0, roth: 0 } } };
     p.assumptions = { ...p.assumptions, taxableReturn: 0.07, taxableDivYield: 0.03, taxableExemptYield: 0, taxableExemptStatePct: 1, taxableDistributePct: 0, inflation: 0 };
     return p;
@@ -522,14 +522,14 @@ describe('taxableExemptYield', () => {
     const plan = baseTaxExemptPlan();
     plan.personA.dob = '1961-01-01';
     plan.personA.retirementAge = 65;
-    plan.personA.planToAge = 90;
+    plan.personA.planThroughAge = 90;
     plan.personA.passingAge = 90;
     plan.personA.ssPIA = 0;
     plan.personA.ssClaimAge = 65;
     plan.personB = undefined;
     plan.incomeStreams = [];
     plan.expenseStreams = [
-      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, stopAge: 90, annualAmount: 40_000, inflationPct: { mode: 'fixed', rate: 0 } },
+      { id: 'spend', description: 'Spending', whose: 'Household', startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 1, annualAmount: 40_000, inflationPct: { mode: 'fixed', rate: 0 } },
     ];
     plan.portfolio = { personA: { taxable: 500_000, taxableBasis: 300_000, traditional: 200_000, roth: 0, annualContribution: 0, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 1, traditional: 0, roth: 0 } } };
     plan.assumptions = { ...plan.assumptions, taxableReturn: 0.05, taxableDivYield: 0, taxableExemptYield: 0.02, taxableExemptStatePct: 1 };

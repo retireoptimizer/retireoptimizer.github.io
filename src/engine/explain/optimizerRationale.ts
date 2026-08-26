@@ -71,7 +71,7 @@ export function explainPolicy(plan: Plan, result: OptimizeResult): string[] {
       stopEvent = ', stopping before the 2-year IRMAA lookback window opens at 63';
     } else if (stopAge === plan.personA.ssClaimAge) {
       stopEvent = `, stopping before Social Security begins at ${plan.personA.ssClaimAge}`;
-    } else if (stopAge === plan.personA.planToAge) {
+    } else if (stopAge === plan.personA.planThroughAge) {
       stopEvent = ', running through end of plan';
     }
 
@@ -144,7 +144,7 @@ export function explainPolicy(plan: Plan, result: OptimizeResult): string[] {
   const taxStr = fmtUSD(result.projection.lifetimeFedTax);
   const fundedStr = result.projection.ranOut
     ? 'Note: plan still depletes — consider reducing spending or extending retirement age.'
-    : `Plan funds through age ${plan.personA.planToAge}.`;
+    : `Plan funds through age ${plan.personA.planThroughAge}.`;
   out.push(`Result: ${endStr} end balance (today's $) · ${taxStr} lifetime federal tax. ${fundedStr}`);
 
   // ── 4. Rule-driven insights (strategy surface) ──────────────────────────

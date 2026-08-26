@@ -48,7 +48,7 @@ function algoBracketFillGlobal(plan: Plan): AlgoResult {
   let best: AlgoResult = { endTotalReal: -Infinity, tvRatio: NaN, ranOut: true, evals: 0 };
   let evals = 0;
   for (const ceiling of CEILINGS) {
-    const p: Plan = { ...plan, conversion: { ...plan.conversion, mode: 'bracket-fill', bracketCeiling: ceiling, startAge: plan.personA.retirementAge, endAge: plan.personA.planToAge, optimize: false } };
+    const p: Plan = { ...plan, conversion: { ...plan.conversion, mode: 'bracket-fill', bracketCeiling: ceiling, startAge: plan.personA.retirementAge, endAge: plan.personA.planThroughAge, optimize: false } };
     const proj = runProjection(p, { policy: { windows: splitWindows, source: 'manual' } });
     evals++;
     const convAmts = proj.rows.map(r => r.rothConv / r.inflationFactor);
@@ -63,7 +63,7 @@ function algoBracketFillGlobal(plan: Plan): AlgoResult {
 function buildRegimeBreaks(plan: Plan): number[] {
   const breaks = new Set<number>();
   breaks.add(plan.personA.retirementAge);
-  breaks.add(plan.personA.planToAge + 1);
+  breaks.add(plan.personA.planThroughAge + 1);
 
   const ssAges = new Set<number>();
   for (const s of plan.incomeStreams ?? []) {
@@ -71,18 +71,18 @@ function buildRegimeBreaks(plan: Plan): number[] {
   }
   if (plan.personA.ssPIA > 0) ssAges.add(plan.personA.ssClaimAge);
   if (plan.personB && (plan.personB.ssPIA ?? 0) > 0) ssAges.add(plan.personB.ssClaimAge);
-  for (const a of ssAges) if (a > plan.personA.retirementAge && a <= plan.personA.planToAge) breaks.add(a);
+  for (const a of ssAges) if (a > plan.personA.retirementAge && a <= plan.personA.planThroughAge) breaks.add(a);
 
-  if (plan.personA.passingAge < plan.personA.planToAge) breaks.add(plan.personA.passingAge + 1);
-  if (plan.personB && (plan.personB.passingAge ?? plan.personA.planToAge) < plan.personA.planToAge) {
-    breaks.add((plan.personB.passingAge ?? plan.personA.planToAge) + 1);
+  if (plan.personA.passingAge < plan.personA.planThroughAge) breaks.add(plan.personA.passingAge + 1);
+  if (plan.personB && (plan.personB.passingAge ?? plan.personA.planThroughAge) < plan.personA.planThroughAge) {
+    breaks.add((plan.personB.passingAge ?? plan.personA.planThroughAge) + 1);
   }
 
   const rmdA = rmdStartAgeForDob(plan.personA.dob);
-  if (rmdA > plan.personA.retirementAge && rmdA <= plan.personA.planToAge) breaks.add(rmdA);
+  if (rmdA > plan.personA.retirementAge && rmdA <= plan.personA.planThroughAge) breaks.add(rmdA);
   if (plan.personB) {
     const rmdB = rmdStartAgeForDob(plan.personB.dob);
-    if (rmdB > plan.personA.retirementAge && rmdB <= plan.personA.planToAge) breaks.add(rmdB);
+    if (rmdB > plan.personA.retirementAge && rmdB <= plan.personA.planThroughAge) breaks.add(rmdB);
   }
 
   return [...breaks].sort((a, b) => a - b);

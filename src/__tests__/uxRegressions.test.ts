@@ -67,7 +67,7 @@ describe('UX regressions', () => {
       incomeStreams: [
         ...plan.incomeStreams,
         { id: 'ss-test', description: 'SS A', whose: 'A', type: 'SS',
-          startAge: 70, stopAge: 95, annualAmount: 40_000, growthPct: { mode: 'fixed', rate: 0.025 }, taxablePct: 1 } satisfies IncomeStream,
+          startAge: 70, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 40_000, growthPct: { mode: 'fixed', rate: 0.025 }, taxablePct: 1, stateTaxablePct: 1 } satisfies IncomeStream,
       ],
     };
     const baseEnd = runProjection(plan).endTotalReal;

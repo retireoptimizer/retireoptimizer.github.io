@@ -124,12 +124,12 @@ describe('inflationFactor accumulation', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${new Date().getFullYear() - 50}-01-01`;
     plan.personA.retirementAge = 51; // retire immediately
-    plan.personA.planToAge = 55;
+    plan.personA.planThroughAge = 55;
     plan.assumptions.inflation = 0.03;
     plan.assumptions.tradReturn = 0.05;
     plan.expenseStreams = [{
       id: 'e1', description: 'spend', whose: 'A',
-      startAge: 51, stopAge: 55, annualAmount: 10_000, inflationPct: 0.03,
+      startAge: 51, end: { mode: 'age' as const, age: 55 }, survivorPct: 1, annualAmount: 10_000, inflationPct: { mode: 'fixed' as const, rate: 0.03 },
     }];
     const proj = runProjection(plan);
     for (const row of proj.rows) {
@@ -143,12 +143,12 @@ describe('inflationFactor accumulation', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${new Date().getFullYear() - 50}-01-01`;
     plan.personA.retirementAge = 51;
-    plan.personA.planToAge = 55;
+    plan.personA.planThroughAge = 55;
     plan.assumptions.inflation = 0.025;
     plan.assumptions.tradReturn = 0.05;
     plan.expenseStreams = [{
       id: 'e1', description: 'spend', whose: 'A',
-      startAge: 51, stopAge: 55, annualAmount: 10_000, inflationPct: 0.025,
+      startAge: 51, end: { mode: 'age' as const, age: 55 }, survivorPct: 1, annualAmount: 10_000, inflationPct: { mode: 'fixed' as const, rate: 0.025 },
     }];
     // Five specific CPI overrides.
     const cpis = [0.07, 0.06, -0.02, 0.03, 0.04];
@@ -173,7 +173,7 @@ describe('portfolio balance update', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${currentYear - 45}-01-01`;
     plan.personA.retirementAge = 65; // still accumulating
-    plan.personA.planToAge = 49;     // only 5 years (45..49 → 5 rows)
+    plan.personA.planThroughAge = 49;     // only 5 years (45..49 → 5 rows)
     plan.portfolio.personA.taxable = 0;
     plan.portfolio.personA.traditional = 1_000_000;
     plan.portfolio.personA.roth = 0;
@@ -202,7 +202,7 @@ describe('portfolio balance update', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${currentYear - 50}-01-01`;
     plan.personA.retirementAge = 51;
-    plan.personA.planToAge = 55;
+    plan.personA.planThroughAge = 55;
     plan.portfolio.personA.traditional = 1_000_000;
     plan.portfolio.personA.taxable = 0;
     plan.portfolio.personA.roth = 0;
@@ -244,7 +244,7 @@ describe('CPI-indexed expense growth', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${currentYear - 50}-01-01`;
     plan.personA.retirementAge = 50; // retired immediately (startAgeA = 50)
-    plan.personA.planToAge = 54;     // 5 years: ages 50..54
+    plan.personA.planThroughAge = 54;     // 5 years: ages 50..54
     plan.portfolio.personA.traditional = 100_000_000; // large so it never depletes
     plan.portfolio.personA.taxable = 0;
     plan.portfolio.personA.roth = 0;
@@ -257,7 +257,7 @@ describe('CPI-indexed expense growth', () => {
     const BASE_SPEND = 50_000;
     plan.expenseStreams = [{
       id: 'core', description: 'Core spending', whose: 'A',
-      startAge: 50, stopAge: 54, annualAmount: BASE_SPEND, inflationPct: { mode: 'cpi' }, // CPI-indexed
+      startAge: 50, end: { mode: 'age' as const, age: 54 }, survivorPct: 1, annualAmount: BASE_SPEND, inflationPct: { mode: 'cpi' }, // CPI-indexed
     }];
 
     const cpis = [0.07, 0.06, -0.02, 0.04, 0.03];
@@ -280,7 +280,7 @@ describe('CPI-indexed expense growth', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${currentYear - 50}-01-01`;
     plan.personA.retirementAge = 50; // retired immediately (startAgeA = 50)
-    plan.personA.planToAge = 53;     // 4 years: ages 50..53
+    plan.personA.planThroughAge = 53;     // 4 years: ages 50..53
     plan.portfolio.personA.traditional = 100_000_000;
     plan.portfolio.personA.taxable = 0;
     plan.portfolio.personA.roth = 0;
@@ -293,7 +293,7 @@ describe('CPI-indexed expense growth', () => {
     const BASE_SPEND = 40_000;
     plan.expenseStreams = [{
       id: 'fixed', description: 'Fixed expense', whose: 'A',
-      startAge: 50, stopAge: 53, annualAmount: BASE_SPEND, inflationPct: { mode: 'fixed', rate: 0 }, // fixed nominal
+      startAge: 50, end: { mode: 'age' as const, age: 53 }, survivorPct: 1, annualAmount: BASE_SPEND, inflationPct: { mode: 'fixed', rate: 0 }, // fixed nominal
     }];
 
     const proj = runProjection(plan, {
@@ -316,7 +316,7 @@ describe('row-level consistency', () => {
     const plan = defaultPlan();
     plan.personA.dob = `${new Date().getFullYear() - 55}-01-01`;
     plan.personA.retirementAge = 56;
-    plan.personA.planToAge = 60;
+    plan.personA.planThroughAge = 60;
     plan.portfolio.personA.traditional = 5_000_000;
     plan.portfolio.personA.taxable = 0;
     plan.portfolio.personA.roth = 0;
@@ -327,7 +327,7 @@ describe('row-level consistency', () => {
     plan.incomeStreams = [];
     plan.expenseStreams = [{
       id: 'e', description: 'spend', whose: 'A',
-      startAge: 56, stopAge: 60, annualAmount: 80_000, inflationPct: 0.025,
+      startAge: 56, end: { mode: 'age' as const, age: 60 }, survivorPct: 1, annualAmount: 80_000, inflationPct: { mode: 'fixed' as const, rate: 0.025 },
     }];
 
     const cpis = [0.03, 0.07, 0.01, -0.01, 0.04];

@@ -10,6 +10,7 @@ import { defaultScenarios } from '../engine/scenario';
 import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
 import { useOptimizerStore } from './useOptimizerStore';
 import { disposeEngineWorker } from '../engine/workerClient';
+import { migratePlanToV24 } from './planMigrations';
 
 export type DisplayMode = 'real' | 'nominal';
 
@@ -77,7 +78,7 @@ export const usePlanStore = create<PlanState>()(
       addPersonB: () => set((s) => ({
         plan: {
           ...s.plan,
-          personB: { name: 'Person B', dob: '1975-01-01', retirementAge: 65, planToAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
+          personB: { name: 'Person B', dob: '1975-01-01', retirementAge: 65, planThroughAge: 90, passingAge: 90, ssPIA: 0, ssClaimAge: 67 },
           portfolio: { ...s.plan.portfolio, personB: { taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 0, contribGrowth: { mode: 'cpi' }, contribSplit: { taxable: 0.2, traditional: 0.4, roth: 0.4 } } },
         },
       })),
@@ -130,10 +131,14 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 23,
+      version: 24,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v24: planToAge → planThroughAge; stopAge → end: EndRule; add survivorPct.
+        if (fromVersion < 24 && ps.plan && typeof ps.plan === 'object') {
+          migratePlanToV24(ps.plan as Record<string, unknown>);
+        }
         // v23: dividend payout election. Default 0 = full reinvestment (DRIP), preserving pre-v23 behavior.
         if (fromVersion < 23 && ps.plan?.assumptions && typeof ps.plan.assumptions === 'object') {
           const asm = ps.plan.assumptions as Record<string, unknown>;

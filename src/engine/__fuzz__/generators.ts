@@ -48,7 +48,11 @@ const incomeStream = () =>
     taxablePct: fc.double({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
     stateTaxablePct: fc.double({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
   })
-    .filter((s) => s.stopAge > s.startAge);
+    .filter((s) => s.stopAge > s.startAge)
+    .map((s) => {
+      const { stopAge, ...rest } = s;
+      return { ...rest, end: { mode: 'age' as const, age: stopAge }, survivorPct: 0 };
+    });
 
 const expenseStream = () =>
   fc.record({
@@ -60,14 +64,18 @@ const expenseStream = () =>
     annualAmount: fc.integer({ min: 20_000, max: 200_000 }),
     inflationPct: fc.double({ min: 0, max: 0.05, noNaN: true, noDefaultInfinity: true }).map((rate) => ({ mode: 'fixed' as const, rate })),
   })
-    .filter((e) => e.stopAge > e.startAge);
+    .filter((e) => e.stopAge > e.startAge)
+    .map((e) => {
+      const { stopAge, ...rest } = e;
+      return { ...rest, end: { mode: 'age' as const, age: stopAge }, survivorPct: 1 };
+    });
 
 /** Generate a valid Plan. Couples vs singles, varied states, varied returns and balances. */
 export const arbPlan = (): fc.Arbitrary<Plan> =>
   fc.record({
     ageDeltaB: fc.integer({ min: -10, max: 10 }),                       // personB age relative to personA
     aRetireAge: fc.integer({ min: 50, max: 70 }),
-    aPlanToAge: fc.integer({ min: 80, max: 105 }),
+    aPlanThroughAge: fc.integer({ min: 80, max: 105 }),
     aPassingAge: fc.integer({ min: 70, max: 100 }),
     aSsPIA: fc.integer({ min: 0, max: 55_000 }),
     aSsClaimAge: fc.integer({ min: 62, max: 70 }),
@@ -89,21 +97,21 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
     expense: expenseStream(),
     incomes: fc.array(incomeStream(), { minLength: 0, maxLength: 3 }),
   })
-    .filter((s) => s.aPlanToAge > s.aRetireAge + 5)
+    .filter((s) => s.aPlanThroughAge > s.aRetireAge + 5)
     .filter((s) => s.aPassingAge >= 70)
     .map((s): Plan => {
       const aBirthYear = 1970;
       const bBirthYear = aBirthYear + s.ageDeltaB;
       const bRetire = Math.max(50, Math.min(70, s.aRetireAge - s.ageDeltaB));
-      const bPlanTo = Math.max(s.aPlanToAge, 80);
+      const bPlanTo = Math.max(s.aPlanThroughAge, 80);
       const bPassing = Math.max(70, Math.min(100, s.aPassingAge - 1));
       return {
         personA: {
           name: 'A',
           dob: `${aBirthYear}-01-01`,
           retirementAge: s.aRetireAge,
-          planToAge: s.aPlanToAge,
-          passingAge: Math.min(s.aPassingAge, s.aPlanToAge),
+          planThroughAge: s.aPlanThroughAge,
+          passingAge: Math.min(s.aPassingAge, s.aPlanThroughAge),
           ssPIA: s.aSsPIA,
           ssClaimAge: s.aSsClaimAge,
         },
@@ -112,7 +120,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
               name: 'B',
               dob: `${bBirthYear}-01-01`,
               retirementAge: bRetire,
-              planToAge: bPlanTo,
+              planThroughAge: bPlanTo,
               passingAge: Math.min(bPassing, bPlanTo),
               ssPIA: s.bSsPIA,
               ssClaimAge: s.bSsClaimAge,

@@ -1,7 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import type { BlendPolicy, BlendWindow } from './blendPolicy';
 import { runProjection, type ProjectionResult } from './projection';
-import { householdPlanToAgeA } from './planInputKey';
+import { householdPlanThroughAgeA } from './planInputKey';
 import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommender';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
 import { mulberry32, historicalBootstrap } from './returnModels';
@@ -176,7 +176,7 @@ function innerOptimize(
   const innerGoalKey: RecGoal = 'max-end';
   const spec = REC_GOALS[innerGoalKey];
   const retireAge = plan.personA.retirementAge;
-  const planToAge = householdPlanToAgeA(plan);
+  const planToAge = householdPlanThroughAgeA(plan);
 
   if (retireAge > planToAge) {
     throw new Error('Retirement age is after plan-to age.');
@@ -666,7 +666,7 @@ const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
  */
 function amortizationSeed(plan: Plan): { absoluteReal: number; multiplier: number } {
   const retireAge = plan.personA.retirementAge;
-  const planToAge = householdPlanToAgeA(plan);
+  const planToAge = householdPlanThroughAgeA(plan);
   const n = Math.max(1, planToAge - retireAge + 1);
   const inf = plan.assumptions.inflation;
   const p = plan.portfolio;
@@ -772,7 +772,7 @@ function packageResult(
 //      pre-65 conversion island that is worse than deferring all conversions post-Medicare.
 function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: number }, outerProgress?: () => void): InnerEval {
   const retireAge = plan.personA.retirementAge;
-  const planToAge = householdPlanToAgeA(plan);
+  const planToAge = householdPlanThroughAgeA(plan);
   const optimizeConversions = plan.conversion.optimize ?? true;
 
   const constantSeeds: BlendWindow[][] = [
@@ -872,7 +872,7 @@ export function measureOptimalityGap(
   opts: Pick<OptimizeOptions, 'useNelderMead' | 'thorough' | 'mcAware'> = {},
 ): OptimalityGapResult {
   const retireAge = plan.personA.retirementAge;
-  const planToAge = householdPlanToAgeA(plan);
+  const planToAge = householdPlanThroughAgeA(plan);
   const optimizeConversions = plan.conversion.optimize ?? true;
 
   const SPLIT_CONFIGS: Array<{ label: string; tax: number; trad: number; roth: number }> = [
@@ -970,7 +970,8 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
         description: 'Spending',
         whose: 'Household' as const,
         startAge: plan.personA.retirementAge,
-        stopAge: householdPlanToAgeA(plan),
+        end: { mode: 'lastSurvivor' as const },
+        survivorPct: 1,
         annualAmount: 1,
         inflationPct: { mode: 'cpi' as const },
       }],
@@ -992,7 +993,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     {
       const amortPlan = scaleTo(amortAbs);
       const retA = plan.personA.retirementAge;
-      const ptA = householdPlanToAgeA(plan);
+      const ptA = householdPlanThroughAgeA(plan);
       const optConv = plan.conversion.optimize ?? true;
       const amortSeeds: BlendWindow[][] = [
         buildConstantSeed(retA, ptA, { tax: 1, trad: 0, roth: 0 }, optConv),

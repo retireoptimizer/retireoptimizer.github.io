@@ -10,7 +10,7 @@ export default function CustomBlendPanel() {
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
   const policy = plan.customPolicy;
   const retireAge = plan.personA.retirementAge;
-  const planToAge = plan.personA.planToAge;
+  const planThroughAge = plan.personA.planThroughAge;
   const isNominal = displayMode === 'nominal';
   const inflation = plan.assumptions.inflation;
   const currentAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
@@ -20,7 +20,7 @@ export default function CustomBlendPanel() {
   const dollarLabel = isNominal ? 'nominal $' : "today's $";
 
   const windows = policy?.windows ?? [{
-    fromAge: retireAge, toAge: planToAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0,
+    fromAge: retireAge, toAge: planThroughAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0,
   }];
 
   const commit = (next: typeof windows) => {
@@ -32,9 +32,9 @@ export default function CustomBlendPanel() {
   };
   const addWindow = () => {
     const last = windows[windows.length - 1];
-    if (last.toAge >= planToAge) return;
+    if (last.toAge >= planThroughAge) return;
     const newFrom = last.toAge + 1;
-    const next = [...windows, { fromAge: newFrom, toAge: planToAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0 }];
+    const next = [...windows, { fromAge: newFrom, toAge: planThroughAge, pctTaxable: 1, pctTraditional: 0, pctRoth: 0 }];
     if (windows[windows.length - 1].toAge >= newFrom) {
       next[next.length - 2] = { ...windows[windows.length - 1], toAge: newFrom - 1 };
     }
@@ -62,7 +62,7 @@ export default function CustomBlendPanel() {
         <div className="panel-title"><div className="panel-title-dot"></div>Custom Blend Editor</div>
         <div className="panel-actions">
           {policy && <button className="btn btn-outline" onClick={() => clearCustomPolicy()} style={{ fontSize: 12, padding: '6px 12px' }}>Clear &amp; Use Preset</button>}
-          <button className="btn btn-gold" onClick={addWindow} disabled={windows[windows.length - 1].toAge >= planToAge} style={{ fontSize: 12, padding: '6px 12px' }}>+ Add Window</button>
+          <button className="btn btn-gold" onClick={addWindow} disabled={windows[windows.length - 1].toAge >= planThroughAge} style={{ fontSize: 12, padding: '6px 12px' }}>+ Add Window</button>
         </div>
       </div>
       <div className="panel-body" style={{ padding: '16px 20px' }}>
@@ -91,8 +91,8 @@ export default function CustomBlendPanel() {
               const inp: React.CSSProperties = { width: '100%', padding: '8px 10px' };
               return (
                 <tr key={idx}>
-                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.fromAge} digits={0} min={retireAge} max={planToAge} onCommit={(v) => updateWindow(idx, { fromAge: Math.round(v) })} style={inp} /></td>
-                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.toAge} digits={0} min={retireAge} max={planToAge} onCommit={(v) => updateWindow(idx, { toAge: Math.round(v) })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.fromAge} digits={0} min={retireAge} max={planThroughAge} onCommit={(v) => updateWindow(idx, { fromAge: Math.round(v) })} style={inp} /></td>
+                  <td style={{ padding: '8px 10px' }}><NumberInput value={w.toAge} digits={0} min={retireAge} max={planThroughAge} onCommit={(v) => updateWindow(idx, { toAge: Math.round(v) })} style={inp} /></td>
                   <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctTaxable} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTaxable: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
                   <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctTraditional} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctTraditional: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>
                   <td style={{ padding: '8px 10px' }}><NumberInput value={w.pctRoth} scale={100} digits={1} min={0} max={1} onCommit={(v) => updateWindow(idx, { pctRoth: v })} style={{ ...inp, outline: sumOk ? undefined : '2px solid var(--danger)', borderRadius: 6 }} /></td>

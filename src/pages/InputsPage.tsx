@@ -53,7 +53,7 @@ const inputSelectPillStyle = (active: boolean): React.CSSProperties => ({
 });
 
 const stepperBtnStyle: React.CSSProperties = {
-  width: 22, height: 32, border: 'none', background: 'rgba(13,27,46,0.06)',
+  width: 18, height: 32, border: 'none', background: 'rgba(13,27,46,0.06)',
   color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1,
   cursor: 'pointer', userSelect: 'none', flexShrink: 0,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -78,7 +78,7 @@ function GrowthRateInput({ value, inflation, onChange, disabled }: {
     onChange({ mode: 'offset', delta: parseFloat((value.delta + dir * 0.001).toFixed(3)) });
   };
 
-  const selectFlex = value.mode === 'cpi' ? '1 1 auto' : '0 0 66px';
+  const selectFlex = value.mode === 'cpi' ? '1 1 auto' : '0 0 58px';
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
@@ -245,7 +245,7 @@ export default function InputsPage() {
     && isValidDob(A.dob) && (!B || isValidDob(B.dob))
     && splitValidA && splitValidB;
   const retirementAge = A.retirementAge;
-  const planToAge = A.planToAge;
+  const planThroughAge = A.planThroughAge;
   const minStartAge = (whose: string) => {
     if (whose === 'B' && B) return B.retirementAge;
     if (whose === 'Household' && B) return Math.min(A.retirementAge, B.retirementAge);
@@ -255,13 +255,13 @@ export default function InputsPage() {
   const addIncomeFromTemplate = (tplId: string) => {
     const tpl = INCOME_TEMPLATES.find((t) => t.id === tplId);
     if (!tpl) return;
-    addIncomeStream(tpl.make({ retirementAge, planToAge }));
+    addIncomeStream(tpl.make({ retirementAge, planThroughAge }));
   };
 
   const addExpenseFromTemplate = (tplId: string) => {
     const tpl = EXPENSE_TEMPLATES.find((t) => t.id === tplId);
     if (!tpl) return;
-    addExpenseStream(tpl.make({ retirementAge, planToAge }));
+    addExpenseStream(tpl.make({ retirementAge, planThroughAge }));
   };
 
   const onBuildPlan = async () => {
@@ -338,7 +338,7 @@ export default function InputsPage() {
               </div>
               <div className="form-group">
                 <label>Plan-To Age</label>
-                <NumberInput value={A.planToAge} digits={0} min={70} max={110} onCommit={(v) => setPersonA({ planToAge: Math.round(v) })} />
+                <NumberInput value={A.planThroughAge} digits={0} min={70} max={115} onCommit={(v) => setPersonA({ planThroughAge: Math.round(v) })} />
               </div>
               <div className="form-group">
                 <label>Passing Age</label>
@@ -365,7 +365,7 @@ export default function InputsPage() {
                 </div>
                 <div className="form-group">
                   <label>Plan-To Age</label>
-                  <NumberInput value={B.planToAge} digits={0} min={70} max={110} onCommit={(v) => setPersonB({ planToAge: Math.round(v) })} />
+                  <NumberInput value={B.planThroughAge} digits={0} min={70} max={115} onCommit={(v) => setPersonB({ planThroughAge: Math.round(v) })} />
                 </div>
                 <div className="form-group">
                   <label>Passing Age</label>
@@ -521,7 +521,7 @@ export default function InputsPage() {
                     <option value="Other">Other</option>
                   </select>
                   <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.round(v) })} />
-                  <NumberInput value={s.stopAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { stopAge: Math.round(v) })} />
+                  <NumberInput value={s.end.mode === 'age' ? s.end.age : s.startAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { end: { mode: 'age' as const, age: Math.round(v) } })} />
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                     <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateIncomeStream(s.id, { annualAmount: Math.round(v) })} />
                   </div>
@@ -602,7 +602,7 @@ export default function InputsPage() {
                     <option value="B">{nameB}</option>
                   </select>
                   <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.round(v) })} />
-                  <NumberInput value={s.stopAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { stopAge: Math.round(v) })} />
+                  <NumberInput value={s.end.mode === 'age' ? s.end.age : s.startAge} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { end: { mode: 'age' as const, age: Math.round(v) } })} />
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                     <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: Math.round(v) })} />
                   </div>

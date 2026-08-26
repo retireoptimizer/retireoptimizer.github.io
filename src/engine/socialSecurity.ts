@@ -1,6 +1,5 @@
 import { annualSSBenefit } from './ssActuarial';
-import type { IncomeStream } from '../schemas/plan';
-import { resolveGrowthRate } from '../schemas/plan';
+import { windowActiveAt, type ResolvedIncome } from './streamWindow';
 
 interface SSInput {
   piaA: number;
@@ -18,7 +17,7 @@ interface SSInput {
   // that person/year, because the user has explicitly modeled their expected SS.
   // The stream's growthPct is the COLA assumption for that stream; it replaces
   // the projection-level inflationFactor for that stream's contribution.
-  ssStreams?: IncomeStream[];
+  ssStreams?: ResolvedIncome[];
   yearIndex?: number; // plan year index (0-based), used to grow stream amounts
 }
 
@@ -31,15 +30,17 @@ interface SSOutput {
 /** Sum of all active SS-typed streams for one person at one age, grown by each
  *  stream's growthPct over yearIndex years. Returns 0 if no stream applies — the
  *  caller falls back to the PIA-based actuarial calculation. */
-function ssFromStreams(streams: IncomeStream[], whose: 'A' | 'B', personAge: number, yearIndex: number, inflation: number): number {
+function ssFromStreams(resolved: ResolvedIncome[], whose: 'A' | 'B', ageA: number, yearIndex: number): number {
   let total = 0;
-  for (const s of streams) {
+  for (const { s, w, growthRate } of resolved) {
     if (s.type !== 'SS') continue;
     // 'Household' SS streams default to person A's age (legacy default-plan shape).
     const matchWhose = s.whose === whose || (whose === 'A' && s.whose === 'Household');
     if (!matchWhose) continue;
-    if (personAge < s.startAge || personAge > s.stopAge) continue;
-    total += s.annualAmount * Math.pow(1 + resolveGrowthRate(s.growthPct, inflation), yearIndex);
+    // Use A's-frame age (ageA) for the window check — resolveWindow already converted
+    // B-frame startAge/stopAge into A-frame when building the ResolvedWindow.
+    if (!windowActiveAt(w, ageA)) continue;
+    total += s.annualAmount * Math.pow(1 + growthRate, yearIndex);
   }
   return total;
 }
@@ -55,7 +56,8 @@ export function householdSS(input: SSInput): SSOutput {
   const streams = input.ssStreams ?? [];
   const yi = input.yearIndex ?? 0;
 
-  const streamA = input.aliveA ? ssFromStreams(streams, 'A', input.ageA, yi, input.inflation) : 0;
+  // ssFromStreams uses A-frame ageA for all window checks (resolveWindow converts B-frame→A-frame).
+  const streamA = input.aliveA ? ssFromStreams(streams, 'A', input.ageA, yi) : 0;
   const benefitA = !input.aliveA
     ? 0
     : streamA > 0
@@ -64,7 +66,7 @@ export function householdSS(input: SSInput): SSOutput {
 
   const hasB = input.piaB !== undefined && input.claimAgeB !== undefined && input.ageB !== undefined;
   const streamB = hasB && input.aliveB && input.ageB !== undefined
-    ? ssFromStreams(streams, 'B', input.ageB, yi, input.inflation)
+    ? ssFromStreams(streams, 'B', input.ageA, yi)
     : 0;
   const benefitB = !hasB || !input.aliveB
     ? 0
@@ -81,7 +83,7 @@ export function householdSS(input: SSInput): SSOutput {
   // stream's value at the deceased spouse's current age; else use PIA.
   if (hasB) {
     if (input.aliveA && !input.aliveB) {
-      const bStream = ssFromStreams(streams, 'B', input.ageB!, yi, input.inflation);
+      const bStream = ssFromStreams(streams, 'B', input.ageA, yi);
       const bAtDeath = bStream > 0
         ? bStream
         : annualSSBenefit(input.piaB!, input.claimAgeB!, input.ageB!) * input.inflationFactor;
@@ -89,7 +91,7 @@ export function householdSS(input: SSInput): SSOutput {
       return { ssA: surv, ssB: 0, total: surv };
     }
     if (!input.aliveA && input.aliveB) {
-      const aStream = ssFromStreams(streams, 'A', input.ageA, yi, input.inflation);
+      const aStream = ssFromStreams(streams, 'A', input.ageA, yi);
       const aAtDeath = aStream > 0
         ? aStream
         : annualSSBenefit(input.piaA, input.claimAgeA, input.ageA) * input.inflationFactor;

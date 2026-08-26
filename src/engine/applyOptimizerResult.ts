@@ -1,6 +1,5 @@
 import type { Plan } from '../schemas/plan';
 import type { OptimizeResult } from './optimizer';
-import { householdPlanToAgeA } from './planInputKey';
 import { shiftRetirementAge } from './retirementAgeShift';
 
 /** Pure function that returns the plan as it would be after the optimizer runs.
@@ -41,7 +40,8 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
             description: 'Living expenses',
             whose: 'Household' as const,
             startAge: plan.personA.retirementAge,
-            stopAge: householdPlanToAgeA(plan),
+            end: { mode: 'lastSurvivor' as const },
+            survivorPct: 1,
             annualAmount: rec,
             inflationPct: { mode: 'cpi' as const },
           }],

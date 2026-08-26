@@ -1,16 +1,17 @@
 import type { Plan } from '../schemas/plan';
 
 /**
- * Returns the latest plan-to age across both persons, expressed in terms of Person A's age.
- * Ensures the projection and optimizer windows cover whichever person lives longer.
+ * Returns the projection horizon expressed in Person A's age frame:
+ * max(A.planThroughAge, B.planThroughAge-in-A-frame).
+ * Drop-in replacement for the old `householdPlanToAgeA`.
  */
-export function householdPlanToAgeA(plan: Plan): number {
-  const ptA = plan.personA.planToAge;
+export function householdPlanThroughAgeA(plan: Plan): number {
+  const ptA = plan.personA.planThroughAge;
   if (!plan.personB) return ptA;
   const birthYearA = parseInt(plan.personA.dob.slice(0, 4), 10);
   const birthYearB = parseInt(plan.personB.dob.slice(0, 4), 10);
-  // When B reaches planToAgeB, A's equivalent age = B.planToAge + (birthYearB - birthYearA)
-  const bEndInATerms = plan.personB.planToAge + (birthYearB - birthYearA);
+  // When B reaches planThroughAgeB, A's equivalent age = B.planThroughAge + (birthYearB - birthYearA)
+  const bEndInATerms = plan.personB.planThroughAge + (birthYearB - birthYearA);
   return Math.max(ptA, bEndInATerms);
 }
 
@@ -31,5 +32,7 @@ export function planInputKey(plan: Plan): string {
     conversion: plan.conversion,
     payTaxFromBrokerage: plan.payTaxFromBrokerage,
     state: plan.state,
+    customStateTaxRate: plan.customStateTaxRate,
+    goals: plan.goals,
   });
 }

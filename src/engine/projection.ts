@@ -1,7 +1,14 @@
-import type { Plan, IncomeStream, ExpenseStream, LumpSumEvent } from '../schemas/plan';
+import type { Plan, LumpSumEvent } from '../schemas/plan';
 import { householdTotals, resolveGrowthRate } from '../schemas/plan';
 import { taxAdjustedRates, taxAdjustedValue } from './taxAdjusted';
-import { householdPlanToAgeA } from './planInputKey';
+import {
+  householdAgeFrame,
+  resolveIncomeStreams,
+  resolveExpenseStreams,
+  streamFactor,
+  type ResolvedIncome,
+  type ResolvedExpense,
+} from './streamWindow';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
@@ -108,22 +115,24 @@ const ageAt = (dob: string, planStartYear: number): number => {
 };
 
 const sumIncomeStreams = (
-  streams: IncomeStream[],
+  resolved: ResolvedIncome[],
   ageA: number,
   ageB: number | undefined,
+  yearIndex: number,
   aliveA: boolean,
   aliveB: boolean,
-  yearIndex: number,
-  inflation: number,
 ): { gross: number; taxableAmt: number; exemptInterest: number; nonExempt: number; pensionAmt: number } => {
   let gross = 0, taxableAmt = 0, exemptInterest = 0, nonExempt = 0, pensionAmt = 0;
-  for (const s of streams) {
+  for (const { s, w, growthRate } of resolved) {
     if (s.type === 'SS') continue; // SS handled separately via PIA
-    const personAge = s.whose === 'A' ? ageA : s.whose === 'B' ? (ageB ?? -1) : ageA;
-    const personAlive = s.whose === 'A' ? aliveA : s.whose === 'B' ? aliveB : (aliveA || aliveB);
-    if (!personAlive) continue;
-    if (personAge < s.startAge || personAge > s.stopAge) continue;
-    const amount = s.annualAmount * Math.pow(1 + resolveGrowthRate(s.growthPct, inflation), yearIndex);
+    // Owner alive-gate (Phase-1 behaviour, matches the pre-EndRule engine):
+    // person-tagged income stops when the tagged owner dies; Household income stops
+    // when all persons are dead.  Phase 2 will consolidate this into streamFactor.
+    const ownerAlive = w.owner === 'A' ? aliveA : w.owner === 'B' ? aliveB : (aliveA || aliveB);
+    if (!ownerAlive) continue;
+    const factor = streamFactor(w, ageA, ageB, aliveA, aliveB);
+    if (factor === 0) continue;
+    const amount = s.annualAmount * factor * Math.pow(1 + growthRate, yearIndex);
     const taxablePortion = amount * s.taxablePct;
     gross += amount;
     taxableAmt += taxablePortion;
@@ -147,31 +156,32 @@ const sumIncomeStreams = (
 };
 
 const sumExpenseStreams = (
-  streams: ExpenseStream[],
+  resolved: ResolvedExpense[],
   ageA: number,
   ageB: number | undefined,
   yearIndex: number,
-  planInflation: number,
+  aliveA: boolean,
+  aliveB: boolean,
   cumulativeInflationFactor?: number,
   retiredA = true,
   retiredB = true,
 ): number => {
   let total = 0;
-  for (const e of streams) {
+  for (const { e, w, growthRate, cpiMode } of resolved) {
     // Gate by whose retirement: A-tagged flows when A retires, B-tagged when B retires,
     // Household when EITHER retires (working person's contributions offset the draw).
     const eligible = e.whose === 'A' ? retiredA : e.whose === 'B' ? retiredB : (retiredA || retiredB);
     if (!eligible) continue;
-    const personAge = e.whose === 'A' ? ageA : e.whose === 'B' ? (ageB ?? -1) : ageA;
-    if (personAge < e.startAge || personAge > e.stopAge) continue;
+    const factor = streamFactor(w, ageA, ageB, aliveA, aliveB);
+    if (factor === 0) continue;
     // CPI-mode streams (mode:'cpi') use the actual cumulative inflation factor in Monte Carlo
     // so they track stochastic CPI rather than the fixed planning rate. All other modes
     // compound at their own resolved rate as before.
-    const isCpiIndexed = cumulativeInflationFactor !== undefined && e.inflationPct.mode === 'cpi';
+    const isCpiIndexed = cumulativeInflationFactor !== undefined && cpiMode;
     const growthFactor = isCpiIndexed
       ? cumulativeInflationFactor
-      : Math.pow(1 + resolveGrowthRate(e.inflationPct, planInflation), yearIndex);
-    total += e.annualAmount * growthFactor;
+      : Math.pow(1 + growthRate, yearIndex);
+    total += e.annualAmount * factor * growthFactor;
   }
   return total;
 };
@@ -224,7 +234,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const passingB = plan.personB?.passingAge;
   const retireAgeA = plan.personA.retirementAge;
   const retireAgeB = plan.personB?.retirementAge ?? retireAgeA;
-  const planToAge = householdPlanToAgeA(plan);
+  const frame = householdAgeFrame(plan);
+  const planToAge = frame.horizonA;
 
   const totals = householdTotals(plan.portfolio);
   let taxable = totals.taxable;
@@ -246,10 +257,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       .map(ev => ({ ev, remainingBal: 0, injected: false }));
   const filingStatusHistory: FilingStatus[] = [];
 
-  const maxYears = Math.min(75, planToAge - startAgeA + 1);
+  const maxYears = Math.min(80, planToAge - startAgeA + 1);
   const rmdStartAgeA = rmdStartAgeForDob(plan.personA.dob);
   const rmdStartAgeB = plan.personB ? rmdStartAgeForDob(plan.personB.dob) : rmdStartAgeA;
   const planInflation = plan.assumptions.inflation;
+  const rIncome = resolveIncomeStreams(plan.incomeStreams, frame, planInflation);
+  const rExpense = resolveExpenseStreams(plan.expenseStreams, frame, planInflation);
   const taxableDivYield    = plan.assumptions.taxableDivYield    ?? 0;
   const taxableQualifiedPct = plan.assumptions.taxableQualifiedPct ?? 0.80;
   const taxableExemptYield  = plan.assumptions.taxableExemptYield  ?? 0;
@@ -303,19 +316,19 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       ageB, aliveB,
       inflationFactor,
       inflation: planInflation,
-      ssStreams: plan.incomeStreams,
+      ssStreams: rIncome,
       yearIndex: i,
     });
 
     // Other income streams
-    const other = sumIncomeStreams(plan.incomeStreams, ageA, ageB, aliveA, aliveB, i, planInflation);
+    const other = sumIncomeStreams(rIncome, ageA, ageB, i, aliveA, aliveB);
 
     // Expenses start when either person retires (semi-retirement or full retirement).
     // Per-whose gate inside sumExpenseStreams: A-tagged on retiredA, B-tagged on retiredB,
     // Household on retiredA||retiredB. Working person's contributions offset the portfolio draw.
     const netSpend = (retiredA || retiredB) ? sumExpenseStreams(
-      plan.expenseStreams, ageA, ageB, i,
-      plan.assumptions.inflation,
+      rExpense, ageA, ageB, i,
+      aliveA, aliveB,
       opts?.inflationOverrides ? inflationFactor : undefined,
       retiredA, retiredB,
     ) : 0;

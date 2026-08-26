@@ -16,7 +16,7 @@
 import { describe, test, expect } from 'vitest';
 import { measureOptimalityGap, optimizeStrategy, type OptimalityGapResult } from '../optimizer';
 import { runProjection } from '../projection';
-import { FPL_BASE, FPL_INCREMENT, IRMAA_TIERS_SINGLE } from '../taxConstants';
+import { FPL_BASE, IRMAA_TIERS_SINGLE } from '../taxConstants';
 import {
   planA_simple,
   planB_largeTradSingle,
@@ -28,7 +28,7 @@ import {
 import type { Plan } from '../../schemas/plan';
 import type { BlendPolicy } from '../blendPolicy';
 
-const USE_NM = process.env.OPTIMIZER_NM === '1';
+const USE_NM = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.['OPTIMIZER_NM'] === '1';
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
 
@@ -129,7 +129,7 @@ function buildACACliffPlan(): Plan {
       name: 'ACA Test',
       dob: '1971-01-01',  // age 55 in 2026; retires at 60; Medicare at 65 = 5 ACA years
       retirementAge: 60,
-      planToAge: 90,
+      planThroughAge: 90,
       passingAge: 88,
       ssPIA: 28000,       // SS at 67
       ssClaimAge: 67,
@@ -169,16 +169,18 @@ function buildACACliffPlan(): Plan {
     expenseStreams: [
       {
         id: 'core', description: 'Spending', whose: 'A',
-        startAge: 60, stopAge: 90,
+        startAge: 60, end: { mode: 'age' as const, age: 90 }, survivorPct: 1,
         annualAmount: 68000,   // above 400% FPL single → need Roth to stay under cliff
         inflationPct: { mode: 'cpi' },
       },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
-    conversion: { mode: 'off', startAge: 60, endAge: 64, autoAmount: 0, bracketCeiling: 211400, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 60, endAge: 64, autoAmount: 0, bracketCeiling: 211400, manualSchedule: {}, optimize: true },
     state: 'TX',     // no state tax — isolates the federal ACA calculation
     goals: [],
+    lumpSumEvents: [],
+    payTaxFromBrokerage: false,
   };
 }
 
@@ -208,7 +210,7 @@ describe('2 — ACA cliff detection', () => {
     // Baseline: force all spending from traditional (worst case for ACA subsidy)
     const forcedTradPolicy: BlendPolicy = {
       windows: [{ fromAge: 60, toAge: 90, pctTaxable: 0, pctTraditional: 1, pctRoth: 0, convAmt: 0 }],
-      source: 'custom',
+      source: 'manual',
     };
     const forcedProj = runProjection(plan, { policy: forcedTradPolicy });
 
@@ -282,7 +284,7 @@ function buildIRMAAPlan(): Plan {
       name: 'IRMAA Test',
       dob: '1956-01-01',   // age 70 in 2026
       retirementAge: 70,   // already retired
-      planToAge: 92,
+      planThroughAge: 92,
       passingAge: 90,
       ssPIA: 38000,        // $38K PIA → $47,120/yr at age-70 delay
       ssClaimAge: 70,
@@ -322,16 +324,18 @@ function buildIRMAAPlan(): Plan {
     expenseStreams: [
       {
         id: 'core', description: 'Spending', whose: 'A',
-        startAge: 70, stopAge: 92,
+        startAge: 70, end: { mode: 'age' as const, age: 92 }, survivorPct: 1,
         annualAmount: 65000,
         inflationPct: { mode: 'cpi' },
       },
     ],
     withdrawalStrategy: 'taxfirst',
     withdrawalBracketCeiling: 100800,
-    conversion: { mode: 'off', startAge: 70, endAge: 85, autoAmount: 0, bracketCeiling: 211400, manualSchedule: {} },
+    conversion: { mode: 'off', startAge: 70, endAge: 85, autoAmount: 0, bracketCeiling: 211400, manualSchedule: {}, optimize: true },
     state: 'TX',
     goals: [],
+    lumpSumEvents: [],
+    payTaxFromBrokerage: false,
   };
 }
 
@@ -367,7 +371,7 @@ describe('3 — IRMAA awareness', () => {
     // (a) No conversions
     const noConvPolicy: BlendPolicy = {
       windows: [{ fromAge: 70, toAge: 92, pctTaxable: 0.5, pctTraditional: 0.5, pctRoth: 0, convAmt: 0 }],
-      source: 'custom',
+      source: 'manual',
     };
     const noConvProj = runProjection(plan, { policy: noConvPolicy });
     const noConvIRMAA = noConvProj.rows.reduce((s, r) => s + r.irmaa, 0);
@@ -381,7 +385,7 @@ describe('3 — IRMAA awareness', () => {
       { length: 92 - 70 + 1 },
       (_, i) => ({ fromAge: 70 + i, toAge: 70 + i, pctTaxable: 0.5, pctTraditional: 0.5, pctRoth: 0, convAmt: 100000 }),
     );
-    const maxConvPolicy: BlendPolicy = { windows: maxConvWindows, source: 'custom' };
+    const maxConvPolicy: BlendPolicy = { windows: maxConvWindows, source: 'manual' };
     const maxConvProj = runProjection(plan, { policy: maxConvPolicy });
     const maxConvIRMAA = maxConvProj.rows.reduce((s, r) => s + r.irmaa, 0);
 

@@ -68,20 +68,20 @@ export default function Dashboard() {
     : 0;
   const wdRate = initialWithdrawalRate(proj);
   const depAge = depletionAge(proj);
-  const longevityAge = depAge ?? A.planToAge;
+  const longevityAge = depAge ?? A.planThroughAge;
   const planLasts = depAge === null;
 
   const lifetimeSS = proj.rows.reduce((s, r) => s + (real ? r.totalSS / r.inflationFactor : r.totalSS), 0);
   const lifetimeAllInTax = proj.rows.reduce((s, r) => s + (real ? (r.fedTax + r.stateTaxAmt + r.irmaa + r.niit) / r.inflationFactor : r.fedTax + r.stateTaxAmt + r.irmaa + r.niit), 0);
   const lifetimeIRMAA = proj.rows.reduce((s, r) => s + (real ? r.irmaa / r.inflationFactor : r.irmaa), 0);
-  const retirementYears = A.planToAge - A.retirementAge;
-  const yearsFunded = planLasts ? retirementYears : (depAge ?? A.planToAge) - A.retirementAge;
+  const retirementYears = A.planThroughAge - A.retirementAge;
+  const yearsFunded = planLasts ? retirementYears : (depAge ?? A.planThroughAge) - A.retirementAge;
   const rothActive = proj.lifetimeConversion > 1000;
   const asm = effectivePlan.assumptions;
   const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0.15) > 0;
   const lastRow = proj.rows[proj.rows.length - 1];
   const endAgeSub = (() => {
-    if (!lastRow) return `age ${A.planToAge}`;
+    if (!lastRow) return `age ${A.planThroughAge}`;
     const B = effectivePlan.personB;
     if (B && lastRow.phase === 'Survivor' && lastRow.ageB !== undefined)
       return `${B.name} age ${lastRow.ageB}`;

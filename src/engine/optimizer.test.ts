@@ -156,7 +156,7 @@ describe('Custom BlendPolicy ↔ Projection', () => {
     const plan = defaultPlan();
     const policy: BlendPolicy = {
       windows: [
-        { fromAge: plan.personA.retirementAge, toAge: plan.personA.planToAge, pctTaxable: 0.4, pctTraditional: 0.3, pctRoth: 0.3, convAmt: 0 },
+        { fromAge: plan.personA.retirementAge, toAge: plan.personA.planThroughAge, pctTaxable: 0.4, pctTraditional: 0.3, pctRoth: 0.3, convAmt: 0 },
       ],
       source: 'manual',
     };

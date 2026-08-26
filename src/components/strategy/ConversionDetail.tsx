@@ -29,7 +29,7 @@ export default function ConversionDetail() {
   const fromDisplay = (display: number, age: number) => isNominal ? display / inflFactor(age) : display;
   const dollarLabel = isNominal ? 'nominal $' : "today's $";
   const manualAges: number[] = [];
-  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.personA.planToAge; age++) manualAges.push(age);
+  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.personA.planThroughAge; age++) manualAges.push(age);
 
   const setManualForAge = (age: number, displayValue: number) => {
     setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: fromDisplay(displayValue, age) } });

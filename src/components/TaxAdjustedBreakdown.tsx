@@ -66,7 +66,7 @@ export default function TaxAdjustedBreakdown({ proj, plan, real, onClose }: Prop
         </div>
 
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 18 }}>
-          What the ending balance is worth after the tax still owed on it — at age {plan.personA.planToAge}, {real ? "today's $" : 'nominal $'}.
+          What the ending balance is worth after the tax still owed on it — at age {plan.personA.planThroughAge}, {real ? "today's $" : 'nominal $'}.
         </div>
 
         {/* Per-bucket table */}

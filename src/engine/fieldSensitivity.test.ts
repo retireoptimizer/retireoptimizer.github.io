@@ -46,11 +46,11 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
 
-    it('personA.planToAge', () => {
+    it('personA.planThroughAge', () => {
       const d = sensitivity(defaultPlan(), (p) => ({
         ...p,
-        personA: { ...p.personA, planToAge: p.personA.planToAge - 5 },
-        personB: p.personB ? { ...p.personB, planToAge: p.personB.planToAge - 5 } : p.personB,
+        personA: { ...p.personA, planThroughAge: p.personA.planThroughAge - 5 },
+        personB: p.personB ? { ...p.personB, planThroughAge: p.personB.planThroughAge - 5 } : p.personB,
       }));
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
@@ -155,7 +155,7 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
     it('SS-typed stream annualAmount', () => {
       const baseStream: IncomeStream = {
         id: 'ss-test', description: 'SS extra', whose: 'A', type: 'SS',
-        startAge: 70, stopAge: 95, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0.025 }, taxablePct: 1,
+        startAge: 70, end: { mode: 'age' as const, age: 95 }, survivorPct: 0, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0.025 }, taxablePct: 1,
       };
       const base = runProjection(baseWithExtra({ ...baseStream, annualAmount: 10_000 }));
       const mut = runProjection(baseWithExtra({ ...baseStream, annualAmount: 30_000 }));
@@ -165,7 +165,7 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
     it('Pension stream annualAmount', () => {
       const baseStream: IncomeStream = {
         id: 'p-test', description: 'Pension', whose: 'A', type: 'Pension',
-        startAge: 65, stopAge: 90, annualAmount: 20_000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1,
+        startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 0, annualAmount: 20_000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1,
       };
       const base = runProjection(baseWithExtra({ ...baseStream, annualAmount: 20_000 }));
       const mut = runProjection(baseWithExtra({ ...baseStream, annualAmount: 40_000 }));
@@ -174,8 +174,8 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
 
     it('Rental stream annualAmount', () => {
       const baseStream: IncomeStream = {
-        id: 'r-test', description: 'Rental', whose: 'Household', type: 'Rental',
-        startAge: 65, stopAge: 90, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 0.7,
+        id: 'r-test', description: 'Rental', whose: 'Household', type: 'Other',
+        startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 0, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 0.7, stateTaxablePct: 1,
       };
       const base = runProjection(baseWithExtra({ ...baseStream, annualAmount: 10_000 }));
       const mut = runProjection(baseWithExtra({ ...baseStream, annualAmount: 30_000 }));
@@ -185,7 +185,7 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
     it('Annuity stream annualAmount', () => {
       const baseStream: IncomeStream = {
         id: 'a-test', description: 'Annuity', whose: 'A', type: 'Annuity',
-        startAge: 65, stopAge: 90, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0.7,
+        startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 0, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0 }, taxablePct: 0.7,
       };
       const base = runProjection(baseWithExtra({ ...baseStream, annualAmount: 10_000 }));
       const mut = runProjection(baseWithExtra({ ...baseStream, annualAmount: 30_000 }));
@@ -195,7 +195,7 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
     it('Other stream annualAmount (during retirement)', () => {
       const baseStream: IncomeStream = {
         id: 'o-test', description: 'Other', whose: 'Household', type: 'Other',
-        startAge: 65, stopAge: 90, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1,
+        startAge: 65, end: { mode: 'age' as const, age: 90 }, survivorPct: 0, annualAmount: 10_000, growthPct: { mode: 'fixed', rate: 0.02 }, taxablePct: 1,
       };
       const base = runProjection(baseWithExtra({ ...baseStream, annualAmount: 10_000 }));
       const mut = runProjection(baseWithExtra({ ...baseStream, annualAmount: 30_000 }));
@@ -228,10 +228,14 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
 
-    it('stopAge', () => {
+    it('end age', () => {
       const d = sensitivity(defaultPlan(), (p) => ({
         ...p,
-        expenseStreams: p.expenseStreams.map((e, i) => i === 0 ? { ...e, stopAge: Math.max(e.startAge + 1, e.stopAge - 10) } : e),
+        expenseStreams: p.expenseStreams.map((e, i) => {
+          if (i !== 0) return e;
+          const currentAge = e.end.mode === 'age' ? e.end.age : e.startAge + 25;
+          return { ...e, end: { mode: 'age' as const, age: Math.max(e.startAge + 1, currentAge - 10) } };
+        }),
       }));
       expect(d.endDelta + d.taxDelta).toBeGreaterThan(DELTA_THRESHOLD);
     });
@@ -268,9 +272,9 @@ describe('Field sensitivity — UI-editable fields must affect the projection', 
       const withWages = runProjection({
         ...p,
         incomeStreams: [...p.incomeStreams, {
-          id: 'w', description: 'Wages', whose: 'A', type: 'Wages',
-          startAge: 40, stopAge: p.personA.retirementAge - 1,
-          annualAmount: 100_000, growthPct: { mode: 'fixed', rate: 0.03 }, taxablePct: 1,
+          id: 'w', description: 'Wages', whose: 'A' as const, type: 'Other' as const,
+          startAge: 40, end: { mode: 'age' as const, age: p.personA.retirementAge - 1 }, survivorPct: 0,
+          annualAmount: 100_000, growthPct: { mode: 'fixed', rate: 0.03 }, taxablePct: 1, stateTaxablePct: 1,
         }],
       });
       expect(Math.abs(withWages.endTotalReal - base.endTotalReal)).toBeLessThan(1);
