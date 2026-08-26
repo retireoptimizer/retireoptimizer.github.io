@@ -208,7 +208,7 @@ function GuideContent() {
       <P>
         Retirement Optimizer shows you, year by year, whether your money will last. You tell it
         about your life — your age, what you earn, what you spend, what you have saved — and it
-        runs the numbers forward to your Plan-To Age. The goal is not a perfect forecast; it is
+        runs the numbers forward to your Plan Through Age. The goal is not a perfect forecast; it is
         a clear picture of where you stand and what levers matter most.
       </P>
       <P>
@@ -257,14 +257,39 @@ function GuideContent() {
         ["Name", "A label used in charts and tables. Has no effect on any calculation.", '"Alex"'],
         ["Date of Birth", "Used to calculate your current age and all future milestone ages.", "1970-04-15"],
         ["Retirement Age", "The age you plan to stop working. Contributions stop here; withdrawals begin.", "62"],
-        ["Plan-To Age", "How long you want your money to last. Pick an age you are comfortable planning through — 90 to 95 is a common conservative choice.", "92"],
-        ["Passing Age", "Only relevant if you add a spouse or partner. Controls when survivor Social Security benefits transition.", "85"],
+        ["Plan Through Age", "When this person is modeled to pass away and when the plan ends for them. SS stops, RMDs stop, and their accounts roll to the survivor. For a couple, the plan runs until the later of the two Plan Through Ages. Pick 90–95 as a conservative floor.", "92"],
       ]} />
       <Tip>
         Click <strong>+ Add Spouse / Partner</strong> in the Personal Details header to include a
         second person. Each person can have a different retirement age — helpful if one of you plans
         to keep working for a few extra years.
       </Tip>
+
+      <H3>How Ages Work</H3>
+      <P>
+        <strong>Plan Through Age</strong> does double duty: it is both the person&apos;s modeled mortality
+        age <em>and</em> the last year the simulation runs for them. There is no separate &ldquo;Plan-To&rdquo; horizon —
+        the plan ends when the last-living person reaches their Plan Through Age.
+      </P>
+      <P>
+        For a couple, the household horizon is <code>max(Person A Plan Through Age, Person B Plan Through Age converted to A&apos;s frame)</code>.
+        The simulation runs until that later date, modeling the survivor&apos;s finances after the first person passes.
+      </P>
+      <P>
+        Income and expense streams support four <strong>Until</strong> modes (set in the stream row):
+      </P>
+      <FieldTable rows={[
+        ["At age", "Stream runs through a specific age (in the owner's own age frame). Most common — use for SS starting at 70, a pension that stops at 80, etc.", "At age 90"],
+        ["End of life", "Stream runs through the owner's Plan Through Age. Ideal for income that lasts exactly as long as the person does (pension, annuity with life option).", "Life"],
+        ["Last survivor", "Stream runs to the later of both persons' Plan Through Ages. Use for joint annuities or household expenses that continue until the last survivor.", "Survivor"],
+        ["For N years", "Period-certain: stream runs for exactly N years from its start age, regardless of who is alive. Useful for a bridge or COLA-deferred window.", "20 yrs"],
+      ]} />
+      <P>
+        The <strong>Survivor %</strong> column sets what fraction of the stream continues after the owner&apos;s death.
+        Set it to 0% for income that stops completely (e.g., an individual life annuity), 50% for a joint-and-50% annuity,
+        or 100% for expenses that continue at full cost for the surviving spouse. SS streams always set survivor % to 0%
+        because the survivor SS benefit is modeled separately via the Social Security survivor rule.
+      </P>
 
       <H3>State of Residence</H3>
       <P>
@@ -566,7 +591,7 @@ function GuideContent() {
 
       <H3>End-Balance Tax Adjustment</H3>
       <P>
-        These two rates apply <em>only</em> to the balance left over at your plan-to age — the tax still owed on
+        These two rates apply <em>only</em> to the balance left over at your plan-through age — the tax still owed on
         whatever you did not spend. They do not touch the year-by-year tax engine, which continues to compute
         real bracket-by-bracket federal and state tax on every year's income, conversions and withdrawals.
       </P>
@@ -621,7 +646,7 @@ function GuideContent() {
 
       <H3>What would you like to optimize for?</H3>
       <FieldTable rows={[
-        ["Max End Balance", "Finds the plan that leaves the largest portfolio at your Plan-To Age. Good if your priority is leaving a legacy, or if you want the maximum safety cushion.", "—"],
+        ["Max End Balance", "Finds the plan that leaves the largest portfolio at your Plan Through Age. Good if your priority is leaving a legacy, or if you want the maximum safety cushion.", "—"],
         ["Max Sustainable Spending", "Finds the highest annual spending level your plan can support without running dry. Good for understanding your upper spending limit.", "—"],
         ["Earliest Retirement Age", "Solves for the soonest you could retire while keeping the plan fully funded. Good for FIRE planning or exploring what is possible if you save more.", "—"],
       ]} />
@@ -651,7 +676,7 @@ function GuideContent() {
         plan is on track; yellow flags something worth addressing. The status badge (e.g., "✓ Fully Funded · 30 yrs") summarizes plan longevity so the tile count can stay compact. When both tax-adjusted rates are set to 0%, the Tax-Adj Balance tile is hidden.
       </P>
       <FieldTable rows={[
-        ["End Balance", "Raw portfolio value at your Plan-To Age — gross, before any tax adjustment. Green means fully funded; yellow means it ran out before that age. Hover the tile for a tooltip clarifying it is pre-tax-adjustment.", "$820K"],
+        ["End Balance", "Raw portfolio value at your Plan Through Age — gross, before any tax adjustment. Green means fully funded; yellow means it ran out before that age. Hover the tile for a tooltip clarifying it is pre-tax-adjustment.", "$820K"],
         ["Tax-Adj Balance", "Portfolio value after subtracting estimated tax on pre-tax accounts and unrealized gains. Roth is untouched. Click 'breakdown →' under the number to see the per-bucket arithmetic. Only shown when at least one rate is above 0%.", "$648K"],
         ["Annual Spending", "Your first full year of retirement spending in today's dollars (or nominal, matching the display mode toggle). A quick sanity check that the plan is funding the lifestyle you entered.", "$85K"],
         ["Initial WR", "Your first-year withdrawal divided by your portfolio at retirement. The widely-cited guideline is 4% or below. Above 5% is a flag worth examining.", "3.8%"],
@@ -876,7 +901,7 @@ function GuideContent() {
       </P>
       <P>
         The navy line on the right axis tracks your total portfolio value over time. If it trends
-        toward zero before your Plan-To Age, the plan is underfunded and needs adjustments.
+        toward zero before your Plan Through Age, the plan is underfunded and needs adjustments.
       </P>
 
       <H3>Column groups and visibility</H3>
@@ -982,7 +1007,7 @@ function GuideContent() {
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: 20, margin: '0 0 12px' }}>
         <li><strong>Cumulative Tax — With vs. Without Conversions:</strong> Two running totals of lifetime federal tax paid. If the "With Conversions" line ends lower, you paid less tax overall despite paying some of it earlier. That is the goal of converting.</li>
-        <li><strong>Portfolio Balance — With vs. Without Conversions:</strong> Two lines showing ending portfolio value over time. If "With Conversions" is higher at your Plan-To Age, the upfront tax paid resulted in greater after-tax wealth because of Roth&apos;s tax-free compounding.</li>
+        <li><strong>Portfolio Balance — With vs. Without Conversions:</strong> Two lines showing ending portfolio value over time. If "With Conversions" is higher at your Plan Through Age, the upfront tax paid resulted in greater after-tax wealth because of Roth&apos;s tax-free compounding.</li>
       </ul>
 
       {/* ── Section 8: Monte Carlo ───────────────────────────── */}
@@ -1122,7 +1147,7 @@ function GuideContent() {
       <P>
         This is the same method used by tools like cFIREsim. Each start year is called a{' '}
         <em>retirement cohort</em>. The <strong>historical success rate</strong> is simply the
-        share of cohorts whose portfolio lasted to your Plan-To Age.
+        share of cohorts whose portfolio lasted to your Plan Through Age.
       </P>
       <P>
         A cohort is marked as <strong>full coverage</strong> only when the historical record is
@@ -1150,7 +1175,7 @@ function GuideContent() {
       <H3>How to read the survival timeline</H3>
       <P>
         The colored bar shows one block per retirement start year from 1928 to 2023. Green means
-        that cohort&apos;s portfolio survived to your Plan-To Age. Red means it ran out of money.
+        that cohort&apos;s portfolio survived to your Plan Through Age. Red means it ran out of money.
         Gray blocks have partial historical coverage and are not included in the success rate.
         Hover over any block to see the exact year and result.
       </P>
@@ -1193,12 +1218,12 @@ function GuideContent() {
       <P>
         This metric cards shows the real-dollar end balance of the single worst-performing
         full-coverage cohort. It is not the cohort that ran out earliest — it is the one that
-        ended with the smallest (possibly negative) balance at your Plan-To Age. This is your
+        ended with the smallest (possibly negative) balance at your Plan Through Age. This is your
         absolute downside under actual historical conditions.
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: 20, margin: '0 0 24px' }}>
         <li>If this number is positive, even the worst historical market environment left something in the portfolio.</li>
-        <li>If it is deeply negative, the worst cohort ran out significantly before your Plan-To Age — examine which year it was and what made it particularly damaging.</li>
+        <li>If it is deeply negative, the worst cohort ran out significantly before your Plan Through Age — examine which year it was and what made it particularly damaging.</li>
       </ul>
     </div>
   );
