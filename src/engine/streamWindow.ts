@@ -81,6 +81,20 @@ export function householdPlanThroughAgeA(plan: Plan): number {
   return householdAgeFrame(plan).horizonA;
 }
 
+/**
+ * Person A's age in the year the FIRST person retires — the A-frame equivalent of the
+ * projection's `eitherRetired` gate. Years before this are accumulation years, where the
+ * plan models contributions only (no wages, no spending, no investment-income tax).
+ */
+export function firstRetirementAgeA(plan: Plan): number {
+  const frame = householdAgeFrame(plan);
+  const retireBInAFrame =
+    plan.personB && frame.deltaBA !== undefined ? plan.personB.retirementAge - frame.deltaBA : undefined;
+  return retireBInAFrame !== undefined
+    ? Math.min(plan.personA.retirementAge, retireBInAFrame)
+    : plan.personA.retirementAge;
+}
+
 // ---------------------------------------------------------------------------
 // ResolvedWindow
 // ---------------------------------------------------------------------------

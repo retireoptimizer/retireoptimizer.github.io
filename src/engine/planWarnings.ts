@@ -1,4 +1,21 @@
 import type { Plan } from '../schemas/plan';
+import { firstRetirementAgeA } from './streamWindow';
+
+/**
+ * Ages (Person A's frame) with a non-zero manual Roth conversion that will actually run before the
+ * first retirement year. Only `mode: 'manual'` reaches these years — auto-window and bracket-fill
+ * are retirement-gated in `rothConversion()`, and `optimize: true` means the optimizer owns
+ * conversions, which projection gates to 0 during accumulation.
+ */
+export function preRetirementConversionAges(plan: Plan): number[] {
+  if (plan.conversion.mode !== 'manual') return [];
+  if (plan.conversion.optimize ?? true) return [];
+  const firstRetA = firstRetirementAgeA(plan);
+  return Object.entries(plan.conversion.manualSchedule)
+    .filter(([age, amt]) => amt > 0 && Number(age) < firstRetA)
+    .map(([age]) => Number(age))
+    .sort((a, b) => a - b);
+}
 
 export interface PlanWarning {
   id: string;
@@ -16,6 +33,22 @@ export function computePlanWarnings(plan: Plan): PlanWarning[] {
 
   if (plan.expenseStreams.length === 0) {
     warnings.push({ id: 'no-expenses', severity: 'warn', message: 'No expense streams — the plan will always appear fully funded.' });
+  }
+
+  // Pre-retirement Roth conversions are permitted, but their tax cannot be priced: the plan
+  // models no wage income during accumulation (contributions are the only input), so the
+  // conversion is taxed as if it were the household's entire income — full standard deduction
+  // and bottom brackets. The reported federal tax is therefore understated, often by ~2x.
+  const preRetConvAges = preRetirementConversionAges(plan);
+  if (preRetConvAges.length > 0) {
+    const range = preRetConvAges.length === 1
+      ? `age ${preRetConvAges[0]}`
+      : `ages ${preRetConvAges[0]}–${preRetConvAges[preRetConvAges.length - 1]}`;
+    warnings.push({
+      id: 'conv-pre-retirement-tax',
+      severity: 'warn',
+      message: `Roth conversions are scheduled before retirement (${range}). Tax on these is understated — no wage income is modeled during accumulation, so the conversion is taxed as the household's only income. Their tax is also funded by liquidating the brokerage account.`,
+    });
   }
 
   for (const s of plan.incomeStreams) {
