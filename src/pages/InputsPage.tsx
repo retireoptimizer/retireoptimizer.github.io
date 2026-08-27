@@ -248,6 +248,21 @@ export default function InputsPage() {
   const [seenDobB, setSeenDobB] = useState(planDobB);
   if (planDobB !== seenDobB) { setSeenDobB(planDobB); setDobB(planDobB); }
 
+  // Auto-correct single SS streams that pre-date the locked-EndRule UI: if a person
+  // has exactly one SS stream and its end mode is not lastSurvivor, fix it silently.
+  useEffect(() => {
+    const ssCounts: Record<string, number> = {};
+    for (const s of plan.incomeStreams) {
+      if (s.type === 'SS') ssCounts[s.whose] = (ssCounts[s.whose] ?? 0) + 1;
+    }
+    for (const s of plan.incomeStreams) {
+      if (s.type === 'SS' && (ssCounts[s.whose] ?? 0) === 1 && s.end.mode !== 'lastSurvivor') {
+        updateIncomeStream(s.id, { end: { mode: 'lastSurvivor' }, survivorPct: 0 });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const A = plan.personA;
   const B = plan.personB;
   const asm = plan.assumptions;

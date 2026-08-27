@@ -198,20 +198,24 @@ export function windowActiveAt(w: ResolvedWindow, ageInAFrame: number): boolean 
  *   if (w.owner === 'A') { if (aliveA) return 1; if (aliveB) return w.survivorPct; return 0; }
  *   // owner === 'B': if (aliveB) return 1; if (aliveA) return w.survivorPct; return 0;
  *
- * @param w        Resolved window
- * @param ageA     Person A's age this year (primary axis)
- * @param _ageB    Person B's age this year — unused until Phase 2
- * @param _aliveA  Whether Person A is alive — unused until Phase 2
- * @param _aliveB  Whether Person B is alive — unused until Phase 2
+ * @param w       Resolved window
+ * @param ageA    Person A's age this year (primary axis)
+ * @param _ageB   Person B's age this year (unused — window check is always in A-frame)
+ * @param aliveA  Whether Person A is alive this year
+ * @param aliveB  Whether Person B is alive this year
  */
 export function streamFactor(
   w: ResolvedWindow,
   ageA: number,
   _ageB: number | undefined,
-  _aliveA: boolean,
-  _aliveB: boolean,
+  aliveA: boolean,
+  aliveB: boolean,
 ): number {
-  return windowActiveAt(w, ageA) ? 1 : 0;
+  if (!windowActiveAt(w, ageA)) return 0;
+  if (w.owner === null) return (aliveA || aliveB) ? 1 : 0;
+  if (w.owner === 'A') { if (aliveA) return 1; if (aliveB) return w.survivorPct; return 0; }
+  // owner === 'B':
+  if (aliveB) return 1; if (aliveA) return w.survivorPct; return 0;
 }
 
 // ---------------------------------------------------------------------------

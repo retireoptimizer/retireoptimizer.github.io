@@ -7,21 +7,21 @@ export type FilingStatus = 'MFJ' | 'Single';
  * → always Single.
  *
  * @param yearIndex 0..N — year offset from plan start
- * @param passingAgeA / passingAgeB — passing age in plan years (or undefined for survivors)
+ * @param planThroughAgeA / planThroughAgeB — plan-through age in plan years (or undefined for survivors)
  * @param startAgeA / startAgeB — age at year 0
  */
 export function filingStatusForYear(
   yearIndex: number,
   startAgeA: number,
-  passingAgeA: number,
+  planThroughAgeA: number,
   startAgeB?: number,
-  passingAgeB?: number,
+  planThroughAgeB?: number,
 ): FilingStatus {
-  if (startAgeB === undefined || passingAgeB === undefined) return 'Single';
+  if (startAgeB === undefined || planThroughAgeB === undefined) return 'Single';
   const ageA = startAgeA + yearIndex;
   const ageB = startAgeB + yearIndex;
-  const aAlive = ageA <= passingAgeA;
-  const bAlive = ageB <= passingAgeB;
+  const aAlive = ageA <= planThroughAgeA;
+  const bAlive = ageB <= planThroughAgeB;
   if (aAlive && bAlive) return 'MFJ';
   if (!aAlive && !bAlive) return 'Single';
   // One has passed. Death year is already MFJ via the "both alive" branch above

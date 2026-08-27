@@ -125,11 +125,6 @@ const sumIncomeStreams = (
   let gross = 0, taxableAmt = 0, exemptInterest = 0, nonExempt = 0, pensionAmt = 0;
   for (const { s, w, growthRate } of resolved) {
     if (s.type === 'SS') continue; // SS handled separately via PIA
-    // Owner alive-gate (Phase-1 behaviour, matches the pre-EndRule engine):
-    // person-tagged income stops when the tagged owner dies; Household income stops
-    // when all persons are dead.  Phase 2 will consolidate this into streamFactor.
-    const ownerAlive = w.owner === 'A' ? aliveA : w.owner === 'B' ? aliveB : (aliveA || aliveB);
-    if (!ownerAlive) continue;
     const factor = streamFactor(w, ageA, ageB, aliveA, aliveB);
     if (factor === 0) continue;
     const amount = s.annualAmount * factor * Math.pow(1 + growthRate, yearIndex);
