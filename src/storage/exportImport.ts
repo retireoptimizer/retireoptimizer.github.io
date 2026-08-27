@@ -21,15 +21,12 @@ export function exportPlanToJSON(plan: Plan): string {
 
 export function downloadPlan(plan: Plan, filename = 'retirement-optimizer-plan.json'): void {
   const json = exportPlanToJSON(plan);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 export interface ImportResult {
