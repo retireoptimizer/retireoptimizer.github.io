@@ -787,13 +787,13 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .stream-row {
   display: grid;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: 6px;
+  padding: 5px 0;
   animation: rowIn 0.2s ease;
 }
 @keyframes rowIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
-.stream-row.income-row  { grid-template-columns: 0.85fr 0.65fr 0.9fr 0.5fr 1.4fr 0.8fr 1.1fr 0.55fr 26px 28px; }
-.stream-row.expense-row { grid-template-columns: 1.3fr 0.65fr 0.5fr 1.4fr 0.8fr 1.1fr 0.55fr 26px 28px; }
+.stream-row.income-row  { grid-template-columns: 0.85fr 0.65fr 0.9fr 0.5fr 1.1fr 0.65fr 1.0fr 0.5fr 0.5fr 28px; }
+.stream-row.expense-row { grid-template-columns: 1.3fr 0.65fr 0.5fr 1.4fr 0.8fr 1.1fr 0.55fr 28px; }
 .stream-row.lumpsum-row { grid-template-columns: 1.6fr 0.9fr 1.2fr 0.6fr 0.9fr 28px; }
 .stream-expander-btn {
   width: 26px; height: 32px; border: none; background: transparent;
@@ -818,7 +818,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .plan-warning.error { background: rgba(192,57,43,0.1); color: #c0392b; }
 /* Inputs and dropdowns in a stream row share one fixed height so the selects
    line up with the number boxes. */
-.stream-row select, .stream-row input { height: 32px; }
+.stream-row select, .stream-row input { height: 28px; }
 .remove-btn {
   width: 24px;
   height: 24px;

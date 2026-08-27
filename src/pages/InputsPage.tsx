@@ -6,7 +6,6 @@ import { useOptimizerStore } from '../store/useOptimizerStore';
 import { useWhatIfStore } from '../store/useWhatIfStore';
 import { householdTotals, resolveGrowthRate } from '../schemas/plan';
 import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio, GrowthRate, EndRule } from '../schemas/plan';
-import { householdAgeFrame, resolveWindow } from '../engine/streamWindow';
 import { computePlanWarnings } from '../engine/planWarnings';
 import { NumberInput } from '../components/inputs/NumberInput';
 import { listStates } from '../engine/stateTax';
@@ -239,8 +238,6 @@ export default function InputsPage() {
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
   const [buildError, setBuildError] = useState<string | null>(null);
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const toggleExpand = (id: string) => setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const [dobA, setDobA] = useState(plan.personA.dob);
   const [seenDobA, setSeenDobA] = useState(plan.personA.dob);
@@ -278,8 +275,6 @@ export default function InputsPage() {
     && splitValidA && splitValidB;
   const retirementAge = A.retirementAge;
   const planThroughAge = A.planThroughAge;
-  const frame = householdAgeFrame(plan);
-  const currentYear = new Date().getFullYear();
   const planWarnings = computePlanWarnings(plan);
   const minStartAge = (whose: string) => {
     if (whose === 'B' && B) return B.retirementAge;
@@ -362,19 +357,21 @@ export default function InputsPage() {
           </div>
           <div className="panel-body">
             {/* Person profiles */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
               <div className="form-group">
                 <label>Your Name</label>
                 <input type="text" value={A.name} placeholder="Your name" onChange={(e) => setPersonA({ name: e.target.value })} />
               </div>
               <div className="form-group">
                 <label>Date of Birth</label>
-                <input type="date" value={dobA}
-                  onChange={(e) => { setDobA(e.target.value); if (isValidDob(e.target.value)) setPersonA({ dob: e.target.value }); }}
-                  onBlur={() => { if (!isValidDob(dobA)) setDobA(A.dob); }}
-                />
-                <div className="helper-text" style={{ color: isValidDob(dobA) ? undefined : 'var(--color-danger, #c0392b)' }}>
-                  {isValidDob(dobA) ? `Age ${ageFromDob(dobA)}` : 'Invalid date'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="date" value={dobA} style={{ flex: 1, minWidth: 0 }}
+                    onChange={(e) => { setDobA(e.target.value); if (isValidDob(e.target.value)) setPersonA({ dob: e.target.value }); }}
+                    onBlur={() => { if (!isValidDob(dobA)) setDobA(A.dob); }}
+                  />
+                  <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: isValidDob(dobA) ? 'var(--text-muted)' : 'var(--color-danger, #c0392b)' }}>
+                    {isValidDob(dobA) ? `Age ${ageFromDob(dobA)}` : 'Invalid'}
+                  </span>
                 </div>
               </div>
               <div className="form-group">
@@ -392,12 +389,14 @@ export default function InputsPage() {
                 </div>
                 <div className="form-group">
                   <label>Date of Birth</label>
-                  <input type="date" value={dobB}
-                    onChange={(e) => { setDobB(e.target.value); if (isValidDob(e.target.value)) setPersonB({ dob: e.target.value }); }}
-                    onBlur={() => { if (!isValidDob(dobB)) setDobB(B.dob); }}
-                  />
-                  <div className="helper-text" style={{ color: isValidDob(dobB) ? undefined : 'var(--color-danger, #c0392b)' }}>
-                    {isValidDob(dobB) ? `Age ${ageFromDob(dobB)}` : 'Invalid date'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="date" value={dobB} style={{ flex: 1, minWidth: 0 }}
+                      onChange={(e) => { setDobB(e.target.value); if (isValidDob(e.target.value)) setPersonB({ dob: e.target.value }); }}
+                      onBlur={() => { if (!isValidDob(dobB)) setDobB(B.dob); }}
+                    />
+                    <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: isValidDob(dobB) ? 'var(--text-muted)' : 'var(--color-danger, #c0392b)' }}>
+                      {isValidDob(dobB) ? `Age ${ageFromDob(dobB)}` : 'Invalid'}
+                    </span>
                   </div>
                 </div>
                 <div className="form-group">
@@ -526,7 +525,7 @@ export default function InputsPage() {
                 <div style={headerStyle}>Annual amt</div>
                 <div style={headerStyle}>Growth %</div>
                 <div style={headerStyle}>Survivor %</div>
-                <div></div>
+                <div style={headerStyle}>State Tax %</div>
                 <div></div>
               </div>
               {plan.incomeStreams.length === 0 && (
@@ -534,14 +533,16 @@ export default function InputsPage() {
                   No income streams yet — click "+ Add" to add SS, pension, annuity, or other income.
                 </div>
               )}
-              {plan.incomeStreams.map((s) => {
-                const w = resolveWindow(s, frame);
-                const startCal = currentYear + (w.startAge - frame.startAgeA);
-                const stopCal = currentYear + (w.stopAge - frame.startAgeA);
-                const isExpanded = !!expandedRows[s.id];
-                return (
-                  <React.Fragment key={s.id}>
-                    <div className="stream-row income-row">
+              {(() => {
+                const ssCountByOwner = plan.incomeStreams.reduce<Record<string, number>>((acc, s) => {
+                  if (s.type === 'SS') acc[s.whose] = (acc[s.whose] ?? 0) + 1;
+                  return acc;
+                }, {});
+                return plan.incomeStreams.map((s) => {
+                  const isSS = s.type === 'SS';
+                  const lockedSS = isSS && (ssCountByOwner[s.whose] ?? 0) <= 1;
+                  return (
+                    <div key={s.id} className="stream-row income-row">
                       <input type="text" value={s.description} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { description: e.target.value })} />
                       <select value={s.whose} style={{ fontSize: 13 }} onChange={(e) => updateIncomeStream(s.id, { whose: e.target.value as IncomeStream['whose'] })}>
                         <option value="A">{nameA}</option>
@@ -555,6 +556,7 @@ export default function InputsPage() {
                           type,
                           taxablePct: isExempt ? 0 : (s.taxablePct === 0 && !isExempt ? 1 : s.taxablePct),
                           ...(type === 'VA' ? { stateTaxablePct: 0 } : {}),
+                          ...(type === 'SS' ? { end: { mode: 'lastSurvivor' as const }, survivorPct: 0 } : {}),
                         });
                       }}>
                         <option value="SS">SS</option>
@@ -565,33 +567,30 @@ export default function InputsPage() {
                         <option value="Other">Other</option>
                       </select>
                       <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.round(v) })} />
-                      <EndRuleControl end={s.end} startAge={s.startAge} onChange={(end) => updateIncomeStream(s.id, { end })} />
+                      {lockedSS
+                        ? <span style={{ fontSize: 12, color: 'var(--text-muted)', paddingLeft: 2 }} title="SS never stops — survivor benefit is built-in">Last survivor</span>
+                        : <EndRuleControl end={s.end} startAge={s.startAge} onChange={(end) => updateIncomeStream(s.id, { end })} />
+                      }
                       <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                         <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateIncomeStream(s.id, { annualAmount: Math.round(v) })} />
                       </div>
                       <GrowthRateInput value={s.growthPct} inflation={asm.inflation} onChange={(gr) => updateIncomeStream(s.id, { growthPct: gr })} />
-                      <div className="input-suffix-wrap">
-                        <NumberInput value={s.survivorPct} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { survivorPct: v })} />
-                        <span className="input-suffix">%</span>
-                      </div>
-                      <button className="stream-expander-btn" aria-expanded={isExpanded} title="Show details" onClick={() => toggleExpand(s.id)}>{isExpanded ? '▾' : '▸'}</button>
-                      <button className="remove-btn" onClick={() => removeIncomeStream(s.id)}>×</button>
-                    </div>
-                    {isExpanded && (
-                      <div className="stream-expander-panel">
-                        <span className="exp-field">Window: {startCal}–{stopCal}</span>
-                        <span className="exp-field">
-                          <span style={{ color: 'var(--text-muted)' }}>State taxable</span>
-                          <div className="input-suffix-wrap" title={s.type === 'VA' ? '38 U.S.C. §5301: VA disability is fully exempt from state tax' : 'Only applies when using a Custom flat-rate state. Named states apply their own rules.'}>
-                            <NumberInput value={s.stateTaxablePct ?? 1} scale={100} digits={0} min={0} max={100} style={{ fontSize: 12, width: 40, opacity: s.type === 'VA' ? 0.45 : 1 }} disabled={s.type === 'VA'} onCommit={(v) => updateIncomeStream(s.id, { stateTaxablePct: v })} />
+                      {isSS
+                        ? <div title="SS survivor benefits are modeled separately — not controlled here" style={{ fontSize: 11, color: 'var(--text-muted)', paddingLeft: 2 }}>Built-in</div>
+                        : <div className="input-suffix-wrap">
+                            <NumberInput value={s.survivorPct} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { survivorPct: v })} />
                             <span className="input-suffix">%</span>
                           </div>
-                        </span>
+                      }
+                      <div className="input-suffix-wrap" title={s.type === 'VA' ? '38 U.S.C. §5301: VA disability is fully exempt from state tax' : 'Only applies when using a Custom flat-rate state. Named states apply their own rules.'}>
+                        <NumberInput value={s.stateTaxablePct ?? 1} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13, opacity: s.type === 'VA' ? 0.45 : 1 }} disabled={s.type === 'VA'} onCommit={(v) => updateIncomeStream(s.id, { stateTaxablePct: v })} />
+                        <span className="input-suffix">%</span>
                       </div>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+                      <button className="remove-btn" onClick={() => removeIncomeStream(s.id)}>×</button>
+                    </div>
+                  );
+                });
+              })()}
             </div>
             <button className="add-row-btn" onClick={() => addIncomeFromTemplate('blank')}>+ Add income stream</button>
 
@@ -648,43 +647,28 @@ export default function InputsPage() {
                 <div style={headerStyle}>Infl %</div>
                 <div style={headerStyle}>Survivor %</div>
                 <div></div>
-                <div></div>
               </div>
-              {plan.expenseStreams.map((s) => {
-                const w = resolveWindow(s, frame);
-                const startCal = currentYear + (w.startAge - frame.startAgeA);
-                const stopCal = currentYear + (w.stopAge - frame.startAgeA);
-                const isExpanded = !!expandedRows[s.id];
-                return (
-                  <React.Fragment key={s.id}>
-                    <div className="stream-row expense-row">
-                      <input type="text" value={s.description} style={{ fontSize: 13 }} onChange={(e) => updateExpenseStream(s.id, { description: e.target.value })} />
-                      <select value={s.whose} style={{ fontSize: 13 }} onChange={(e) => updateExpenseStream(s.id, { whose: e.target.value as ExpenseStream['whose'] })}>
-                        <option value="Household">Household</option>
-                        <option value="A">{nameA}</option>
-                        {B && <option value="B">{nameB}</option>}
-                      </select>
-                      <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.round(v) })} />
-                      <EndRuleControl end={s.end} startAge={s.startAge} onChange={(end) => updateExpenseStream(s.id, { end })} />
-                      <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                        <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: Math.round(v) })} />
-                      </div>
-                      <GrowthRateInput value={s.inflationPct} inflation={asm.inflation} onChange={(gr) => updateExpenseStream(s.id, { inflationPct: gr })} />
-                      <div className="input-suffix-wrap">
-                        <NumberInput value={s.survivorPct} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { survivorPct: v })} />
-                        <span className="input-suffix">%</span>
-                      </div>
-                      <button className="stream-expander-btn" aria-expanded={isExpanded} title="Show details" onClick={() => toggleExpand(s.id)}>{isExpanded ? '▾' : '▸'}</button>
-                      <button className="remove-btn" onClick={() => removeExpenseStream(s.id)}>×</button>
-                    </div>
-                    {isExpanded && (
-                      <div className="stream-expander-panel">
-                        <span className="exp-field">Window: {startCal}–{stopCal}</span>
-                      </div>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              {plan.expenseStreams.map((s) => (
+                <div key={s.id} className="stream-row expense-row">
+                  <input type="text" value={s.description} style={{ fontSize: 13 }} onChange={(e) => updateExpenseStream(s.id, { description: e.target.value })} />
+                  <select value={s.whose} style={{ fontSize: 13 }} onChange={(e) => updateExpenseStream(s.id, { whose: e.target.value as ExpenseStream['whose'] })}>
+                    <option value="Household">Household</option>
+                    <option value="A">{nameA}</option>
+                    {B && <option value="B">{nameB}</option>}
+                  </select>
+                  <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.round(v) })} />
+                  <EndRuleControl end={s.end} startAge={s.startAge} onChange={(end) => updateExpenseStream(s.id, { end })} />
+                  <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+                    <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: Math.round(v) })} />
+                  </div>
+                  <GrowthRateInput value={s.inflationPct} inflation={asm.inflation} onChange={(gr) => updateExpenseStream(s.id, { inflationPct: gr })} />
+                  <div className="input-suffix-wrap">
+                    <NumberInput value={s.survivorPct} scale={100} digits={0} min={0} max={100} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { survivorPct: v })} />
+                    <span className="input-suffix">%</span>
+                  </div>
+                  <button className="remove-btn" onClick={() => removeExpenseStream(s.id)}>×</button>
+                </div>
+              ))}
             </div>
             <button className="add-row-btn" onClick={() => addExpenseFromTemplate('blank')}>+ Add expense category</button>
           </div>
@@ -792,7 +776,6 @@ export default function InputsPage() {
                               />
                               <span className="input-suffix">%</span>
                             </div>
-                            <div className="helper-text">0% in-state; 100% out-of-state</div>
                           </div>
                         </div>
                       </div>
