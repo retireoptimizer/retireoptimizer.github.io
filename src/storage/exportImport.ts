@@ -1,6 +1,6 @@
 import type { Plan } from '../schemas/plan';
 import { PlanSchema } from '../schemas/plan';
-import { migratePlanToV24 } from '../store/planMigrations';
+import { migratePlanToV24, migratePlanToV25 } from '../store/planMigrations';
 
 export interface ExportPayload {
   app: 'retirement-optimizer';
@@ -47,9 +47,10 @@ export function importPlanFromJSON(raw: string): ImportResult {
   }
   // Support both wrapped (with metadata) and raw plan shapes
   const candidate = (parsed as { plan?: unknown }).plan ?? parsed;
-  // Run v24 migration (planToAge→planThroughAge, stopAge→end, survivorPct) before Zod parsing
+  // Run all migrations before Zod parsing (safe to apply to any version — each is idempotent).
   if (candidate && typeof candidate === 'object') {
     migratePlanToV24(candidate as Record<string, unknown>);
+    migratePlanToV25(candidate as Record<string, unknown>);
   }
   const result = PlanSchema.safeParse(candidate);
   if (!result.success) {

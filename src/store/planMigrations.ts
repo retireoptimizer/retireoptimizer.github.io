@@ -103,3 +103,75 @@ export function migratePlanToV24(raw: Record<string, unknown>): void {
     }
   }
 }
+
+/**
+ * v24 → v25
+ *
+ * Upgrade streams whose end.age was baked in from the old planToAge horizon
+ * (now planThroughAge after the v24 migration) to semantic EndRule modes so
+ * they correctly follow the owner's lifetime instead of stopping at a
+ * hardcoded age.
+ *
+ * Heuristic: a stream with { mode: 'age', age: N } where N exactly matches
+ * a person's planThroughAge was almost certainly migrated from stopAge = planToAge
+ * rather than being a deliberate fixed-age cutoff.
+ *
+ *   whose: 'A'         + end.age === personA.planThroughAge  → { mode: 'life' }
+ *   whose: 'B'         + end.age === personB.planThroughAge  → { mode: 'life' }
+ *   whose: 'Household' + end.age matches either person's
+ *                        planThroughAge in A-frame            → { mode: 'lastSurvivor' }
+ *
+ * Safe for SS streams: SS survivor benefits are modeled in socialSecurity.ts
+ * and rely on survivorPct: 0 (enforced by UI). Upgrading SS window mode to
+ * life/lastSurvivor with survivorPct: 0 yields identical cash-flow because
+ * streamFactor returns 0 after the owner dies regardless of window width.
+ */
+export function migratePlanToV25(raw: Record<string, unknown>): void {
+  const pA = raw.personA as Record<string, unknown> | undefined;
+  const pB = raw.personB as Record<string, unknown> | undefined;
+
+  if (!pA) return;
+
+  const planThroughAgeA = typeof pA.planThroughAge === 'number' ? pA.planThroughAge as number : null;
+  const planThroughAgeB = typeof pB?.planThroughAge === 'number' ? pB.planThroughAge as number : null;
+
+  // Compute B's planThroughAge in A's frame for Household stream end.age comparison.
+  // deltaBA = startAgeB - startAgeA; planThroughBInAFrame = planThroughAgeB - deltaBA.
+  let planThroughBInAFrame: number | null = null;
+  if (pB && planThroughAgeB !== null && typeof pA.dob === 'string' && typeof pB.dob === 'string') {
+    const byA = parseInt(pA.dob.slice(0, 4), 10);
+    const byB = parseInt(pB.dob.slice(0, 4), 10);
+    if (!isNaN(byA) && !isNaN(byB)) {
+      const curYear = new Date().getFullYear();
+      const deltaBA = (curYear - byB) - (curYear - byA); // startAgeB - startAgeA
+      planThroughBInAFrame = planThroughAgeB - deltaBA;
+    }
+  }
+
+  const upgradeEnd = (s: Record<string, unknown>) => {
+    const end = s.end as Record<string, unknown> | undefined;
+    if (!end || end.mode !== 'age' || typeof end.age !== 'number') return;
+    const age = end.age as number;
+    const whose = s.whose as string | undefined;
+
+    if (whose === 'A' && planThroughAgeA !== null && age === planThroughAgeA) {
+      s.end = { mode: 'life' };
+    } else if (whose === 'B' && planThroughAgeB !== null && age === planThroughAgeB) {
+      s.end = { mode: 'life' };
+    } else if (whose === 'Household') {
+      if (
+        (planThroughAgeA !== null && age === planThroughAgeA) ||
+        (planThroughBInAFrame !== null && age === planThroughBInAFrame)
+      ) {
+        s.end = { mode: 'lastSurvivor' };
+      }
+    }
+  };
+
+  if (Array.isArray(raw.incomeStreams)) {
+    for (const s of raw.incomeStreams as Record<string, unknown>[]) upgradeEnd(s);
+  }
+  if (Array.isArray(raw.expenseStreams)) {
+    for (const e of raw.expenseStreams as Record<string, unknown>[]) upgradeEnd(e);
+  }
+}
