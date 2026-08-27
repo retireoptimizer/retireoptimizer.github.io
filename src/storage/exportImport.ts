@@ -29,7 +29,7 @@ export function downloadPlan(plan: Plan, filename = 'retirement-optimizer-plan.j
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 export interface ImportResult {
