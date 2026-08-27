@@ -935,7 +935,7 @@ function GuideContent() {
       </P>
       <FieldTable rows={[
         ["MAGI", "Modified Adjusted Gross Income — the income total before any deductions are applied. This is the number used to determine ACA subsidy eligibility, IRMAA surcharge tiers, and the senior bonus phaseout.", "$195,000"],
-        ["Std Deduct", "The base standard deduction (including the 65+ senior add-on if applicable), not counting the OBBBA senior bonus. This portion is inflation-indexed.", "$30,000"],
+        ["Std Deduct", "The base standard deduction (including the 65+ senior add-on if applicable), not counting the OBBBA senior bonus. This portion is inflation-indexed. Blank in years with no ordinary income or capital gains — a deduction only exists against income.", "$30,000"],
         ["Senior Bonus", "The temporary $6,000/person OBBBA above-the-line deduction for taxpayers 65 and older (tax years 2025–2028). Phases out as MAGI rises above $75K (Single) or $150K (MFJ). Shows $0 once the plan year is outside 2025–2028 or MAGI exceeds the phaseout ceiling.", "$12,000"],
         ["Taxable Inc", "Ordinary income after all deductions: MAGI minus standard deduction minus senior bonus. The federal tax brackets are applied to this number.", "$153,000"],
       ]} />

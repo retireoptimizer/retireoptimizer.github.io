@@ -43,6 +43,15 @@ const BG: Record<'identity' | GroupKey, string> = {
   balances:    '#d3d6d9',
 };
 
+/**
+ * Deductions only exist against income. Accumulation years have no ordinary income and no LTCG
+ * (wages are not modeled — contributions are the only cash flow), so reporting a standard
+ * deduction there is noise: it reads as a tax figure in a row where every other tax column is 0.
+ * A pre-retirement year that DOES have income — a manual Roth conversion — still reports it,
+ * because the deduction is genuinely applied to that year's tax.
+ */
+const deductionApplies = (r: Row) => r.ordIncome + r.ltcg > 0;
+
 const COLUMNS: Column[] = [
   // Identity (always shown, sticky)
   { key: 'year',  label: 'Yr',    group: 'identity', essential: true, fmt: 'raw', get: (r) => r.year,       bg: BG.identity },
@@ -77,8 +86,8 @@ const COLUMNS: Column[] = [
   // Taxes — inputs first (what creates the liability), then outputs (what you pay)
   { key: 'ordIncome',    label: 'Ord Income',  group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.ordIncome,                              bg: BG.taxes },
   { key: 'ltcg',         label: 'LTCG',        group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.ltcg,                                   bg: BG.taxes },
-  { key: 'stdDeduction', label: 'Std Deduct',  group: 'taxes', essential: false, fmt: 'money', get: (r) => r.stdDeduction - r.seniorBonus,             bg: BG.taxes },
-  { key: 'seniorBonus',  label: 'Senior Bonus',group: 'taxes', essential: false, fmt: 'money', get: (r) => r.seniorBonus,                              bg: BG.taxes },
+  { key: 'stdDeduction', label: 'Std Deduct',  group: 'taxes', essential: false, fmt: 'money', get: (r) => deductionApplies(r) ? r.stdDeduction - r.seniorBonus : 0, bg: BG.taxes },
+  { key: 'seniorBonus',  label: 'Senior Bonus',group: 'taxes', essential: false, fmt: 'money', get: (r) => deductionApplies(r) ? r.seniorBonus : 0,     bg: BG.taxes },
   { key: 'taxableIncome',label: 'Taxable Inc', group: 'taxes', essential: false, fmt: 'money', get: (r) => Math.max(0, r.magi - r.stdDeduction),     bg: BG.taxes },
   { key: 'fedTax',       label: 'Fed Tax',     group: 'taxes', essential: true,  fmt: 'money', get: (r) => r.fedTax,                                 bg: BG.taxes },
   { key: 'stateTaxAmt',  label: 'State Tax',   group: 'taxes', essential: false, fmt: 'money', get: (r) => r.stateTaxAmt,                            bg: BG.taxes },
