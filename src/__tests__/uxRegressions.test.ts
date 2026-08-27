@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { generateInsights } from '../engine/explain';
 import { runProjection } from '../engine/projection';
 import { previewAllPresets } from '../engine/presetPreview';
-import { optimizeStrategy } from '../engine/optimizer';
-import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { compareWithWithoutConversion } from '../engine/comparison';
 import { planF_allTradCouple, planA_simple } from '../engine/__golden/plans';
 import { samplePlan as defaultPlan } from '../schemas/plan';
@@ -75,19 +73,11 @@ describe('UX regressions', () => {
     expect(Math.abs(withEnd - baseEnd)).toBeGreaterThan(10_000);
   });
 
-  it('Optimizer max-sustainable-spending: applied plan matches reported projection (fixed 2026-05-29)', () => {
-    // Bug: optimizer measured a scaled-expense plan but the apply handler only
-    // persisted customPolicy. Saved plan kept original spending → end balance
-    // on the global LiveMetricsBar was ~$1.79M while the optimizer panel
-    // reported ~$0. Fix: applyResultToPlan also scales expense streams by the
-    // recommended multiplier.
-    const plan = defaultPlan();
-    const result = optimizeStrategy(plan, 'max-sustainable-spending', { useNelderMead: false });
-    const applied = applyResultToPlan(plan, result);
-    const reproj = runProjection(applied);
-    expect(reproj.endTotalReal).toBeCloseTo(result.projection.endTotalReal, 0);
-    expect(reproj.lifetimeFedTax).toBeCloseTo(result.projection.lifetimeFedTax, 0);
-  }, 120_000);
+  // Optimizer max-sustainable-spending apply round-trip (bug: the apply handler
+  // persisted customPolicy but not the scaled expense streams, so the saved plan
+  // kept original spending) is covered by applyOptimizerResult.test.ts, which runs
+  // the same assertion across all three goals × two plans. Duplicating it here cost
+  // ~30s per suite run for no additional signal.
 
   it('LiveMetricsBar honors displayMode (Real/Nominal toggle, fixed 2026-05-29)', () => {
     // Bug: LiveMetricsBar always rendered values in real (today's $) regardless
@@ -131,16 +121,7 @@ describe('UX regressions', () => {
     expect(Math.abs(cmp.lifetimeTaxDelta)).toBeGreaterThan(500);
   });
 
-  it('Optimizer min-retirement-age: applied plan matches reported projection (fixed 2026-05-29)', () => {
-    // Bug: optimizer searched on lowered retirementAge but the apply handler
-    // only persisted customPolicy. Saved plan retired at original age → global
-    // bar disagreed with panel. Fix: applyResultToPlan also drops personA.
-    // retirementAge (and shifts personB's by the same delta).
-    const plan = defaultPlan();
-    const result = optimizeStrategy(plan, 'min-retirement-age', { useNelderMead: false });
-    const applied = applyResultToPlan(plan, result);
-    const reproj = runProjection(applied);
-    expect(reproj.endTotalReal).toBeCloseTo(result.projection.endTotalReal, 0);
-    expect(reproj.lifetimeFedTax).toBeCloseTo(result.projection.lifetimeFedTax, 0);
-  }, 180_000);
+  // Optimizer min-retirement-age apply round-trip (bug: the apply handler did not
+  // drop personA.retirementAge, so the saved plan retired at the original age) is
+  // likewise covered by applyOptimizerResult.test.ts.
 });

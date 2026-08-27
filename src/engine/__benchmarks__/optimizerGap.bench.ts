@@ -7,8 +7,8 @@
  *   2. ACA cliff detection   — does the optimizer find and preserve the ACA subsidy?
  *   3. IRMAA awareness       — does the optimizer correctly model and account for IRMAA?
  *
- * Usage (run explicitly — excluded from the default test suite by vitest.config.ts):
- *   pnpm vitest run src/engine/__benchmarks__/optimizerGap.bench.ts
+ * Usage (excluded from the default suite by vitest.config.ts — opt in with HEAVY=1):
+ *   pnpm test:heavy src/engine/__benchmarks__/optimizerGap.bench.ts
  *
  * Set OPTIMIZER_NM=1 to include Nelder-Mead (3-4× slower, marginally more precise).
  */
@@ -351,7 +351,9 @@ describe('3 — IRMAA awareness', () => {
   console.log('  (b) optimizer result — engine-chosen trade-off');
   console.log('  (c) max conversions — highest IRMAA, best Roth build-up');
   console.log('  The optimizer result should be between (a) and (c), and better');
-  console.log('  than both on end balance.');
+  console.log('  than (a) on tax-adjusted end balance — the metric max-end-balance');
+  console.log('  scores. It will often read LOWER on gross balance, because the');
+  console.log('  conversion tax is paid up front.');
   console.log('');
   console.log('WHAT IT DOES NOT TEST:');
   console.log('  Whether the optimizer finds the exact conversion amount that');
@@ -392,10 +394,14 @@ describe('3 — IRMAA awareness', () => {
 
     console.log(`\n  IRMAA Tier 1 threshold (single, 2026): ${fmtD(irmaaT1Single)}`);
     console.log(`  (IRMAA is based on MAGI from 2 years prior)\n`);
-    console.log('  Strategy comparison (lifetime nominal):');
-    console.log(`    No conversions:  end balance ${fmtM(noConvProj.endTotalReal)}  IRMAA ${fmtK(noConvIRMAA)}`);
-    console.log(`    Optimizer:       end balance ${fmtM(result.projection.endTotalReal)}  IRMAA ${fmtK(optIRMAA)}`);
-    console.log(`    Max conversions: end balance ${fmtM(maxConvProj.endTotalReal)}  IRMAA ${fmtK(maxConvIRMAA)}`);
+    // Both metrics are printed: gross alone is misleading for conversion-heavy answers,
+    // because paying conversion tax now lowers gross while raising after-tax value.
+    console.log('  Strategy comparison (IRMAA lifetime nominal):');
+    const cmpLine = (label: string, p: typeof noConvProj, irmaa: number) =>
+      console.log(`    ${label.padEnd(17)}gross ${fmtM(p.endTotalReal)}  tax-adj ${fmtM(p.endTaxAdjustedReal)}  IRMAA ${fmtK(irmaa)}`);
+    cmpLine('No conversions:', noConvProj, noConvIRMAA);
+    cmpLine('Optimizer:', result.projection, optIRMAA);
+    cmpLine('Max conversions:', maxConvProj, maxConvIRMAA);
     console.log('');
     console.log('  Optimizer year-by-year (ages 70–85):');
     console.log(`    ${'Age'.padEnd(5)} ${'MAGI'.padEnd(12)} ${'Conv'.padEnd(10)} ${'IRMAA/yr'.padEnd(10)} ${'Note'}`);
@@ -407,9 +413,16 @@ describe('3 — IRMAA awareness', () => {
       );
     }
 
-    // Sanity assertions: optimizer should outperform both naive extremes
-    expect(result.projection.endTotalReal).toBeGreaterThan(noConvProj.endTotalReal);
-    // Optimizer should not be worse than no-conversions on end balance
-    expect(result.projection.endTotalReal).toBeGreaterThanOrEqual(noConvProj.endTotalReal - 1000);
+    // Sanity assertion: the optimizer must beat the naive no-conversion baseline on
+    // endTaxAdjustedReal — the metric max-end-balance actually scores (since 59af169).
+    // Comparing gross endTotalReal here is wrong and gave a false failure: a conversion
+    // -heavy answer deliberately trades gross balance for after-tax balance, so on this
+    // plan the optimizer reads $1.978M gross vs the baseline's $2.090M while winning
+    // $1.871M vs $1.835M tax-adjusted.
+    expect(
+      result.projection.endTaxAdjustedReal,
+      `Optimizer tax-adj ${fmtM(result.projection.endTaxAdjustedReal)} did not beat ` +
+      `no-conversion baseline ${fmtM(noConvProj.endTaxAdjustedReal)}`,
+    ).toBeGreaterThan(noConvProj.endTaxAdjustedReal);
   }, 120_000);
 });

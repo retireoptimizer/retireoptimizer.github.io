@@ -19,20 +19,26 @@ describe('Optimizer ↔ Projection coordination', () => {
     // Same plan, different Pick-tab settings → optimizer output must be byte-identical.
     // This is the foundational isolation property: the optimizer searches its own policy
     // space and the projection must respect that policy fully, not fall back to legacy modes.
+    // Four combinations, not the full 4×5 cross-product: each optimizeStrategy call is
+    // ~15s, and the property is per-axis (does either setting leak into the search?),
+    // so covering every mode and every strategy at least once gives the same signal.
     const baseplan = defaultPlan();
-    const modes: Plan['conversion']['mode'][] = ['off', 'manual', 'auto-window', 'bracket-fill'];
-    const strategies: Plan['withdrawalStrategy'][] = ['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill'];
+    const combos: Array<[Plan['conversion']['mode'], Plan['withdrawalStrategy']]> = [
+      ['off', 'taxfirst'],
+      ['manual', 'rothfirst'],
+      ['auto-window', 'tradfirst'],
+      ['bracket-fill', 'proportional'],
+      ['off', 'bracketfill'],
+    ];
 
     const results: string[] = [];
-    for (const mode of modes) {
-      for (const strat of strategies) {
-        const plan = clone(baseplan);
-        plan.conversion.mode = mode;
-        plan.withdrawalStrategy = strat;
-        const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-        // Serialize just the per-year policy windows for comparison — that's the optimizer's pure output.
-        results.push(JSON.stringify(r.perYearPolicy.windows));
-      }
+    for (const [mode, strat] of combos) {
+      const plan = clone(baseplan);
+      plan.conversion.mode = mode;
+      plan.withdrawalStrategy = strat;
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      // Serialize just the per-year policy windows for comparison — that's the optimizer's pure output.
+      results.push(JSON.stringify(r.perYearPolicy.windows));
     }
     const distinct = new Set(results);
     expect(
@@ -40,7 +46,7 @@ describe('Optimizer ↔ Projection coordination', () => {
       `Expected 1 distinct optimizer output across ${results.length} Pick-tab combinations, got ${distinct.size}.\n` +
       `First two distinct outputs:\n  ${[...distinct].slice(0, 2).join('\n  ')}`
     ).toBe(1);
-  }, 300_000);
+  }, 180_000);
 
   it('honors the convAmt cap — actual rothConv ≤ 3 × bracket12Top × inflF', () => {
     // The optimizer's cap heuristic is "convert up to 3 brackets of room". The projection

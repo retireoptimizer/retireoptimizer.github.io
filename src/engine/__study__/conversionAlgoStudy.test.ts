@@ -1,3 +1,10 @@
+/**
+ * Conversion-algorithm comparison study — research output, not a regression check.
+ * It runs 16 plans × 6 algorithms and prints comparison tables; it asserts nothing.
+ *
+ * Excluded from `pnpm test` by vitest.config.ts. Run it deliberately:
+ *   pnpm test:heavy src/engine/__study__/conversionAlgoStudy.test.ts
+ */
 import { describe, it } from 'vitest';
 import { optimizeStrategy } from '../optimizer';
 import { runProjection } from '../projection';
