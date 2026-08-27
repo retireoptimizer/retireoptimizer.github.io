@@ -281,7 +281,11 @@ export default function StrategyChooser() {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
         {tab === 'optimize' && col('auto',
           <button
-            onClick={() => { setTabFreshEntry('none'); setPendingConv({ optimize: true }); }}
+            // mode:'off' is written alongside optimize:true so a previously-chosen mode cannot
+            // linger. The optimizer's search space starts at retirementAge, so a stale
+            // mode:'manual' schedule would keep firing in accumulation years — conversions the
+            // optimizer never chose, while this pill reads "Optimizer decides".
+            onClick={() => { setTabFreshEntry('none'); setPendingConv({ optimize: true, mode: 'off' }); }}
             title="The optimizer searches conversion amounts for you"
             style={pillStyle(optDecidesSt)}
           >

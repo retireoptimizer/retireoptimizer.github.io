@@ -83,6 +83,42 @@ describe('BlendPolicy convAmt override', () => {
   });
 });
 
+describe('stale manual conversion schedule (optimizer-owned conversions)', () => {
+  /** Accumulation-year conversions from plan.conversion, keyed to Person A's age. */
+  const preRetConversions = (plan: Plan) =>
+    runProjection(plan).rows.filter((r) => r.phase === 'Accum.' && r.rothConv > 0).map((r) => r.ageA);
+
+  const withSchedule = (optimize: boolean): Plan => {
+    const plan = defaultPlan();
+    const startAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
+    const preRetAge = Math.max(startAgeA, plan.personA.retirementAge - 3);
+    plan.conversion = {
+      ...plan.conversion, mode: 'manual', optimize,
+      manualSchedule: { [String(preRetAge)]: 100_000 },
+    };
+    return plan;
+  };
+
+  it('does not run a manual schedule pre-retirement when the optimizer owns conversions', () => {
+    // The leak: picking "Optimizer decides" sets optimize:true but left mode:'manual' behind.
+    // The optimizer's search space starts at retirementAge, so it never chose these — they must
+    // not appear, or the UI implies the optimizer selected conversions it did not.
+    expect(preRetConversions(withSchedule(true))).toEqual([]);
+  });
+
+  it('still honors a manual schedule the user deliberately chose (optimize:false)', () => {
+    expect(preRetConversions(withSchedule(false)).length).toBeGreaterThan(0);
+  });
+
+  it('leaves retirement-year conversions untouched — the gate is accumulation-only', () => {
+    const plan = defaultPlan();
+    plan.conversion = { ...plan.conversion, mode: 'auto-window', optimize: true, autoAmount: 40_000,
+      startAge: plan.personA.retirementAge, endAge: plan.personA.retirementAge + 5 };
+    const converted = runProjection(plan).rows.filter((r) => r.phase !== 'Accum.' && r.rothConv > 0);
+    expect(converted.length).toBeGreaterThan(0);
+  });
+});
+
 describe('optimizeStrategy (smoke)', () => {
   it('max-end-balance returns a non-empty policy and projection that survives or matches baseline', () => {
     const plan = defaultPlan();

@@ -453,6 +453,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const exemptIncome = other.exemptInterest + exemptInt;
     if (eitherRetired && policyConv != null) {
       conv = Math.min(maxConv, policyConv * inflationFactor);
+    } else if (!eitherRetired && (plan.conversion.optimize ?? true)) {
+      // The optimizer owns conversions (`conversion.optimize`), and its search space starts at
+      // retirementAge — it never schedules an accumulation-year conversion. Without this gate,
+      // a mode left at 'manual' from an earlier session keeps firing its schedule here, because
+      // the pre-retirement fallback below reads plan.conversion directly. That produced
+      // conversions the optimizer never chose while the UI read "Optimizer decides".
+      // A deliberately chosen mode always carries optimize:false (see StrategyChooser.selectMode).
+      conv = 0;
     } else {
       conv = rothConversion({
         params: { ...plan.conversion, bracketCeiling: effectiveBracketCeiling(plan.conversion.bracketCeiling, filingStatus) },

@@ -2,6 +2,8 @@ import { usePlanStore } from '../../store/usePlanStore';
 import { NumberInput } from '../inputs/NumberInput';
 import { fmtUSD } from '../../lib/format';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants';
+import { firstRetirementAgeA } from '../../engine/streamWindow';
+import { preRetirementConversionAges } from '../../engine/planWarnings';
 
 /** Data-entry detail for the active Roth conversion mode, shown inside the Dashboard side sheet.
  *  Mode SELECTION lives inline as pills in StrategyChooser; this renders only the fields the chosen
@@ -30,6 +32,12 @@ export default function ConversionDetail() {
   const dollarLabel = isNominal ? 'nominal $' : "today's $";
   const manualAges: number[] = [];
   for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.personA.planThroughAge; age++) manualAges.push(age);
+  // Accumulation years are offered (pre-retirement conversions are a real strategy) but their tax
+  // is understated — no wages are modeled, so the conversion is taxed as the only income.
+  // Same "will this actually run" test the plan warning uses: nothing runs pre-retirement when
+  // the optimizer owns conversions, so don't warn about a schedule that is inert.
+  const firstRetA = firstRetirementAgeA(plan);
+  const preRetScheduled = preRetirementConversionAges(plan);
 
   const setManualForAge = (age: number, displayValue: number) => {
     setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: fromDisplay(displayValue, age) } });
@@ -112,6 +120,23 @@ const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSched
               <span>Enter conversion amounts <strong>in {dollarLabel}</strong>.{isNominal ? '' : ' Engine inflates to nominal $.'}</span>
               <button className="btn btn-outline" style={{ fontSize: 11, padding: '4px 10px' }} onClick={clearManual}>Clear All</button>
             </div>
+            {preRetScheduled.length > 0 && (
+              <div style={{
+                background: '#fff8e1', borderBottom: '1px solid #f59e0b',
+                padding: '10px 18px', fontSize: 12.5, color: '#78350f', lineHeight: 1.6,
+                display: 'flex', gap: 10, alignItems: 'flex-start',
+              }}>
+                <span style={{ fontSize: 15, lineHeight: '20px' }}>⚠</span>
+                <div>
+                  <strong>Tax on pre-retirement conversions is understated.</strong> The plan models no wage
+                  income before retirement (age {firstRetA}) — only contributions — so a conversion at{' '}
+                  {preRetScheduled.length === 1 ? `age ${preRetScheduled[0]}` : `ages ${preRetScheduled[0]}–${preRetScheduled[preRetScheduled.length - 1]}`}{' '}
+                  is taxed as the household's only income, getting the full standard deduction and the
+                  bottom brackets. Real cost is typically ~2× the figure shown. The tax is also paid by
+                  liquidating the brokerage account.
+                </div>
+              </div>
+            )}
             <div style={{ maxHeight: 340, overflowY: 'auto' }}>
               <table className="data-table" style={{ margin: 0 }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--cream)', zIndex: 2 }}>
@@ -120,7 +145,15 @@ const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSched
                 <tbody>
                   {manualAges.map((age) => (
                     <tr key={age}>
-                      <td><strong>{age}</strong></td>
+                      <td>
+                        <strong>{age}</strong>
+                        {age < firstRetA && (
+                          <span title="Accumulation year — conversion tax is understated (no wages modeled)"
+                            style={{ marginLeft: 6, fontSize: 10, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+                            pre-ret
+                          </span>
+                        )}
+                      </td>
                       <td><NumberInput value={toDisplay(conv.manualSchedule[String(age)] ?? 0, age)} min={0} onCommit={(v) => setManualForAge(age, v)} /></td>
                     </tr>
                   ))}
