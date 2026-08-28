@@ -72,7 +72,7 @@ const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSched
               </div>
               <div className="form-group">
                 <label>End Age ({plan.personA.name})</label>
-                <NumberInput value={conv.endAge} digits={0} min={55} max={80} onCommit={(v) => setConversion({ endAge: Math.round(v) })} />
+                <NumberInput value={conv.endAge} digits={0} min={55} onCommit={(v) => setConversion({ endAge: Math.round(v) })} />
               </div>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
@@ -100,7 +100,7 @@ const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSched
               </div>
               <div className="form-group">
                 <label>End Age</label>
-                <NumberInput value={conv.endAge} digits={0} min={55} max={80} onCommit={(v) => setConversion({ endAge: Math.round(v) })} />
+                <NumberInput value={conv.endAge} digits={0} min={55} onCommit={(v) => setConversion({ endAge: Math.round(v) })} />
               </div>
             </div>
             <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>

@@ -78,7 +78,7 @@ export default function Dashboard() {
   const yearsFunded = planLasts ? retirementYears : (depAge ?? A.planThroughAge) - A.retirementAge;
   const rothActive = proj.lifetimeConversion > 1000;
   const asm = effectivePlan.assumptions;
-  const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0.15) > 0;
+  const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0) > 0;
   const lastRow = proj.rows[proj.rows.length - 1];
   const endAgeSub = (() => {
     if (!lastRow) return `age ${A.planThroughAge}`;

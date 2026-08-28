@@ -70,7 +70,7 @@ export const AssumptionsSchema = z.object({
   /** Blended effective rate assumed for taxable unrealized gains at liquidation.
    *  Applied to gain above cost basis only — basis is already-taxed money and is untouched.
    *  Roth is never haircut. Setting to 0 along with taxAdjOrdRate disables tax-adjusted balance. */
-  taxAdjLtcgRate: z.number().min(0).max(0.4).default(0.15),
+  taxAdjLtcgRate: z.number().min(0).max(0.4).default(0),
   tradReturn: z.number().default(0.055),
   rothReturn: z.number().default(0.055),
   inflation: z.number(),
@@ -256,7 +256,7 @@ export const defaultPlan = (): Plan => ({
     taxableExemptStatePct: 1,
     taxableDistributePct: 0,
     taxAdjOrdRate: 0.22,
-    taxAdjLtcgRate: 0.15,
+    taxAdjLtcgRate: 0,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
@@ -327,7 +327,7 @@ export const samplePlan = (): Plan => ({
     taxableExemptStatePct: 1,
     taxableDistributePct: 0,
     taxAdjOrdRate: 0.22,
-    taxAdjLtcgRate: 0.15,
+    taxAdjLtcgRate: 0,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
