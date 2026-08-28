@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useToastStore } from './useToastStore';
 import { FED_BRACKETS_MFJ } from '../engine/taxConstants';
 import type { Plan, Person, Assumptions, PersonPortfolio, IncomeStream, ExpenseStream, LumpSumEvent, ConversionParams, Goal } from '../schemas/plan';
 import type { BlendPolicy } from '../engine/blendPolicy';
@@ -108,12 +109,22 @@ export const usePlanStore = create<PlanState>()(
       })),
       removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id), solvedSpendingMultiplier: undefined } })),
       setWithdrawalStrategy: (withdrawalStrategy) => set((s) => ({
-        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined },
+        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined },
       })),
-      setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy, optimizedForGoal: undefined } })),
+      setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } })),
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
-      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined } })),
-      setConversion: (patch) => set((s) => ({ plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } })),
+      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined } })),
+      // Editing conversion settings invalidates an optimizer-authored withdrawal ordering, which was
+      // co-optimized against the old conversion schedule. Discard it (revert to the preset) and tell
+      // the user to re-run — otherwise the projection silently runs on a withdrawal plan they never
+      // chose. Matches StrategyChooser's Manual tab, which already clears the policy first.
+      setConversion: (patch) => set((s) => {
+        if (s.plan.customPolicy?.source === 'optimizer') {
+          useToastStore.getState().show('info', 'Withdrawal ordering reset — re-run the optimizer to co-optimize withdrawals and conversions.');
+          return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch }, customPolicy: undefined, conversionBaselinePolicy: undefined } };
+        }
+        return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } };
+      }),
       setWithdrawalBracketCeiling: (v: number) => set((s) => ({
         plan: {
           ...s.plan,
@@ -131,7 +142,7 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 25,
+      version: 26,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };

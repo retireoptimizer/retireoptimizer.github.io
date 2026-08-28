@@ -39,6 +39,11 @@ const FINE_SPLITS = buildSplits(FINE_STEPS);
 export interface OptimizeResult {
   policy: BlendPolicy;          // Compacted (consecutive identical windows merged)
   perYearPolicy: BlendPolicy;   // Raw one-window-per-year policy used during search
+  /** No-conversion counterfactual withdrawal ordering (max-end-balance only): the optimizer's
+   *  best ordering with conversions disabled, re-adapted rather than inheriting the with-conversion
+   *  splits. Undefined when the result has no conversions (benefit is 0) or for other goals.
+   *  Consumed as the "without conversions" baseline for the Roth Conversion Benefit metric. */
+  conversionBaselinePolicy?: BlendPolicy;
   metric: number;
   metricFormatted: string;
   ranOut: boolean;
@@ -732,12 +737,13 @@ function packageResult(
   inner: InnerEval,
   goal: UserGoal,
   evals: number,
-  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string },
+  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string; conversionBaselinePolicy?: BlendPolicy },
 ): OptimizeResult {
   const spec = REC_GOALS['max-end'];
   return {
     policy: { ...inner.policy, windows: compact(inner.policy.windows), source: 'optimizer', goal },
     perYearPolicy: inner.policy,
+    conversionBaselinePolicy: extras.conversionBaselinePolicy,
     metric: inner.score,
     metricFormatted: spec.format(inner.score),
     ranOut: inner.ranOut,
@@ -925,6 +931,43 @@ export function measureOptimalityGap(
   return { runs, bestScore, worstScore, spreadPct, depletedCount: runs.length - nonDepleted.length };
 }
 
+/** No-conversion counterfactual for the Roth Conversion Benefit metric (max-end-balance only).
+ *  Re-runs the optimizer with conversions disabled so the withdrawal ordering re-adapts to the
+ *  no-conversion world (the with-conversion ordering is co-optimized against a conversion schedule
+ *  and is the wrong ordering here). Warm-starts a competitor from the with-conversion ordering
+ *  (conversions stripped) so the baseline never lands worse than a hand-reachable solution.
+ *  Returns undefined when the result has no conversions — benefit is then definitionally ~0 and
+ *  the cheap zeroed-policy baseline in comparison.ts suffices, so the second optimize is skipped. */
+function computeConversionBaseline(
+  plan: Plan,
+  opts: OptimizeOptions,
+  evalCounter: { n: number },
+  withConvInner: InnerEval,
+): BlendPolicy | undefined {
+  // "Has conversions" must reflect what the projection actually converted, not just the optimizer's
+  // per-window convAmt: when conversion.optimize is false the optimizer owns only the withdrawal
+  // ordering and conversions flow from conversion.mode (auto-window / bracket-fill / manual), landing
+  // in the projection but never in customPolicy.convAmt. Keying off convAmt alone would skip the
+  // baseline for exactly the "optimized ordering + fixed conversion schedule" plans that need it.
+  if (withConvInner.proj.lifetimeConversion <= 1000) return undefined;
+
+  const baselinePlan: Plan = {
+    ...plan,
+    customPolicy: undefined,
+    conversion: { ...plan.conversion, mode: 'off', optimize: false },
+  };
+  // Robust baseline: full multi-start (cheaper than the with-conversion run — the conversion
+  // search dimension is off — and flat across withdrawal presets because it overwrites the seed).
+  let baseline = multiStartInner(baselinePlan, opts, evalCounter);
+  // Warm-start competitor from the with-conversion ordering, conversions stripped. optimizeConversions
+  // is false here, so convAmt must be undefined (never 0) to honour the mode-owned invariant.
+  const warmSeed = withConvInner.policy.windows.map((w) => ({ ...w, convAmt: undefined }));
+  const warm = innerOptimize(baselinePlan, opts, evalCounter, undefined, warmSeed);
+  if (isBetter(warm, baseline)) baseline = warm;
+
+  return { windows: compact(baseline.policy.windows), source: 'optimizer', goal: 'max-end-balance' };
+}
+
 export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptions = {}): OptimizeResult {
   const evalCounter = { n: 0 };
 
@@ -933,11 +976,14 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // Multi-start: screen 3 diverse seeds, fully refine top-2, take the best.
     // Prevents coordinate descent from being stuck in a single local basin.
     const inner = multiStartInner(plan, opts, evalCounter);
+    opts.onProgress?.(0.9, 'Measuring conversion benefit…');
+    const conversionBaselinePolicy = computeConversionBaseline(plan, opts, evalCounter, inner);
     opts.onProgress?.(1, 'Done');
     const endTaxAdj = inner.proj.endTaxAdjustedReal;
     return packageResult(inner, goal, evalCounter.n, {
       headline: fmtM(endTaxAdj),
       headlineLabel: 'Tax-adjusted balance (today\'s $)',
+      conversionBaselinePolicy,
     });
   }
 

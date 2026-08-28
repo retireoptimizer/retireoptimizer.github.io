@@ -7,17 +7,26 @@ interface Props {
   cmp: ComparisonResult;
   real?: boolean;
   height?: number;
+  /** Plot after-tax (tax-adjusted) balances so the end gap equals the headline conversion benefit.
+   *  This panel is a pure impact comparison, not an account-bucket view, so the haircut has no
+   *  downside here — and it keeps the chart's sign consistent with the summary and the optimizer. */
+  taxAdj?: boolean;
 }
 
-export default function BalanceCompare({ cmp, real = true, height = 220 }: Props) {
+export default function BalanceCompare({ cmp, real = true, height = 220, taxAdj = false }: Props) {
   const labels = cmp.withConv.rows.map((r) => r.ageA);
-  const balWith = real ? cmp.endTotalWith : cmp.endTotalWithNom;
-  const balNo   = real ? cmp.endTotalNo   : cmp.endTotalNoNom;
+  const balWith = taxAdj
+    ? (real ? cmp.endTaxAdjWith : cmp.endTaxAdjWithNom)
+    : (real ? cmp.endTotalWith : cmp.endTotalWithNom);
+  const balNo = taxAdj
+    ? (real ? cmp.endTaxAdjNo : cmp.endTaxAdjNoNom)
+    : (real ? cmp.endTotalNo : cmp.endTotalNoNom);
+  const suffix = taxAdj ? ' (after-tax)' : '';
   const data: ChartData<'line'> = {
     labels,
     datasets: [
       {
-        label: 'With Conversions',
+        label: `With Conversions${suffix}`,
         data: balWith,
         borderColor: palette.gold,
         backgroundColor: palette.gold + '22',
@@ -27,7 +36,7 @@ export default function BalanceCompare({ cmp, real = true, height = 220 }: Props
         fill: true,
       },
       {
-        label: 'No Conversions',
+        label: `No Conversions${suffix}`,
         data: balNo,
         borderColor: palette.textMuted,
         backgroundColor: palette.textMuted + '22',

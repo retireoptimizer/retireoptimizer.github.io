@@ -12,14 +12,16 @@ export function explainPolicy(plan: Plan, result: OptimizeResult): string[] {
   const out: string[] = [];
   const rows = result.projection.rows;
 
-  // Run a no-conversion baseline so the summary can quantify the benefit.
-  const noConvPlan: Plan = {
-    ...plan,
-    customPolicy: undefined,
-    conversion: { ...plan.conversion, mode: 'off' },
-  };
+  // Run a no-conversion baseline so the summary can quantify the benefit. When the optimizer
+  // produced a re-adapted no-conversion ordering, use it (best-vs-best) so this narrative agrees
+  // with the Dashboard badge; otherwise fall back to dropping the policy entirely.
+  const noConvPlan: Plan = result.conversionBaselinePolicy
+    ? { ...plan, customPolicy: result.conversionBaselinePolicy, conversion: { ...plan.conversion, mode: 'off' } }
+    : { ...plan, customPolicy: undefined, conversion: { ...plan.conversion, mode: 'off' } };
   const noConvProj = runProjection(noConvPlan);
-  const convBenefit = result.projection.endTotalReal - noConvProj.endTotalReal;
+  // Measure on after-tax (tax-adjusted) end balance — the optimizer's objective — so the narrative
+  // agrees with the Dashboard badge and doesn't understate conversions on a raw-dollar basis.
+  const convBenefit = result.projection.endTaxAdjustedReal - noConvProj.endTaxAdjustedReal;
 
   // ── 1. Conversion summary ────────────────────────────────────────────────
   const convWindows = result.policy.windows.filter((w) => (w.convAmt ?? 0) > 0);

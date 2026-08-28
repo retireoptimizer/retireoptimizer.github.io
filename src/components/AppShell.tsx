@@ -4,6 +4,7 @@ import BottomTabBar from './BottomTabBar';
 import HowToGuide from './HowToGuide';
 import ReleaseNotes from './ReleaseNotes';
 import { usePlanStore } from '../store/usePlanStore';
+import { useToastStore } from '../store/useToastStore';
 import { downloadPlan, importPlanFromJSON, readFileAsText } from '../storage/exportImport';
 
 export default function AppShell() {
@@ -13,6 +14,7 @@ export default function AppShell() {
   const resetPlan = usePlanStore((s) => s.resetPlan);
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const globalToast = useToastStore((s) => s.toast);
   const [guideOpen, setGuideOpen] = useState(false);
   const [releaseOpen, setReleaseOpen] = useState(false);
   const navigate = useNavigate();
@@ -121,6 +123,18 @@ export default function AppShell() {
           boxShadow: 'var(--shadow-lg)',
         }}>
           {toast.text}
+        </div>
+      )}
+
+      {globalToast && (
+        <div style={{
+          position: 'fixed', top: toast ? 128 : 80, right: 24, zIndex: 1000,
+          maxWidth: 360, padding: '10px 16px', borderRadius: 8,
+          background: globalToast.kind === 'ok' ? 'var(--success)' : globalToast.kind === 'err' ? 'var(--danger)' : 'var(--text-primary)',
+          color: '#fff', fontSize: 13, fontWeight: 600, lineHeight: 1.4,
+          boxShadow: 'var(--shadow-lg)',
+        }}>
+          {globalToast.text}
         </div>
       )}
 

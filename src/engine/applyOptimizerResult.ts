@@ -20,6 +20,9 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
   let next: Plan = {
     ...plan,
     customPolicy: roundedPolicy,
+    // Kept in lock-step with customPolicy: undefined for non-max-end goals or zero-conversion
+    // results, which also clears any stale baseline from a prior run.
+    conversionBaselinePolicy: result.conversionBaselinePolicy,
     optimizedForGoal: result.goal,
     solvedSpendingMultiplier: result.goal !== 'max-sustainable-spending' ? undefined : plan.solvedSpendingMultiplier,
   };

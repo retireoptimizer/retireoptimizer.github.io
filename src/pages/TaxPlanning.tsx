@@ -31,9 +31,13 @@ export default function TaxPlanning() {
   const taxDelta = real
     ? (cmp.cumulativeTaxWith.at(-1) ?? 0) - (cmp.cumulativeTaxNo.at(-1) ?? 0)
     : (cmp.cumulativeTaxWithNom.at(-1) ?? 0) - (cmp.cumulativeTaxNoNom.at(-1) ?? 0);
-  const balDelta = real
-    ? (cmp.endTotalWith.at(-1) ?? 0) - (cmp.endTotalNo.at(-1) ?? 0)
-    : (cmp.endTotalWithNom.at(-1) ?? 0) - (cmp.endTotalNoNom.at(-1) ?? 0);
+  // Headline delta is after-tax (tax-adjusted) end balance — the optimizer's objective — so a
+  // conversion that swaps pre-tax dollars for Roth doesn't read as a loss the way raw balance would.
+  // The BalanceCompare chart below is plotted on the same after-tax basis when taxAdjActive, so its
+  // end-of-plan gap equals this figure (no sign paradox between chart and summary).
+  const balDelta = real ? cmp.endTaxAdjDelta : cmp.endTaxAdjDeltaNom;
+  const taxAdjActive = (plan.assumptions.taxAdjOrdRate ?? 0.22) > 0 || (plan.assumptions.taxAdjLtcgRate ?? 0) > 0;
+  const balLabel = taxAdjActive ? 'After-tax end balance' : 'End balance';
   const dollarLabel = real ? "today's $" : 'nominal $';
 
   return (
@@ -165,15 +169,13 @@ export default function TaxPlanning() {
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>With vs Without conversions</span>
           </div>
           <div className="panel-body">
-            <ChartFrame caption="Higher line = more end-of-plan wealth retained after the conversion strategy plays out.">
-              <BalanceCompare cmp={cmp} real={real} height={260} />
+            <ChartFrame caption={taxAdjActive
+              ? "After-tax portfolio value (pre-tax accounts haircut by the tax still owed on them, Roth counted in full) — the same basis the optimizer maximizes. The end-of-plan gap between the two lines equals the benefit figure below."
+              : "Gross portfolio balance. The end-of-plan gap between the two lines equals the benefit figure below."}>
+              <BalanceCompare cmp={cmp} real={real} height={260} taxAdj={taxAdjActive} />
             </ChartFrame>
             <div style={{ marginTop: 10, fontSize: 12, color: balDelta > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-              {balDelta > 1000
-                ? `End balance with conversions: +${fmtK(balDelta)} (${dollarLabel})`
-                : balDelta < -1000
-                ? `End balance with conversions: ${fmtK(balDelta)} (${dollarLabel})`
-                : 'Negligible end-balance impact — enable a conversion mode on the Strategy page'}
+              {`${balLabel} with conversions: ${balDelta >= 0 ? '+' : ''}${fmtK(balDelta)} (${dollarLabel})`}
             </div>
           </div>
         </div>

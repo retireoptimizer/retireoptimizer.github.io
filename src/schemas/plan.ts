@@ -222,6 +222,11 @@ export const PlanSchema = z.object({
   withdrawalStrategy: z.enum(['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill']),
   withdrawalBracketCeiling: z.number().nonnegative().default(BRACKET_12_TOP_MFJ),
   customPolicy: BlendPolicySchema.optional(),
+  /** Optimizer-authored no-conversion counterfactual: the withdrawal ordering the optimizer
+   *  finds when conversions are disabled, re-adapted to the no-conversion world. Used solely
+   *  as the "without conversions" baseline for the Roth Conversion Benefit metric. Lives and
+   *  dies with an optimizer-authored `customPolicy` (cleared whenever `customPolicy` is). */
+  conversionBaselinePolicy: BlendPolicySchema.optional(),
   optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
   /** The multiplier solved by the last max-sustainable-spending run (e.g. 1.33 = 133%).
    *  Drives the What-If Bar spending slider default so it reflects the optimized level. */

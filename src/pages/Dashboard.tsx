@@ -47,9 +47,13 @@ export default function Dashboard() {
   const rationale = useMemo(() => optimizerResult ? explainPolicy(effectivePlan, optimizerResult) : [], [effectivePlan, optimizerResult]);
   const A = effectivePlan.personA;
 
+  // Headline benefit is measured on after-tax (tax-adjusted) end balance — the same objective the
+  // optimizer maximizes. On raw balance a conversion that trades a pre-tax dollar (worth <$1 after
+  // tax) for a Roth dollar looks like a loss, so raw-vs-raw can show a negative "benefit" for a plan
+  // the optimizer correctly preferred. When both haircut rates are 0, tax-adj equals raw balance.
   const cmpEndBalanceDelta = real
-    ? cmp.endBalanceDelta
-    : cmp.withConv.endTotalNominal - cmp.noConv.endTotalNominal;
+    ? cmp.endTaxAdjDelta
+    : cmp.endTaxAdjDeltaNom;
   const cmpLifetimeTaxDelta = real
     ? cmp.withConv.lifetimeFedTaxReal - cmp.noConv.lifetimeFedTaxReal
     : cmp.lifetimeTaxDelta;
@@ -77,6 +81,13 @@ export default function Dashboard() {
   const retirementYears = A.planThroughAge - A.retirementAge;
   const yearsFunded = planLasts ? retirementYears : (depAge ?? A.planThroughAge) - A.retirementAge;
   const rothActive = proj.lifetimeConversion > 1000;
+  // An optimizer-authored ordering with active conversions but no stored no-conversion baseline
+  // (a plan optimized before the baseline existed, or imported) cannot be measured against a
+  // comparable counterfactual synchronously — the withdrawal ordering was co-optimized against the
+  // conversion schedule, so holding it fixed yields a meaningless (often wildly-signed) delta.
+  const staleConversionBaseline = rothActive &&
+    effectivePlan.customPolicy?.source === 'optimizer' &&
+    effectivePlan.conversionBaselinePolicy == null;
   const asm = effectivePlan.assumptions;
   const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0) > 0;
   const lastRow = proj.rows[proj.rows.length - 1];
@@ -179,17 +190,18 @@ export default function Dashboard() {
 
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 1, flexWrap: 'wrap' }}>
-            <HeroStat label="End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor={planLasts ? '#4ade80' : '#fbbf24'} sub={`${endAgeSub} · ${real ? "today's $" : 'nominal $'}`} title="Ending portfolio value at the end of the plan horizon, before any adjustment for tax still owed on it." />
+            {/* Tax-Adj Balance leads — it is the metric the optimizer maximizes. */}
             {taxAdjActive && <>
-              <Divider />
               <HeroStat
                 label="Tax-Adj Balance"
                 value={fmtM(real ? proj.endTaxAdjustedReal : proj.endTaxAdjustedNominal)}
-                valueColor="#c9a84c"
-                sub={<button onClick={() => setBreakdownOpen(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.72)', cursor: 'pointer', fontSize: 10, padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>end bal after tax · breakdown →</button>}
+                valueColor={planLasts ? '#4ade80' : '#fbbf24'}
+                sub={<button onClick={() => setBreakdownOpen(true)} style={{ display: 'block', textAlign: 'left', background: 'none', border: 'none', color: 'rgba(255,255,255,0.72)', cursor: 'pointer', fontSize: 10, padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>end bal after tax · breakdown →</button>}
                 title="The same ending balance, less estimated tax still owed on pre-tax accounts and unrealized gains. Roth is untaxed. Click breakdown for detail."
               />
+              <Divider />
             </>}
+            <HeroStat label="Gross End Balance" value={fmtM(real ? proj.endTotalReal : proj.endTotalNominal)} valueColor="#c9a84c" sub={`${endAgeSub} · ${real ? "today's $" : 'nominal $'}`} title="Ending portfolio value at the end of the plan horizon, before any adjustment for tax still owed on it." />
             <Divider />
             <HeroStat label="Annual Spending" value={annualSpend > 0 ? fmtM(annualSpend) : '—'} sub={real ? "today's $" : 'nominal $'} />
             <Divider />
@@ -208,14 +220,24 @@ export default function Dashboard() {
 
           {/* Roth conversion benefit — integrated into Plan Summary banner */}
           <div style={{ width: '100%', borderTop: '1px solid rgba(255,255,255,0.12)', marginTop: 14, paddingTop: 12 }}>
-            {rothActive ? (
+            {staleConversionBaseline ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#c9a84c' }}>Roth Conversion Benefit</span>
+                <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>
+                  Re-run the optimizer to measure this — your withdrawal ordering was optimized against a conversion schedule, so the benefit can only be measured against a freshly re-optimized no-conversion plan.
+                </span>
+              </div>
+            ) : rothActive ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#c9a84c' }}>Roth Conversion Benefit</span>
-                <BenefitDark label="End balance" delta={cmpEndBalanceDelta} goodWhen="positive" />
+                <BenefitDark label={taxAdjActive ? 'After-tax balance' : 'End balance'} delta={cmpEndBalanceDelta} goodWhen="positive" />
                 <BenefitDark label="Lifetime tax" delta={cmpLifetimeTaxDelta} goodWhen="negative" />
                 <BenefitDark label="Lifetime RMDs" delta={cmpLifetimeRMDDelta} goodWhen="negative" />
                 <BenefitDark label="Roth legacy" delta={cmpEndRothDelta} goodWhen="positive" />
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>vs. no conversions ({real ? "today's $" : 'nominal $'})</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>
+                  vs. no conversions ({real ? "today's $" : 'nominal $'})
+                  {taxAdjActive && <span title="Benefit is measured on after-tax liquidation value — pre-tax balances are haircut by your tax-adjustment rates — so it matches the objective the optimizer maximizes. Raw gross balance would understate conversions, since converting spends taxable dollars now to move money into a tax-free account.">{' · after-tax value ⓘ'}</span>}
+                </span>
               </div>
             ) : (
               <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.38)' }}>
