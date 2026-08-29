@@ -118,10 +118,10 @@ export default function StrategyChooser() {
   }
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
-  const wdBracketOptions = brackets.slice(0, 4).map(([top, rate]) => ({
+  const wdBracketOptions = brackets.slice(0, 5).map(([top, rate]) => ({
     value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})`,
   }));
-  const convBracketOptions = brackets.slice(0, 4)
+  const convBracketOptions = brackets.slice(0, 5)
     .filter(([top]) => plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
     .map(([top, rate]) => ({ value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})` }));
 

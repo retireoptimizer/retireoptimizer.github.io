@@ -268,7 +268,7 @@ export default function InputsPage() {
   const asm = plan.assumptions;
   const conv = plan.conversion;
   const brackets = B ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
-  const convBracketOptions = brackets.slice(0, 4).map(([top, rate]: readonly [number, number]) => ({
+  const convBracketOptions = brackets.slice(0, 5).map(([top, rate]: readonly [number, number]) => ({
     value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})`,
   }));
   const pf = plan.portfolio;

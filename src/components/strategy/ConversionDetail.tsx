@@ -16,7 +16,7 @@ export default function ConversionDetail() {
   const conv = plan.conversion;
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
-  const convBracketOptions = brackets.slice(0, 4)
+  const convBracketOptions = brackets.slice(0, 5)
     .filter(([top]) => plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
     .map(([top, rate]) => ({
       value: top,
