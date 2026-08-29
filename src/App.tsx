@@ -5,11 +5,13 @@ import Dashboard from './pages/Dashboard';
 import Projections from './pages/Projections';
 import TaxPlanning from './pages/TaxPlanning';
 import MonteCarlo from './pages/MonteCarlo';
+import HelpPage from './pages/HelpPage';
 
 export default function App() {
   return (
     <HashRouter>
       <Routes>
+        <Route path="help" element={<HelpPage />} />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/inputs" replace />} />
           <Route path="inputs" element={<InputsPage />} />

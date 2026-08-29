@@ -1,7 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import BottomTabBar from './BottomTabBar';
-import HowToGuide from './HowToGuide';
 import ReleaseNotes from './ReleaseNotes';
 import { usePlanStore } from '../store/usePlanStore';
 import { useToastStore } from '../store/useToastStore';
@@ -15,7 +14,7 @@ export default function AppShell() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const globalToast = useToastStore((s) => s.toast);
-  const [guideOpen, setGuideOpen] = useState(false);
+
   const [releaseOpen, setReleaseOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,7 +106,7 @@ export default function AppShell() {
           <button className="appbar-action-btn" onClick={onExport}>Export</button>
           <button
             className="appbar-help-btn"
-            onClick={() => setGuideOpen(true)}
+            onClick={() => window.open('/#/help', '_blank', 'noopener')}
             aria-label="How-to Guide"
             title="How-to Guide"
           >?</button>
@@ -168,7 +167,6 @@ export default function AppShell() {
       </div>
 
       <BottomTabBar />
-      <HowToGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
       <ReleaseNotes open={releaseOpen} onClose={() => setReleaseOpen(false)} />
     </>
   );

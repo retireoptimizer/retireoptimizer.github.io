@@ -652,6 +652,9 @@ export default function InputsPage() {
             <button className="add-row-btn" onClick={() => addLumpSumEvent({ id: `lump-${Date.now()}`, description: 'New Event', whose: 'Household', bucket: 'taxable', age: A.retirementAge, amount: 0 })}>+ Add one-time event</button>
 
             <div className="subsection-label" style={{ marginTop: 24 }}>Expenses</div>
+            <div className="helper-text" style={{ marginBottom: 8 }}>
+              Do not include income taxes, IRMAA surcharges, or ACA premiums (if "Model pre-Medicare costs" is enabled above) — the tool calculates these automatically from your projected income each year.
+            </div>
             <div className="stream-rows-scroll">
               <div className="stream-row expense-row" style={{ padding: '6px 0', borderBottom: '2px solid var(--border-light)' }}>
                 <div style={headerStyle}>Description</div>

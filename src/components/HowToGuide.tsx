@@ -181,7 +181,8 @@ function FieldTable({ rows }: { rows: [string, string, string][] }) {
   );
 }
 
-function GuideContent() {
+export { SECTIONS };
+export function GuideContent() {
   return (
     <div>
 
@@ -446,6 +447,11 @@ function GuideContent() {
         row. Broad categories work well — the goal is coverage, not accounting precision. Common
         categories: housing, food, transportation, healthcare, travel, and entertainment.
       </P>
+      <Tip>
+        <strong>Do not include</strong> income taxes, IRMAA surcharges, or ACA premiums (when
+        enabled) in your expense rows — the tool calculates and applies these automatically each
+        year based on your projected income. Adding them manually will double-count them.
+      </Tip>
       <P>
         Each expense has a start age, a stop age, and its own <strong>Infl %</strong> column —
         the same three-mode control as income growth. The default is <em>Tracks CPI</em>, which
