@@ -256,7 +256,7 @@ export function GuideContent() {
       <H3>Your profile</H3>
       <FieldTable rows={[
         ["Name", "A label used in charts and tables. Has no effect on any calculation.", '"Alex"'],
-        ["Date of Birth", "Used to calculate your current age and all future milestone ages.", "1970-04-15"],
+        ["Date of Birth", "Used to calculate your age in each projection year. Only the birth year matters — the simulation uses calendar year minus birth year for all age-gated rules (RMDs, Medicare, Social Security). The birth month and day have no effect on any calculation.", "1970-04-15"],
         ["Retirement Age", "The age you plan to stop working. Contributions stop here; withdrawals begin.", "62"],
         ["Plan Through Age", "When this person is modeled to pass away and when the plan ends for them. SS stops, RMDs stop, and their accounts roll to the survivor. For a couple, the plan runs until the later of the two Plan Through Ages. Pick 90–95 as a conservative floor.", "92"],
       ]} />
@@ -267,6 +267,18 @@ export function GuideContent() {
       </Tip>
 
       <H3>How Ages Work</H3>
+      <P>
+        The simulation works in whole calendar years. Your age in any given year is simply{' '}
+        <code>calendar year − birth year</code> — the exact birthday within the year is ignored.
+        This matches how the IRS and Social Security Administration define age-based thresholds:
+        RMDs start the year you turn 73, Medicare eligibility begins the year you turn 65, and
+        Social Security benefits are computed from the year you claim — none of these rules depend
+        on your birth month.
+      </P>
+      <P>
+        <strong>Example:</strong> born May 3, 1974. In the 2026 projection row you are age 52
+        (2026 − 1974), even though you were technically 51 until May 3. In 2027 you are age 53.
+      </P>
       <P>
         <strong>Plan Through Age</strong> does double duty: it is both the person&apos;s modeled mortality
         age <em>and</em> the last year the simulation runs for them. There is no separate &ldquo;Plan-To&rdquo; horizon —
@@ -614,8 +626,8 @@ export function GuideContent() {
 
       <H3>Current Account Balances</H3>
       <P>
-        Enter your total balance in each of three account types. If you have a spouse, each
-        person gets their own set of balances.
+        Enter your total balance in each of three account types as of <strong>January 1 of the current year</strong>.
+        If you have a spouse, each person gets their own set of balances.
       </P>
       <FieldTable rows={[
         ["Taxable", "Brokerage or investment accounts outside a retirement wrapper. Growth is taxed at long-term capital gains rates, which are lower than ordinary income rates.", "$200,000"],
@@ -627,6 +639,12 @@ export function GuideContent() {
         minimize your lifetime taxes. The more money you have spread across all three types, the
         more flexibility the optimizer has to keep you in lower tax brackets.
       </P>
+      <Tip>
+        <strong>Use your January 1 statement balance, not today&apos;s balance.</strong> The projection engine starts
+        each simulation on January 1 of the current year and applies a full year of returns from that point.
+        Entering a mid-year balance causes the engine to double-count the growth already earned this year.
+        Most brokerage and 401(k) platforms let you view your account history — pull the balance as of January 1.
+      </Tip>
       <Tip>
         Add up all accounts of the same type across all institutions and enter the combined total.
         If you have a 401(k) at your current employer and a rollover IRA from a previous job, add

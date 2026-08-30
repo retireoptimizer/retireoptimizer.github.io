@@ -695,7 +695,7 @@ export default function InputsPage() {
         {/* ── Section 3: Portfolio ─────────────────── */}
         <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-header">
-            <div className="panel-title"><div className="panel-title-dot"></div>Portfolio</div>
+            <div className="panel-title"><div className="panel-title-dot"></div>Portfolio<span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>· balances as of Jan 1, {new Date().getFullYear()}</span></div>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total: {fmtM(total)}</span>
           </div>
           <div className="panel-body">
