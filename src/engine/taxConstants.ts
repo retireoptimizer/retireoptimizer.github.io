@@ -58,6 +58,13 @@ export const LTCG_BRACKETS_SINGLE: ReadonlyArray<readonly [number, number]> = [
 // Retained for reference; no longer used in projection.ts (superseded by per-plan taxableBasis tracking).
 export const TAXABLE_BASIS_PCT = 0.5;
 
+// IRA contribution limits (IRC §219(b), 2026). Both the base limit and — since SECURE 2.0
+// §108 — the age-50 catch-up are inflation-indexed, so the engine grows both by CPI.
+// Used to cap spousal IRA contributions (§219(c)) for a retired spouse whose partner still works.
+export const IRA_CONTRIB_LIMIT = 7_500;
+export const IRA_CATCHUP = 1_100;
+export const IRA_CATCHUP_AGE = 50;
+
 // NIIT (IRC §1411) — 3.8% on lesser of NII or MAGI above threshold.
 // Thresholds are NOT inflation-indexed (frozen since 2013, like SS provisional thresholds).
 export const NIIT_RATE = 0.038;

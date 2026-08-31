@@ -9,14 +9,14 @@ import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio, Growth
 import { computePlanWarnings } from '../engine/planWarnings';
 import { NumberInput } from '../components/inputs/NumberInput';
 import { listStates } from '../engine/stateTax';
-import { fmtM, fmtK, fmtPct } from '../lib/format';
+import { fmtM, fmtK, fmtPct, fmtFull } from '../lib/format';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { INCOME_TEMPLATES, EXPENSE_TEMPLATES } from '../engine/streamTemplates';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { planInputKey } from '../engine/planInputKey';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
-import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../engine/taxConstants';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from '../engine/taxConstants';
 
 const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', whiteSpace: 'nowrap' };
 
@@ -283,6 +283,19 @@ export default function InputsPage() {
   const isRetiredB = B ? (isValidDob(B.dob) && ageFromDob(B.dob) >= B.retirementAge) : false;
   const splitPctA = Math.round((pf.personA.contribSplit.taxable + pf.personA.contribSplit.traditional + pf.personA.contribSplit.roth) * 100);
   const splitPctB = pf.personB ? Math.round((pf.personB.contribSplit.taxable + pf.personB.contribSplit.traditional + pf.personB.contribSplit.roth) * 100) : 100;
+  // Spousal-IRA window: the years one person is retired while the other is still working.
+  // Compared in calendar years, not raw retirement ages — the two can be different ages today,
+  // so "B retires at 60 vs A at 56" says nothing on its own about who stops working first.
+  const yearsToRetA = isValidDob(A.dob) ? A.retirementAge - ageFromDob(A.dob) : null;
+  const yearsToRetB = B && isValidDob(B.dob) ? B.retirementAge - ageFromDob(B.dob) : null;
+  const spousalWindow = (
+    selfRetireAge: number, selfYears: number | null, spouseYears: number | null, spouseName: string,
+  ) => (selfYears == null || spouseYears == null || spouseYears <= selfYears)
+    ? undefined
+    : { spouseName, fromAge: selfRetireAge, toAge: selfRetireAge + (spouseYears - selfYears) };
+  const spousalA = B ? spousalWindow(A.retirementAge, yearsToRetA, yearsToRetB, nameB) : undefined;
+  const spousalB = B ? spousalWindow(B.retirementAge, yearsToRetB, yearsToRetA, nameA) : undefined;
+
   const splitValidA = isRetiredA || pf.personA.annualContribution === 0 || splitPctA === 100;
   const splitValidB = !pf.personB || isRetiredB || pf.personB.annualContribution === 0 || splitPctB === 100;
   const canBuild = A.name.trim().length > 0 && (!B || B.name.trim().length > 0)
@@ -846,11 +859,11 @@ export default function InputsPage() {
             {/* Person A + B bucket panels */}
             <div className="two-col" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 16, gap: 0 }}>
               <div style={{ paddingRight: 24, borderRight: '2px solid rgba(13,27,46,0.18)' }}>
-                <PortfolioPersonSection name={nameA} data={pf.personA} onChange={setPersonAPortfolio} isRetired={isRetiredA} inflation={asm.inflation} />
+                <PortfolioPersonSection name={nameA} data={pf.personA} onChange={setPersonAPortfolio} isRetired={isRetiredA} inflation={asm.inflation} spousal={spousalA} />
               </div>
               {pf.personB ? (
                 <div style={{ paddingLeft: 24 }}>
-                  <PortfolioPersonSection name={nameB} data={pf.personB} onChange={setPersonBPortfolio} isRetired={isRetiredB} inflation={asm.inflation} />
+                  <PortfolioPersonSection name={nameB} data={pf.personB} onChange={setPersonBPortfolio} isRetired={isRetiredB} inflation={asm.inflation} spousal={spousalB} />
                 </div>
               ) : (
                 <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 16 }}>No second person on this plan.</div>
@@ -988,9 +1001,14 @@ export default function InputsPage() {
   );
 }
 
-function PortfolioPersonSection({ name, data, onChange, isRetired = false, inflation }: { name: string; data: PersonPortfolio; onChange: (patch: Partial<PersonPortfolio>) => void; isRetired?: boolean; inflation: number }) {
+type SpousalWindow = { spouseName: string; fromAge: number; toAge: number };
+
+function PortfolioPersonSection({ name, data, onChange, isRetired = false, inflation, spousal }: { name: string; data: PersonPortfolio; onChange: (patch: Partial<PersonPortfolio>) => void; isRetired?: boolean; inflation: number; spousal?: SpousalWindow }) {
   const split = data.contribSplit;
   const splitPct = Math.round((split.taxable + split.traditional + split.roth) * 100);
+  // Cap shown in today's dollars, keyed off age at the start of the window. The engine indexes
+  // both the base limit and the catch-up to CPI year by year.
+  const spousalCap = IRA_CONTRIB_LIMIT + ((spousal?.fromAge ?? 0) >= IRA_CATCHUP_AGE ? IRA_CATCHUP : 0);
 
   type BucketKey = 'taxable' | 'traditional' | 'roth';
   const [pctDraft, setPctDraft] = useState<Record<BucketKey, string>>({
@@ -1075,6 +1093,39 @@ function PortfolioPersonSection({ name, data, onChange, isRetired = false, infla
           }
         </div>
       </div>
+      {spousal && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div className="form-group">
+            <label>Spousal IRA</label>
+            <div className="input-prefix-wrap"><span className="input-prefix">$</span>
+              <NumberInput
+                value={data.spousalContribution ?? 0}
+                min={0}
+                max={spousalCap}
+                style={{ paddingLeft: 22 }}
+                onCommit={(v) => onChange({ spousalContribution: Math.min(v, spousalCap) })}
+              />
+            </div>
+            <div className="helper-text">
+              Ages {spousal.fromAge}–{spousal.toAge - 1}, while {spousal.spouseName} still works. Max {fmtFull(spousalCap)}/yr.
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Goes to</label>
+            <select
+              value={data.spousalTarget ?? 'traditional'}
+              disabled={(data.spousalContribution ?? 0) === 0}
+              onChange={(e) => onChange({ spousalTarget: e.target.value as 'traditional' | 'roth' })}
+            >
+              <option value="traditional">Traditional IRA</option>
+              <option value="roth">Roth IRA</option>
+            </select>
+            <div className="helper-text">
+              Needs {spousal.spouseName}&apos;s earned income to cover it; subject to IRA income limits.
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Contribution mix</div>
         {!isRetired && (

@@ -108,6 +108,19 @@ export const PersonPortfolioSchema = z.object({
     traditional: z.number().min(0).max(1),
     roth: z.number().min(0).max(1),
   }),
+  // Spousal IRA (IRC §219(c)): contribution this person receives in years where they are
+  // retired but their spouse is still working. 0 = none (default). The engine caps it at the
+  // CPI-indexed IRA limit for their age; it bypasses contribSplit because a spousal
+  // contribution is IRA-only — it cannot go to a taxable brokerage or a workplace plan.
+  //
+  // NOT auto-derived, and deliberately so: eligibility turns on the working spouse's earned
+  // income and on the Roth/deductibility MAGI phaseouts, and the engine models no wage income
+  // during accumulation. Only the user knows those numbers.
+  //
+  // Optional (like acaStartAgeA) rather than .default(0): absent is exactly the pre-existing
+  // behavior, so old persisted plans parse unchanged and need no data migration.
+  spousalContribution: z.number().nonnegative().optional(),
+  spousalTarget: z.enum(['traditional', 'roth']).optional(),
 });
 export type PersonPortfolio = z.infer<typeof PersonPortfolioSchema>;
 

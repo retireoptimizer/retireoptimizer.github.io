@@ -27,11 +27,18 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   const gRateRoth = plan.assumptions.rothReturn;
 
   // Derive contributions per bucket from the plan's contribSplit and the row's contribA/contribB.
+  // Spousal IRA contributions (the spousalA/spousalB portion of contribA/contribB) bypass
+  // contribSplit and land wholly in the elected IRA type, so they are netted out first and
+  // routed separately — mirroring bucketize() in projection.ts.
   const pfA = plan.portfolio.personA;
   const pfB = plan.portfolio.personB;
-  const contribToTax = r.contribA * pfA.contribSplit.taxable + r.contribB * (pfB?.contribSplit.taxable ?? 0);
-  const contribToTrad = r.contribA * pfA.contribSplit.traditional + r.contribB * (pfB?.contribSplit.traditional ?? 0);
-  const contribToRoth = r.contribA * pfA.contribSplit.roth + r.contribB * (pfB?.contribSplit.roth ?? 0);
+  const spA = r.spousalA ?? 0, spB = r.spousalB ?? 0;
+  const ownA = r.contribA - spA, ownB = r.contribB - spB;
+  const spTradA = pfA.spousalTarget === 'roth' ? 0 : spA;
+  const spTradB = pfB?.spousalTarget === 'roth' ? 0 : spB;
+  const contribToTax = ownA * pfA.contribSplit.taxable + ownB * (pfB?.contribSplit.taxable ?? 0);
+  const contribToTrad = ownA * pfA.contribSplit.traditional + ownB * (pfB?.contribSplit.traditional ?? 0) + spTradA + spTradB;
+  const contribToRoth = ownA * pfA.contribSplit.roth + ownB * (pfB?.contribSplit.roth ?? 0) + (spA - spTradA) + (spB - spTradB);
 
   // 1. NO-OVERDRAW: total outflow per bucket must not exceed what's available (growth + contrib).
   //    Catches phantom withdrawals — bucket-A drained while withdrawal still claimed cash.

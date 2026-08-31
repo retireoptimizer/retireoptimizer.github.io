@@ -5,6 +5,7 @@ import type { Plan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 import { optimizeStrategy } from './optimizer';
 import { assertProjectionInvariants, assertDeterministic } from './__invariants__/assertions';
+import { IRA_CONTRIB_LIMIT, IRA_CATCHUP } from './taxConstants';
 
 describe('runProjection (smoke)', () => {
   const result = runProjection(defaultPlan());
@@ -581,5 +582,68 @@ describe('taxableExemptYield', () => {
       // Exempt interest not in ordIncome (not in AGI)
       expect(row.magi).toBeCloseTo(row.ordIncome + row.ltcg, -1);
     }
+  });
+});
+
+describe('spousal IRA contribution (IRC §219(c))', () => {
+  // Both 52 today. A works to 60, B retires at 56. B contributes $50k through 55,
+  // then a spousal IRA of $6,000/yr for ages 56–59, then nothing once A retires too.
+  const spousalPlan = (spousalContribution: number, spousalTarget: 'traditional' | 'roth' = 'traditional'): Plan => {
+    const p = defaultPlan();
+    p.personA = { ...p.personA, dob: '1974-01-01', retirementAge: 60, planThroughAge: 90 };
+    p.personB = { ...p.personA, name: 'B', dob: '1974-01-01', retirementAge: 56, planThroughAge: 90 };
+    p.portfolio = {
+      personA: { taxable: 0, taxableBasis: 0, traditional: 500_000, roth: 0, annualContribution: 50_000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0, traditional: 1, roth: 0 } },
+      personB: { taxable: 0, taxableBasis: 0, traditional: 500_000, roth: 0, annualContribution: 50_000, contribGrowth: { mode: 'fixed', rate: 0 }, contribSplit: { taxable: 0, traditional: 1, roth: 0 }, spousalContribution, spousalTarget },
+    };
+    p.assumptions = { ...p.assumptions, inflation: 0 }; // no CPI indexing — exact dollar assertions
+    return p;
+  };
+  const atAge = (plan: Plan, age: number) => runProjection(plan).rows.find((r) => r.ageB === age)!;
+
+  it('continues B contributions past B retirement while A still works', () => {
+    const plan = spousalPlan(6_000);
+    expect(atAge(plan, 55).contribB).toBeCloseTo(50_000, 2); // B still working
+    expect(atAge(plan, 56).contribB).toBeCloseTo(6_000, 2);  // B retired, A working
+    expect(atAge(plan, 59).contribB).toBeCloseTo(6_000, 2);
+    expect(atAge(plan, 60).contribB).toBeCloseTo(0, 2);      // A retired too — window closes
+  });
+
+  it('defaults to zero — an unset spousalContribution changes nothing', () => {
+    const plan = spousalPlan(0);
+    expect(atAge(plan, 56).contribB).toBeCloseTo(0, 2);
+    const bare = spousalPlan(0);
+    delete bare.portfolio.personB!.spousalContribution;
+    expect(atAge(bare, 56).contribB).toBeCloseTo(0, 2);
+  });
+
+  it('caps the contribution at the age-indexed IRA limit', () => {
+    const plan = spousalPlan(50_000); // user asks for far more than §219(b) allows
+    expect(atAge(plan, 56).contribB).toBeCloseTo(IRA_CONTRIB_LIMIT + IRA_CATCHUP, 2);
+  });
+
+  it('bypasses contribSplit and lands wholly in the elected IRA type', () => {
+    // contribSplit is 100% traditional for B, so a Roth-targeted spousal contribution
+    // proves the routing is not going through the split.
+    const trad = runProjection(spousalPlan(6_000, 'traditional'));
+    const roth = runProjection(spousalPlan(6_000, 'roth'));
+    const y = (r: typeof trad) => r.rows.find((x) => x.ageB === 59)!;
+    expect(y(roth).endRoth).toBeGreaterThan(y(trad).endRoth);
+    expect(y(roth).endTraditional).toBeLessThan(y(trad).endTraditional);
+  });
+
+  it('holds all dollar-flow invariants through the spousal window', () => {
+    const plan = spousalPlan(6_000, 'roth');
+    assertProjectionInvariants(runProjection(plan), plan);
+  });
+
+  it('is symmetric — A can receive a spousal IRA when B is the one still working', () => {
+    const plan = spousalPlan(0);
+    plan.personA = { ...plan.personA, retirementAge: 56 };
+    plan.personB = { ...plan.personB!, retirementAge: 60 };
+    plan.portfolio.personA = { ...plan.portfolio.personA, spousalContribution: 6_000, spousalTarget: 'traditional' };
+    const rows = runProjection(plan).rows;
+    expect(rows.find((r) => r.ageA === 56)!.contribA).toBeCloseTo(6_000, 2);
+    expect(rows.find((r) => r.ageA === 60)!.contribA).toBeCloseTo(0, 2);
   });
 });

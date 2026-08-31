@@ -1,4 +1,4 @@
-import type { Plan, LumpSumEvent } from '../schemas/plan';
+import type { Plan, LumpSumEvent, PersonPortfolio } from '../schemas/plan';
 import { householdTotals, resolveGrowthRate } from '../schemas/plan';
 import { taxAdjustedRates, taxAdjustedValue } from './taxAdjusted';
 import {
@@ -13,7 +13,7 @@ import { filingStatusForYear, type FilingStatus } from './filingStatus';
 import { rmdDivisor, rmdStartAgeForDob } from './rmd';
 import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity, seniorBonusDeduction } from './tax';
-import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from './taxConstants';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from './taxConstants';
 import { rothConversion } from './conversion';
 import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
@@ -33,6 +33,11 @@ export interface ProjectionRow {
   // Contributions
   contribA: number;
   contribB: number;
+  // Subset of contribA/contribB that is a spousal IRA contribution (retired person, working
+  // spouse). Broken out so the contributions column can explain the drop at the retirement
+  // boundary — a $50k salary deferral and an $8.6k spousal IRA are not the same thing.
+  spousalA: number;
+  spousalB: number;
   // Income
   ssA: number;
   ssB: number;
@@ -299,8 +304,36 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // own rate (contribGrowth lives on the per-person portfolio).
     const cgFactorA = Math.pow(1 + resolveGrowthRate(pfA.contribGrowth, planInflation), i);
     const cgFactorB = pfB ? Math.pow(1 + resolveGrowthRate(pfB.contribGrowth, planInflation), i) : 1;
-    const contribA = (!retiredA && aliveA) ? pfA.annualContribution * cgFactorA : 0;
-    const contribB = (!retiredB && aliveB && plan.personB && pfB) ? pfB.annualContribution * cgFactorB : 0;
+    // A person contributes their own annualContribution while working. Once they retire, they
+    // can still receive a spousal IRA contribution for as long as the OTHER spouse is working
+    // (IRC §219(c)) — but only the amount the user explicitly entered, capped at the IRA limit.
+    // Default 0 means opting out (or being barred by the MAGI phaseouts) is the no-op case.
+    const workingA = !retiredA && aliveA;
+    const workingB = !!plan.personB && !!pfB && !retiredB && aliveB;
+    const iraCap = (age: number) =>
+      (IRA_CONTRIB_LIMIT + (age >= IRA_CATCHUP_AGE ? IRA_CATCHUP : 0)) * inflationFactor;
+    const spousalA = (aliveA && !workingA && workingB)
+      ? Math.min((pfA.spousalContribution ?? 0) * inflationFactor, iraCap(ageA)) : 0;
+    const spousalB = (!!plan.personB && !!pfB && aliveB && !workingB && workingA && ageB !== undefined)
+      ? Math.min((pfB.spousalContribution ?? 0) * inflationFactor, iraCap(ageB)) : 0;
+    const contribA = workingA ? pfA.annualContribution * cgFactorA : spousalA;
+    const contribB = workingB ? pfB!.annualContribution * cgFactorB : spousalB;
+
+    // Per-person, per-bucket contribution amounts. Working-year contributions follow that
+    // person's contribSplit; spousal IRA contributions bypass it entirely and land wholly in
+    // the elected IRA type. Everything downstream reads these instead of re-deriving from
+    // contribX * split, so the two routings can never drift apart.
+    const bucketize = (pf: PersonPortfolio | undefined, working: boolean, own: number, spousal: number) => {
+      if (!pf) return { tax: 0, trad: 0, roth: 0 };
+      if (working) return { tax: own * pf.contribSplit.taxable, trad: own * pf.contribSplit.traditional, roth: own * pf.contribSplit.roth };
+      // Default target is traditional (the deductible-IRA case) when unset.
+      return { tax: 0, trad: pf.spousalTarget === 'roth' ? 0 : spousal, roth: pf.spousalTarget === 'roth' ? spousal : 0 };
+    };
+    const cA = bucketize(pfA, workingA, contribA, spousalA);
+    const cB = bucketize(pfB, workingB, contribB, spousalB);
+    const contribToTax  = cA.tax  + cB.tax;
+    const contribToTrad = cA.trad + cB.trad;
+    const contribToRoth = cA.roth + cB.roth;
 
     // Social Security. If the user has SS-typed income streams, they override
     // the PIA-based actuarial calc per person/year (so editing the stream's
@@ -363,12 +396,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Taxfirst/tradfirst pull from traditional when taxable is exhausted; when payTaxFromBrokerage
     // is true, conversion taxes also draw from taxable — reducing spending capacity and forcing
     // more traditional draws. Both effects tighten the headroom available for the conversion.
-    const contribToTaxEst  = contribA * pfA.contribSplit.taxable     + contribB * (pfB?.contribSplit.taxable     ?? 0);
-    const contribToTradEst = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
-    const contribToRothEst = contribA * pfA.contribSplit.roth        + contribB * (pfB?.contribSplit.roth        ?? 0);
-    const taxAvailEst   = Math.max(0, taxable * (1 + plan.assumptions.taxableReturn) + contribToTaxEst);
-    const tradAvailForEst = Math.max(0, trad * (1 + plan.assumptions.tradReturn) + contribToTradEst - rmdAmt);
-    const rothAvailForEst = Math.max(0, roth * (1 + plan.assumptions.rothReturn) + contribToRothEst);
+    const taxAvailEst   = Math.max(0, taxable * (1 + plan.assumptions.taxableReturn) + contribToTax);
+    const tradAvailForEst = Math.max(0, trad * (1 + plan.assumptions.tradReturn) + contribToTrad - rmdAmt);
+    const rothAvailForEst = Math.max(0, roth * (1 + plan.assumptions.rothReturn) + contribToRoth);
     // Exempt interest estimate (gated on retirement like the actual value).
     // other.exemptInterest is gated by the stream's own age window (not retirement) by design —
     // a muni stream correctly hits ACA MAGI for a pre-retirement marketplace enrollee.
@@ -410,7 +440,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         const alive = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
         return alive ? sum + s.remainingBal : sum;
       }, 0);
-    const maxConvEst  = Math.max(0, (trad - inheritedTradBal) * (1 + plan.assumptions.tradReturn) + contribToTradEst - rmdAmt);
+    const maxConvEst  = Math.max(0, (trad - inheritedTradBal) * (1 + plan.assumptions.tradReturn) + contribToTrad - rmdAmt);
     // Senior bonus adds to the effective deduction for 65+ filers; MAGI proxy = baseOrdEst1 (pre-conversion).
     const seniorBonusEst = seniorBonusDeduction(filingStatus, filerAge, ageB, baseOrdEst1, calYear);
     const convEst    = Math.min(maxConvEst, Math.max(0, ceilForConv - (baseOrdEst1 - stdD - seniorBonusEst)));
@@ -440,8 +470,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const gRateTaxYear  = override ?? plan.assumptions.taxableReturn;
     const gRateTradYear = override ?? plan.assumptions.tradReturn;
     const gRateRothYear = override ?? plan.assumptions.rothReturn;
-    const contribToTradEarly = contribA * pfA.contribSplit.traditional + contribB * (pfB?.contribSplit.traditional ?? 0);
-    const maxConv = Math.max(0, (trad - inheritedTradBal) * (1 + gRateTradYear) + contribToTradEarly - rmdAmt);
+    const maxConv = Math.max(0, (trad - inheritedTradBal) * (1 + gRateTradYear) + contribToTrad - rmdAmt);
     let conv: number;
     const eitherRetired = retiredA || retiredB;
     // Portfolio tax-exempt yield (munis held in brokerage). Gated on retirement like dividends.
@@ -514,9 +543,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // otherwise wdX exceeds the cap, the bucket clamps to zero, and the projection silently
     // funds the spending gap with phantom cash (the historic bug class). Same cap formula
     // applied to both withdrawal code paths (legacy preset + custom blend policy).
-    // gRateThisYear + contribToTradEarly are declared earlier (for the conv cap).
-    const contribToTaxEarly = contribA * pfA.contribSplit.taxable + contribB * (pfB?.contribSplit.taxable ?? 0);
-    const contribToRothEarly = contribA * pfA.contribSplit.roth + contribB * (pfB?.contribSplit.roth ?? 0);
+    // gRateThisYear is declared earlier (for the conv cap); contribToTax/Trad/Roth at the top of the year.
     // Annual dividends/interest from taxable account.
     // Basis grows unconditionally (dividends are reinvested during accumulation too).
     // Tax impact is gated on retirement — the engine does not model working-year income taxes.
@@ -530,12 +557,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const exemptDistributed = exemptInt * distributePct;
     const distributedCash   = divDistributed + exemptDistributed;
     // taxAvail reduced by distributed cash — it's already out of the account.
-    const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTaxEarly - distributedCash);
+    const taxAvail = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - distributedCash);
     // Only the reinvested portion adds to basis; distributed cash does not compound.
-    const preBasisThisYear = taxableBasis + contribToTaxEarly + (annualDiv - divDistributed) + (exemptInt - exemptDistributed);
+    const preBasisThisYear = taxableBasis + contribToTax + (annualDiv - divDistributed) + (exemptInt - exemptDistributed);
     const gainFraction = taxAvail > 0 ? Math.max(0, Math.min(1, 1 - preBasisThisYear / taxAvail)) : 0;
-    const tradAvail = Math.max(0, trad * (1 + gRateTradYear) + contribToTradEarly - rmdAmt - conv);
-    const rothAvail = Math.max(0, roth * (1 + gRateRothYear) + contribToRothEarly + conv);
+    const tradAvail = Math.max(0, trad * (1 + gRateTradYear) + contribToTrad - rmdAmt - conv);
+    const rothAvail = Math.max(0, roth * (1 + gRateRothYear) + contribToRoth + conv);
 
     // Gross-up loop: solve withdrawals to fund netSpend + fedTax + state + irmaa.
     // SS, other income, RMD, and conversions (which come from Trad → Roth, no cash to user)
@@ -665,12 +692,9 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     }
 
     // Update balances. Withdrawals were sized to cover all cash needs.
-    // Contributions are split per-person using each person's own contribSplit.
+    // Per-bucket contribution amounts (cA/cB, contribToTax/Trad/Roth) were computed at the top
+    // of the year — they already account for the spousal-IRA routing.
     const begTaxable = taxable, begTrad = trad, begRoth = roth;
-    const splitAtoTax = pfA.contribSplit.taxable, splitAtoTrad = pfA.contribSplit.traditional, splitAtoRoth = pfA.contribSplit.roth;
-    const splitBtoTax = pfB?.contribSplit.taxable ?? 0, splitBtoTrad = pfB?.contribSplit.traditional ?? 0, splitBtoRoth = pfB?.contribSplit.roth ?? 0;
-    const contribToTax = contribA * splitAtoTax + contribB * splitBtoTax;
-    const contribToRoth = contribA * splitAtoRoth + contribB * splitBtoRoth;
 
     taxable = Math.max(0, taxable * (1 + gRateTaxYear) + contribToTax - wdTax - distributedCash);
     // Split withdrawals and conversions pro-rata by each person's trad balance.
@@ -679,8 +703,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // one person's RMD rate differs from the other's (different ages → per-person overdraft).
     const totalTradBeg = tradA + tradB;
     const ratioA = totalTradBeg > 0 ? tradA / totalTradBeg : 0;
-    const tradANext = tradA * (1 + gRateTradYear) + contribA * splitAtoTrad - rmdA - (wdTrd + conv) * ratioA;
-    const tradCombined = Math.max(0, totalTradBeg * (1 + gRateTradYear) + contribA * splitAtoTrad + contribB * splitBtoTrad - rmdAmt - wdTrd - conv);
+    const tradANext = tradA * (1 + gRateTradYear) + cA.trad - rmdA - (wdTrd + conv) * ratioA;
+    const tradCombined = Math.max(0, totalTradBeg * (1 + gRateTradYear) + contribToTrad - rmdAmt - wdTrd - conv);
     tradA = tradCombined > 0 ? Math.max(0, Math.min(tradCombined, tradANext)) : 0;
     tradB = tradCombined - tradA;
     roth  = Math.max(0, roth  * (1 + gRateRothYear) + contribToRoth - wdRth + conv);
@@ -826,6 +850,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       filingStatus,
       inflationFactor,
       contribA, contribB,
+      spousalA, spousalB,
       ssA: ss.ssA, ssB: ss.ssB, totalSS: ss.total,
       otherIncome: other.gross,
       otherIncomeTaxable: other.taxableAmt,

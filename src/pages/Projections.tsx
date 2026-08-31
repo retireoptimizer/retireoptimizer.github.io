@@ -70,6 +70,9 @@ const COLUMNS: Column[] = [
   { key: 'lumpSumOrdinaryIncome', label: 'Inherited Inc', group: 'income', essential: false, fmt: 'money', get: (r) => r.lumpSumOrdinaryIncome ?? 0,                                                            bg: BG.income },
   { key: 'contribA',            label: 'Contrib A',       group: 'income', essential: false, fmt: 'money', get: (r) => r.contribA,                                                                              bg: BG.income },
   { key: 'contribB',            label: 'Contrib B',       group: 'income', essential: false, fmt: 'money', get: (r) => r.contribB,                                                                              bg: BG.income },
+  // Spousal IRA portion of Contrib A/B — without this, the contribution column drops from a
+  // full salary deferral to a few thousand at the retirement boundary with no visible reason.
+  { key: 'spousalIRA',          label: 'Spousal IRA',     group: 'income', essential: false, fmt: 'money', get: (r) => (r.spousalA ?? 0) + (r.spousalB ?? 0),                                                 bg: BG.income },
   { key: 'cashSurplus',         label: 'Cash Surplus',    group: 'income', essential: false, fmt: 'money', get: (r) => r.cashSurplus ?? 0,                                                                      bg: BG.income },
 
   // Withdrawals — portfolio draws and conversion activity
