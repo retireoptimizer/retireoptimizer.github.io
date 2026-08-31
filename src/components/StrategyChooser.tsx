@@ -121,7 +121,12 @@ export default function StrategyChooser() {
   const wdBracketOptions = brackets.slice(0, 5).map(([top, rate]) => ({
     value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})`,
   }));
-  const convBracketOptions = brackets.slice(0, 5)
+  const convBracketOptionsAll = brackets.slice(0, 5)
+    .map(([top, rate]) => ({ value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})` }));
+  // "Set it myself" bracket-fill ceiling is capped at the withdrawal bracket-fill ceiling when
+  // that withdrawal preset is active — you can't convert above the bracket you're already filling.
+  // "Optimize for me" is never restricted: the optimizer searches all brackets freely.
+  const convBracketOptionsManual = brackets.slice(0, 5)
     .filter(([top]) => plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
     .map(([top, rate]) => ({ value: top, label: `${Math.round(rate * 100)}% ($${top.toLocaleString()})` }));
 
@@ -301,7 +306,7 @@ export default function StrategyChooser() {
             aria-label="Bracket-Fill conversion ceiling"
           >
             <option value="">Bracket-Fill</option>
-            {convBracketOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            {(tab === 'optimize' ? convBracketOptionsAll : convBracketOptionsManual).map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>,
           isSel('bracket-fill') ? editLink('Edit age window') : undefined
         )}
