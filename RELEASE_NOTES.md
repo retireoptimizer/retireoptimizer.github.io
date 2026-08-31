@@ -1,5 +1,17 @@
 # Release Notes
 
+## 1.9.1 — August 31, 2026
+
+### Fixes
+
+**Manual conversion schedule extends through the survivor's end age**
+For couples where Person B outlives Person A's plan-through age, the per-year manual Roth conversion entry table was stopping at Person A's age — rows for the survivor phase were missing. The table now runs through the full household horizon.
+
+**Optimizer bracket-fill ceiling no longer restricted by withdrawal setting**
+When withdrawal ordering was set to bracket-fill, the conversion bracket-fill dropdown in the "Optimize for me" tab was incorrectly filtered down to the same ceiling. The optimizer should always be free to search all brackets. Only the "Set it myself" conversion bracket respects the withdrawal ceiling limit.
+
+---
+
 ## 1.9.0 — August 31, 2026
 
 ### New

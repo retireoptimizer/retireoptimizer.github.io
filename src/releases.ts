@@ -14,6 +14,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.9.1',
+    date: '2026-08-31',
+    summary: 'Two defect fixes: manual Roth conversion table now extends through the survivor\'s end age, and the optimizer\'s bracket-fill conversion ceiling is no longer capped by the withdrawal bracket-fill setting.',
+    changes: [
+      { kind: 'fix', text: 'Manual Roth conversion schedule now shows rows through the survivor\'s end age. For couples where Person B outlives Person A\'s plan-through age, the per-year entry table was cutting off early — rows for the survivor phase were missing.' },
+      { kind: 'fix', text: 'The "Optimizer decides" bracket-fill conversion ceiling is no longer restricted by the withdrawal bracket-fill ceiling. When the withdrawal ordering was set to bracket-fill, the conversion bracket dropdown in the optimizer tab was incorrectly filtered to the same ceiling. Only the "Set it myself" conversion bracket should respect that limit; the optimizer should always be free to search all brackets.' },
+    ],
+  },
+  {
     version: '1.9.0',
     date: '2026-08-31',
     summary: 'Spousal IRA support for retired spouses, 32% bracket in bracket-fill controls, and a more accurate Roth conversion benefit comparison.',
