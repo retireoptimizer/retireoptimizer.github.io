@@ -2,7 +2,7 @@ import { usePlanStore } from '../../store/usePlanStore';
 import { NumberInput } from '../inputs/NumberInput';
 import { fmtUSD } from '../../lib/format';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants';
-import { firstRetirementAgeA } from '../../engine/streamWindow';
+import { firstRetirementAgeA, householdPlanThroughAgeA } from '../../engine/streamWindow';
 import { preRetirementConversionAges } from '../../engine/planWarnings';
 
 /** Data-entry detail for the active Roth conversion mode, shown inside the Dashboard side sheet.
@@ -31,7 +31,8 @@ export default function ConversionDetail() {
   const fromDisplay = (display: number, age: number) => isNominal ? display / inflFactor(age) : display;
   const dollarLabel = isNominal ? 'nominal $' : "today's $";
   const manualAges: number[] = [];
-  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= plan.personA.planThroughAge; age++) manualAges.push(age);
+  const horizonA = householdPlanThroughAgeA(plan);
+  for (let age = Math.max(startAgeA, plan.personA.retirementAge - 5); age <= horizonA; age++) manualAges.push(age);
   // Accumulation years are offered (pre-retirement conversions are a real strategy) but their tax
   // is understated — no wages are modeled, so the conversion is taxed as the only income.
   // Same "will this actually run" test the plan warning uses: nothing runs pre-retirement when
