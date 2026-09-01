@@ -4,6 +4,7 @@ import { fmtUSD } from '../../lib/format';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants';
 import { firstRetirementAgeA, householdPlanThroughAgeA } from '../../engine/streamWindow';
 import { preRetirementConversionAges } from '../../engine/planWarnings';
+import { calendarYearAge } from '../../lib/ageUtils';
 
 /** Data-entry detail for the active Roth conversion mode, shown inside the Dashboard side sheet.
  *  Mode SELECTION lives inline as pills in StrategyChooser; this renders only the fields the chosen
@@ -23,7 +24,7 @@ export default function ConversionDetail() {
       label: `Top of ${Math.round(rate * 100)}% bracket ($${top.toLocaleString()})`,
     }));
 
-  const startAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
+  const startAgeA = calendarYearAge(plan.personA.dob);
   const isNominal = displayMode === 'nominal';
   const inflation = plan.assumptions.inflation;
   const inflFactor = (age: number) => Math.pow(1 + inflation, Math.max(0, age - startAgeA));

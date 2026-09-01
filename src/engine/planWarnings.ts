@@ -1,5 +1,6 @@
 import type { Plan } from '../schemas/plan';
 import { firstRetirementAgeA } from './streamWindow';
+import { calendarYearAge } from '../lib/ageUtils';
 
 /**
  * Ages (Person A's frame) with a non-zero manual Roth conversion that will actually run before the
@@ -27,9 +28,8 @@ export function computePlanWarnings(plan: Plan): PlanWarning[] {
   const warnings: PlanWarning[] = [];
   const hasB = !!plan.personB;
 
-  const currentYear = new Date().getFullYear();
-  const currentAgeA = currentYear - parseInt(plan.personA.dob.slice(0, 4), 10);
-  const currentAgeB = plan.personB ? currentYear - parseInt(plan.personB.dob.slice(0, 4), 10) : undefined;
+  const currentAgeA = calendarYearAge(plan.personA.dob);
+  const currentAgeB = plan.personB ? calendarYearAge(plan.personB.dob) : undefined;
 
   if (plan.expenseStreams.length === 0) {
     warnings.push({ id: 'no-expenses', severity: 'warn', message: 'No expense streams — the plan will always appear fully funded.' });
@@ -63,7 +63,7 @@ export function computePlanWarnings(plan: Plan): PlanWarning[] {
     }
     const ownerCurrentAge = s.whose === 'B' ? currentAgeB : currentAgeA;
     if (ownerCurrentAge !== undefined && s.startAge < ownerCurrentAge) {
-      warnings.push({ id: `inc-past-${s.id}`, severity: 'warn', message: `"${s.description}": start age (${s.startAge}) is before current age (${ownerCurrentAge}) — only future years are simulated.` });
+      warnings.push({ id: `inc-past-${s.id}`, severity: 'warn', message: `"${s.description}": start age (${s.startAge}) is before the first simulation year (age ${ownerCurrentAge}) — earlier years are not modeled.` });
     }
     if (s.type === 'SS' && s.survivorPct > 0) {
       warnings.push({ id: `ss-surv-${s.id}`, severity: 'warn', message: `"${s.description}": SS survivor benefits are modeled separately — Survivor % should be 0.` });
@@ -96,7 +96,7 @@ export function computePlanWarnings(plan: Plan): PlanWarning[] {
     }
     const ownerCurrentAge = s.whose === 'B' ? currentAgeB : currentAgeA;
     if (ownerCurrentAge !== undefined && s.startAge < ownerCurrentAge) {
-      warnings.push({ id: `exp-past-${s.id}`, severity: 'warn', message: `Expense "${s.description}": start age (${s.startAge}) is before current age (${ownerCurrentAge}) — only future years are simulated.` });
+      warnings.push({ id: `exp-past-${s.id}`, severity: 'warn', message: `Expense "${s.description}": start age (${s.startAge}) is before the first simulation year (age ${ownerCurrentAge}) — earlier years are not modeled.` });
     }
   }
 

@@ -3,12 +3,10 @@ import { useWhatIfStore } from '../store/useWhatIfStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import type { DeepPartial } from '../engine/scenario';
 import type { Plan } from '../schemas/plan';
+import { calendarYearAge } from '../lib/ageUtils';
 
 function yearsToRetirement(dob: string, retirementAge: number): number {
-  const currentYear = new Date().getFullYear();
-  const birthYear = parseInt(dob.slice(0, 4), 10);
-  const currentAge = currentYear - birthYear;
-  return Math.max(0, retirementAge - currentAge);
+  return Math.max(0, retirementAge - calendarYearAge(dob));
 }
 
 /** Ephemeral what-if controls — a single inline bar: 4 sliders + Reset +

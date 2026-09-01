@@ -1,8 +1,9 @@
-import type { Plan } from '../schemas/plan';
+import type { Plan, ConversionParams } from '../schemas/plan';
 import type { BlendPolicy, BlendWindow } from './blendPolicy';
 import { runProjection, type ProjectionResult } from './projection';
 import { householdPlanThroughAgeA } from './planInputKey';
 import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommender';
+import { calendarYearAge } from '../lib/ageUtils';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
 import { mulberry32, historicalBootstrap } from './returnModels';
 import { FED_BRACKETS_MFJ, FPL_BASE, FPL_INCREMENT } from './taxConstants';
@@ -158,6 +159,23 @@ const buildConstantSeed = (
   }
   return windows;
 };
+
+/** Convert a projection's rows to a per-year BlendWindow seed for innerOptimize.
+ *  Extracts withdrawal split fractions; sets convAmt: 0 so coordinate descent
+ *  re-searches conversion amounts from the ordering basin found by the source plan. */
+function rowsToSeed(proj: ProjectionResult, retireAge: number, planToAge: number): BlendWindow[] {
+  const seed: BlendWindow[] = [];
+  for (let age = retireAge; age <= planToAge; age++) {
+    const row = proj.rows.find((r) => r.ageA === age);
+    const total = row ? row.wdTrd + row.wdRth + row.wdTax : 0;
+    seed.push(
+      !row || total < 1
+        ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: 0 }
+        : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt: 0 }
+    );
+  }
+  return seed;
+}
 
 /**
  * Inner optimizer. Scoring: max endTaxAdjustedReal (inflation-adjusted, after estimated
@@ -776,6 +794,10 @@ function packageResult(
 //      of wealth vs the bracketfill+no-conversion optimum.
 //   3. Zero-pre-Medicare conversions — catches plans where coordinate descent locks into a
 //      pre-65 conversion island that is worse than deferring all conversions post-Medicare.
+//   4–8. All 5 withdrawal-ordering presets with the winning conversion schedule pinned as
+//      manual mode. Pinning matches the decisionTrace ledger rows exactly, so a ledger row
+//      with a positive delta guarantees escalation here — making Class A positive deltas a
+//      standing optimizer-quality bug signal. Costs at most 5 cheap projections.
 function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: number }, outerProgress?: () => void): InnerEval {
   const retireAge = plan.personA.retirementAge;
   const planToAge = householdPlanThroughAgeA(plan);
@@ -806,6 +828,10 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
   // Competitor 2: bracketfill preset with no conversions.
   // One cheap projection establishes whether the bracketfill basin is globally better than the
   // multi-start result. Full refinement only fires when it is — no overhead for typical plans.
+  // Kept separate from the pinned-conversion loop (Competitors 4–8) because pinning the winning
+  // conversion schedule can mask plans where the global optimum is bracketfill + no conversions
+  // (e.g. large traditional $1.2M+, RMD age 75): pinned-conv screening scores lower than best
+  // even though bracketfill+no-conv is the true global winner.
   if (optimizeConversions) {
     const bfCheckPlan: Plan = {
       ...plan,
@@ -815,17 +841,7 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
     };
     const bfCheckProj = runProjection(bfCheckPlan);
     if (!bfCheckProj.ranOut && REC_GOALS['max-end'].score(bfCheckProj) > best.score) {
-      const bfSeed: BlendWindow[] = [];
-      for (let age = retireAge; age <= planToAge; age++) {
-        const row = bfCheckProj.rows.find((r) => r.ageA === age);
-        const total = row ? row.wdTrd + row.wdRth + row.wdTax : 0;
-        bfSeed.push(
-          !row || total < 1
-            ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: 0 }
-            : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt: 0 }
-        );
-      }
-      const bfRefined = innerOptimize(plan, opts, evalCounter, outerProgress, bfSeed);
+      const bfRefined = innerOptimize(plan, opts, evalCounter, outerProgress, rowsToSeed(bfCheckProj, retireAge, planToAge));
       if (isBetter(bfRefined, best)) best = bfRefined;
     }
   }
@@ -837,6 +853,36 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
     );
     const noPreMedRefined = innerOptimize(plan, opts, evalCounter, outerProgress, noPreMedicareConvSeed);
     if (isBetter(noPreMedRefined, best)) best = noPreMedRefined;
+  }
+
+  // Competitors 4–8: all 5 withdrawal-ordering presets with the winning conversion schedule
+  // pinned as manual mode. The screening plan is identical to the decisionTrace ledger row for
+  // each preset, so a positive ledger delta (preset beats chosen) implies the screening also
+  // beats best.score — guaranteeing escalation and making Class A deltas a bug signal.
+  // Guard: retirementAge exclusion prevents manual conversions firing in accumulation years
+  // (conversion.ts:24 manual branch fires before the !retired check).
+  if (optimizeConversions) {
+    const pinSchedule: Record<string, number> = {};
+    for (const w of best.policy.windows) {
+      for (let age = w.fromAge; age <= w.toAge; age++) {
+        if (age >= retireAge) pinSchedule[String(age)] = w.convAmt ?? 0;
+      }
+    }
+    const pinnedConv: ConversionParams = {
+      ...plan.conversion,
+      mode: 'manual' as const,
+      optimize: false,
+      manualSchedule: pinSchedule,
+    };
+    const ORDERING_PRESETS = ['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill'] as const;
+    for (const preset of ORDERING_PRESETS) {
+      const checkPlan: Plan = { ...plan, withdrawalStrategy: preset, customPolicy: undefined, conversion: pinnedConv };
+      const checkProj = runProjection(checkPlan);
+      if (!checkProj.ranOut && REC_GOALS['max-end'].score(checkProj) > best.score) {
+        const presetRefined = innerOptimize(plan, opts, evalCounter, outerProgress, rowsToSeed(checkProj, retireAge, planToAge));
+        if (isBetter(presetRefined, best)) best = presetRefined;
+      }
+    }
   }
 
   return best;
@@ -1120,7 +1166,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     const priorSeedMRA = plan.customPolicy?.goal !== 'min-retirement-age' ? plan.customPolicy?.windows : undefined;
     let bestFeasible: { age: number; inner: InnerEval } | null = null;
     // Floor: never suggest retiring before the person's current age.
-    const currentAgeA = new Date().getFullYear() - parseInt(plan.personA.dob.slice(0, 4), 10);
+    const currentAgeA = calendarYearAge(plan.personA.dob);
     const minAge = Math.max(currentAgeA, 40);
     const TOTAL = Math.max(1, startAge - minAge + 1);
     let step = 0;

@@ -10,6 +10,7 @@ import { computePlanWarnings } from '../engine/planWarnings';
 import { NumberInput } from '../components/inputs/NumberInput';
 import { listStates } from '../engine/stateTax';
 import { fmtM, fmtK, fmtPct, fmtFull } from '../lib/format';
+import { ageChipLabel, exactAgeFromDob, calendarYearAge } from '../lib/ageUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { INCOME_TEMPLATES, EXPENSE_TEMPLATES } from '../engine/streamTemplates';
 import { getEngineWorker } from '../engine/workerClient';
@@ -157,17 +158,12 @@ function GrowthRateInput({ value, inflation, onChange, disabled }: {
   );
 }
 
-const ageFromDob = (iso: string): number => {
-  if (!iso || iso.length < 4) return 0;
-  const yr = parseInt(iso.slice(0, 4), 10);
-  if (yr < 1900 || yr > new Date().getFullYear()) return 0;
-  return new Date().getFullYear() - yr;
-};
+const ageFromDob = (iso: string): number => exactAgeFromDob(iso);
 
 const isValidDob = (iso: string): boolean => {
   if (!iso || iso.length < 10) return false;
   const yr = parseInt(iso.slice(0, 4), 10);
-  const age = new Date().getFullYear() - yr;
+  const age = calendarYearAge(iso);
   return yr >= 1900 && age >= 10 && age <= 100;
 };
 
@@ -398,7 +394,7 @@ export default function InputsPage() {
                     onBlur={() => { if (!isValidDob(dobA)) setDobA(A.dob); }}
                   />
                   <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: isValidDob(dobA) ? 'var(--text-muted)' : 'var(--color-danger, #c0392b)' }}>
-                    {isValidDob(dobA) ? `Age ${ageFromDob(dobA)}` : 'Invalid'}
+                    {isValidDob(dobA) ? ageChipLabel(dobA) : 'Invalid'}
                   </span>
                 </div>
               </div>
@@ -423,7 +419,7 @@ export default function InputsPage() {
                       onBlur={() => { if (!isValidDob(dobB)) setDobB(B.dob); }}
                     />
                     <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: isValidDob(dobB) ? 'var(--text-muted)' : 'var(--color-danger, #c0392b)' }}>
-                      {isValidDob(dobB) ? `Age ${ageFromDob(dobB)}` : 'Invalid'}
+                      {isValidDob(dobB) ? ageChipLabel(dobB) : 'Invalid'}
                     </span>
                   </div>
                 </div>
