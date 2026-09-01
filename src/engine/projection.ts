@@ -208,11 +208,11 @@ export interface ProjectionOptions {
 }
 
 /** Map a stored MFJ bracket-fill ceiling to its Single equivalent by bracket index. */
-export function effectiveBracketCeiling(mfjCeiling: number, fs: FilingStatus): number {
-  if (fs === 'MFJ') return mfjCeiling;
-  const idx = FED_BRACKETS_MFJ.findIndex(([top]) => top >= mfjCeiling);
-  if (idx < 0) return FED_BRACKETS_SINGLE[FED_BRACKETS_SINGLE.length - 1][0];
-  return FED_BRACKETS_SINGLE[Math.min(idx, FED_BRACKETS_SINGLE.length - 1)][0];
+// The stored bracketCeiling is always the filing-status-appropriate bracket top, because
+// the UI dropdowns use FED_BRACKETS_MFJ for MFJ plans and FED_BRACKETS_SINGLE for Single plans.
+// No remapping needed — return the stored value directly.
+export function effectiveBracketCeiling(storedCeiling: number, _fs: FilingStatus): number {
+  return storedCeiling;
 }
 
 /** Marginal rate of the bracket whose top equals the user-selected fill ceiling. */
