@@ -32,19 +32,24 @@ function applicablePercentage(fplRatio: number): number {
  *   - MAGI is below 100% FPL (marketplace eligibility requires ≥100% FPL), or
  *   - MAGI is between 100-133% FPL (Medicaid-eligible range — no marketplace premium).
  *
- * @param magi                    Household MAGI for the year
+ * @param magi                    Household MAGI for the year (nominal)
  * @param householdSize           Tax household size (for FPL lookup)
  * @param annualBenchmarkPremium  Annual SLCSP cost for the household (user-entered, inflation-scaled)
+ * @param inflationFactor         Cumulative inflation index so FPL thresholds track nominal MAGI
  */
 export function acaNetPremium(params: {
   magi: number;
   householdSize: number;
   annualBenchmarkPremium: number;
+  inflationFactor: number;
 }): number {
-  const { magi, householdSize, annualBenchmarkPremium } = params;
+  const { magi, householdSize, annualBenchmarkPremium, inflationFactor } = params;
   if (annualBenchmarkPremium <= 0 || magi <= 0) return 0;
 
-  const fpl = federalPovertyLevel(householdSize);
+  // Scale the base FPL by cumulative inflation so the ratio stays real (consistent with
+  // how IRMAA tiers are indexed in irmaa.ts and how the optimizer's cliff anchor seeds
+  // the target MAGI at optimizer.ts:317).
+  const fpl = federalPovertyLevel(householdSize) * inflationFactor;
   const fplRatio = magi / fpl;
 
   if (fplRatio < 1.00) return annualBenchmarkPremium; // below poverty: no APTC available

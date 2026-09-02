@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { useWhatIfStore } from '../store/useWhatIfStore';
@@ -14,9 +14,14 @@ import BucketCompositionStacked from '../components/charts/BucketCompositionStac
 import IncomeSourcesArea from '../components/charts/IncomeSourcesArea';
 import CashFlowSankey from '../components/charts/CashFlowSankey';
 import ChartFrame from '../components/charts/ChartFrame';
-import { compareWithWithoutConversion } from '../engine/comparison';
-import { explainPolicy } from '../engine/explain/optimizerRationale';
+import { compareWithWithoutConversion, hasComparableConversionBaseline } from '../engine/comparison';
+import { explainPolicy, type PolicyRationale } from '../engine/explain/optimizerRationale';
+import { buildDecisionTrace, type DecisionTrace } from '../engine/explain/decisionTrace';
 import TaxAdjustedBreakdown from '../components/TaxAdjustedBreakdown';
+import OptimizerRationaleModal from '../components/OptimizerRationaleModal';
+import { getEngineWorker } from '../engine/workerClient';
+import { applyResultToPlan } from '../engine/applyOptimizerResult';
+import type { Plan } from '../schemas/plan';
 
 const GOAL_LABELS: Record<string, string> = {
   'max-end-balance': 'Max End Balance',
@@ -33,6 +38,7 @@ export default function Dashboard() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [rationaleOpen, setRationaleOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [reoptimizing, setReoptimizing] = useState(false);
   const optimizerResult = useOptimizerStore((s) => s.result);
   const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const pendingGoal = useOptimizerStore((s) => s.pendingGoal);
@@ -44,7 +50,15 @@ export default function Dashboard() {
 
   const effectivePlan = pendingPlan ?? plan;
   const cmp = useMemo(() => compareWithWithoutConversion(effectivePlan), [effectivePlan]);
-  const rationale = useMemo(() => optimizerResult ? explainPolicy(effectivePlan, optimizerResult) : [], [effectivePlan, optimizerResult]);
+  // Gated on rationaleOpen so the 11 counterfactual projections don't run on every render.
+  const trace = useMemo<DecisionTrace | null>(
+    () => rationaleOpen && optimizerResult ? buildDecisionTrace(effectivePlan, optimizerResult) : null,
+    [rationaleOpen, effectivePlan, optimizerResult],
+  );
+  const rationale = useMemo<PolicyRationale | null>(
+    () => optimizerResult ? explainPolicy(effectivePlan, optimizerResult, trace ?? undefined) : null,
+    [effectivePlan, optimizerResult, trace],
+  );
   const A = effectivePlan.personA;
 
   // Headline benefit is measured on after-tax (tax-adjusted) end balance — the same objective the
@@ -85,9 +99,7 @@ export default function Dashboard() {
   // (a plan optimized before the baseline existed, or imported) cannot be measured against a
   // comparable counterfactual synchronously — the withdrawal ordering was co-optimized against the
   // conversion schedule, so holding it fixed yields a meaningless (often wildly-signed) delta.
-  const staleConversionBaseline = rothActive &&
-    effectivePlan.customPolicy?.source === 'optimizer' &&
-    effectivePlan.conversionBaselinePolicy == null;
+  const staleConversionBaseline = rothActive && !hasComparableConversionBaseline(effectivePlan);
   const asm = effectivePlan.assumptions;
   const taxAdjActive = (asm.taxAdjOrdRate ?? 0.22) > 0 || (asm.taxAdjLtcgRate ?? 0) > 0;
   const lastRow = proj.rows[proj.rows.length - 1];
@@ -120,6 +132,28 @@ export default function Dashboard() {
     setPendingGoal(null);
     setResult(null);
   };
+
+  // Re-optimize with a settings patch from the rationale modal (Class B rows).
+  // Applies the patch to effectivePlan and dispatches the worker flow, landing as a
+  // normal pending result via useOptimizerStore (same banner as a fresh optimize run).
+  const handleReoptimize = useCallback(async (patch: Partial<Plan>) => {
+    if (!optimizerResult || reoptimizing) return;
+    const patchedPlan = { ...effectivePlan, ...patch };
+    setRationaleOpen(false);
+    setReoptimizing(true);
+    try {
+      const worker = getEngineWorker();
+      const result = await worker.optimize(patchedPlan, optimizerResult.goal, { useNelderMead: true, thorough: true });
+      const appliedPlan = applyResultToPlan(patchedPlan, result);
+      setResult(result);
+      setPendingPlan(appliedPlan);
+      setPendingGoal(optimizerResult.goal);
+    } catch (err) {
+      console.error('[Dashboard] re-optimize failed:', err);
+    } finally {
+      setReoptimizing(false);
+    }
+  }, [optimizerResult, reoptimizing, effectivePlan, setResult, setPendingPlan, setPendingGoal]);
 
   return (
     <div className="page">
@@ -180,10 +214,11 @@ export default function Dashboard() {
             </span>
             {optimizerResult && (
               <button
-                onClick={() => setRationaleOpen(true)}
-                style={{ fontSize: 11, padding: 0, background: 'transparent', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', textDecoration: 'underline', fontWeight: 600 }}
+                onClick={() => !reoptimizing && setRationaleOpen(true)}
+                disabled={reoptimizing}
+                style={{ fontSize: 11, padding: 0, background: 'transparent', border: 'none', color: reoptimizing ? 'var(--text-muted)' : 'var(--gold)', cursor: reoptimizing ? 'default' : 'pointer', fontFamily: 'inherit', textAlign: 'left', textDecoration: 'underline', fontWeight: 600 }}
               >
-                explain optimization rationale →
+                {reoptimizing ? 're-optimizing…' : 'explain optimization rationale →'}
               </button>
             )}
           </div>
@@ -378,40 +413,16 @@ export default function Dashboard() {
       )}
 
       {/* Optimizer Rationale Modal */}
-      {rationaleOpen && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,46,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-          onClick={() => setRationaleOpen(false)}
-        >
-          <div
-            style={{ background: '#fff', borderRadius: 14, maxWidth: 560, width: '100%', padding: '28px 32px', maxHeight: '80vh', overflowY: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)' }}>Optimizer Rationale</div>
-              <button onClick={() => setRationaleOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--text-muted)' }}>×</button>
-            </div>
-            {optimizerResult && (
-              <>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                  Goal: <strong>{optimizerResult.headlineLabel}</strong> — {optimizerResult.headline}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-                  {optimizerResult.evaluations.toLocaleString()} projections evaluated
-                </div>
-              </>
-            )}
-            {rationale.length > 0 ? (
-              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
-                {rationale.map((line, i) => (
-                  <li key={i} style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>{line}</li>
-                ))}
-              </ul>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No rationale available for the current optimizer result.</div>
-            )}
-          </div>
-        </div>
+      {rationaleOpen && optimizerResult && rationale && (
+        <OptimizerRationaleModal
+          plan={effectivePlan}
+          optimizerResult={optimizerResult}
+          rationale={rationale}
+          trace={trace}
+          decisionNotes={proj.decisionNotes}
+          onClose={() => setRationaleOpen(false)}
+          onReoptimize={handleReoptimize}
+        />
       )}
     </div>
   );

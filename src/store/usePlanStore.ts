@@ -376,5 +376,5 @@ export function useProjection(planOverride?: Plan): ProjectionResult {
   // When the optimizer has a pending result (not yet applied), use it as the base so all
   // projection views reflect the optimizer's recommended plan without requiring Apply first.
   const effective = applyWhatIf(planOverride ?? pendingPlan ?? plan, whatIf);
-  return runProjection(effective);
+  return runProjection(effective, { explain: true });
 }

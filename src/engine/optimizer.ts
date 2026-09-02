@@ -6,7 +6,8 @@ import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommende
 import { calendarYearAge } from '../lib/ageUtils';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
 import { mulberry32, historicalBootstrap } from './returnModels';
-import { FED_BRACKETS_MFJ, FPL_BASE, FPL_INCREMENT } from './taxConstants';
+import { FED_BRACKETS_MFJ } from './taxConstants';
+import { federalPovertyLevel } from './aca';
 import { shiftRetirementAge } from './retirementAgeShift';
 
 const COARSE_STEPS = [0, 0.25, 0.5, 0.75, 1.0];
@@ -16,8 +17,13 @@ const CONV_FINE = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 
 // 12% bracket top (today's $) — MFJ upper bound of the second bracket.
 const BRACKET_12_TOP = FED_BRACKETS_MFJ[1][0];
+// 24% bracket top (today's $) — upper bound of 24% bracket (bottom of 32%).
+// Used as the per-year conversion cap so the optimizer can explore up to the
+// fill-to-24% strategy. The prior 3× BRACKET_12_TOP cap ($302K) blocked this
+// basin for plans with large low-income windows (e.g. pre-SS years with no RMDs).
+const BRACKET_24_TOP = FED_BRACKETS_MFJ[3][0];
 // Scale for normalising convAmt deltas to the same magnitude as split-fraction deltas (both ≈ [0,1]).
-const CONV_PENALTY_SCALE = 3 * BRACKET_12_TOP;
+const CONV_PENALTY_SCALE = BRACKET_24_TOP;
 
 interface Split { tax: number; trad: number; roth: number; }
 
@@ -177,6 +183,24 @@ function rowsToSeed(proj: ProjectionResult, retireAge: number, planToAge: number
   return seed;
 }
 
+/** Like rowsToSeed but also seeds convAmt from the projection's per-year rothConv (converted
+ *  to today's $ by dividing by inflationFactor). Used to warm-start the optimizer from a
+ *  bracket-fill projection so it can refine both splits and conversion amounts together. */
+function rowsToSeedWithConv(proj: ProjectionResult, retireAge: number, planToAge: number): BlendWindow[] {
+  const seed: BlendWindow[] = [];
+  for (let age = retireAge; age <= planToAge; age++) {
+    const row = proj.rows.find((r) => r.ageA === age);
+    const total = row ? row.wdTrd + row.wdRth + row.wdTax : 0;
+    const convReal = row ? Math.round(row.rothConv / row.inflationFactor) : 0;
+    seed.push(
+      !row || total < 1
+        ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: convReal }
+        : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt: convReal }
+    );
+  }
+  return seed;
+}
+
 /**
  * Inner optimizer. Scoring: max endTaxAdjustedReal (inflation-adjusted, after estimated
  * tax on pre-tax and unrealized-gain balances), with ranOut strictly worse than any
@@ -246,7 +270,7 @@ function innerOptimize(
   const convCapAtYear = (proj: ProjectionResult, yi: number): number => {
     const r = proj.rows[yi + retireRowOffset];
     if (!r) return 0;
-    const ceiling = 3 * BRACKET_12_TOP;
+    const ceiling = BRACKET_24_TOP;
     const tradReal = r.begTraditional / r.inflationFactor;
     return Math.max(0, Math.min(tradReal, ceiling));
   };
@@ -309,7 +333,7 @@ function innerOptimize(
   // the cliff, compute the withdrawal split that targets MAGI just below 399% FPL and
   // evaluate it as a single additional candidate. Accepts only if strictly better.
   if (plan.assumptions.modelACA && (plan.assumptions.acaBenchmarkPremium ?? 0) > 0 && !plan.assumptions.acaNoSubsidy) {
-    const fpl = FPL_BASE + Math.max(0, plan.assumptions.acaHouseholdSize - 1) * FPL_INCREMENT;
+    const fpl = federalPovertyLevel(plan.assumptions.acaHouseholdSize);
     for (let yi = 0; yi < bestWindows.length; yi++) {
       const row = bestProj.rows[yi + retireRowOffset];
       if (!row || row.acaPremium <= 0) continue;
@@ -882,6 +906,63 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
         const presetRefined = innerOptimize(plan, opts, evalCounter, outerProgress, rowsToSeed(checkProj, retireAge, planToAge));
         if (isBetter(presetRefined, best)) best = presetRefined;
       }
+    }
+  }
+
+  // Competitors 9–11: bracket-fill conversion as a separate optimization path.
+  //
+  // Why a separate path (not just a better seed):
+  //   bracket-fill conversions are ADAPTIVE — each year's amount is computed from actual income
+  //   state after withdrawal (filling exactly to the ceiling). A fixed convAmt × inflF cannot
+  //   replicate this regardless of the seed, because income fluctuates year to year as SS starts,
+  //   RMDs grow, and balances shift. The year-by-year NM can approximate but not match it exactly.
+  //
+  // Approach: run innerOptimize with optimize=false (bracket-fill owns conversions), find the
+  // optimal withdrawal splits for that conversion strategy, then MATERIALIZE the adaptive amounts
+  // into explicit per-year convAmts. Required for round-trip: plan.customPolicy stores the policy;
+  // when re-projected with plan.conversion.mode='off', policyConv != null ensures the stored
+  // amounts are honored rather than falling back to mode='off' (zero conversions).
+  //
+  // Seed: strip convAmt from best's windows (must be undefined, never 0 — policyConv=0 would pin
+  // conversions to zero via the policyConv!=null branch, overriding bracket-fill entirely).
+  if (optimizeConversions) {
+    const BF_CEILINGS = [
+      FED_BRACKETS_MFJ[1][0],  // 12% bracket top
+      FED_BRACKETS_MFJ[2][0],  // 22% bracket top
+      FED_BRACKETS_MFJ[3][0],  // 24% bracket top
+    ] as const;
+    for (const ceiling of BF_CEILINGS) {
+      const bfPlan: Plan = {
+        ...plan,
+        customPolicy: undefined,
+        conversion: { ...plan.conversion, mode: 'bracket-fill', optimize: false, bracketCeiling: ceiling },
+      };
+      // Seed from best's splits with convAmt stripped to undefined (not 0) so bracket-fill
+      // mode controls conversions instead of policyConv=0 pinning them to zero.
+      const bfSeed: BlendWindow[] = best.policy.windows.map(({ convAmt: _omit, ...rest }) => {
+        void _omit;
+        return rest as BlendWindow;
+      });
+      // Full optimization: finds optimal withdrawal splits with adaptive bracket-fill conversions.
+      const bfInner = innerOptimize(bfPlan, opts, evalCounter, outerProgress, bfSeed);
+      if (bfInner.ranOut) continue;
+
+      // Materialize: freeze the adaptive per-year conversion amounts into explicit convAmts.
+      // bfInner.policy.windows is per-year (fromAge===toAge), so ageA===w.fromAge is exact.
+      const matWindows: BlendWindow[] = bfInner.policy.windows.map((w) => {
+        const row = bfInner.proj.rows.find((r) => r.ageA === w.fromAge);
+        const convReal = row ? Math.round(row.rothConv / row.inflationFactor) : 0;
+        return { ...w, convAmt: convReal };
+      });
+      const matPolicy: BlendPolicy = { windows: matWindows, source: 'optimizer' };
+      const matProj = runProjection(plan, { policy: matPolicy });
+      evalCounter.n++;
+      const matInner: InnerEval = {
+        policy: matPolicy, proj: matProj,
+        score: REC_GOALS['max-end'].score(matProj),
+        ranOut: matProj.ranOut,
+      };
+      if (isBetter(matInner, best)) best = matInner;
     }
   }
 

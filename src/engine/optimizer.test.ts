@@ -8,8 +8,10 @@ import type { BlendPolicy } from './blendPolicy';
 import { assertProjectionInvariants } from './__invariants__/assertions';
 
 import { FED_BRACKETS_MFJ } from './taxConstants';
-// 12% bracket top — same constant the optimizer uses for its cap heuristic.
+// 12% bracket top (kept for existing tests that reference it).
 const BRACKET_12_TOP = FED_BRACKETS_MFJ[1][0];
+// 24% bracket top — the optimizer's per-year conversion cap (raised from 3 × BRACKET_12_TOP).
+const BRACKET_24_TOP = FED_BRACKETS_MFJ[3][0];
 
 /** Deep-clone a plan to keep test cases isolated. */
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -48,20 +50,20 @@ describe('Optimizer ↔ Projection coordination', () => {
     ).toBe(1);
   }, 180_000);
 
-  it('honors the convAmt cap — actual rothConv ≤ 3 × bracket12Top × inflF', () => {
-    // The optimizer's cap heuristic is "convert up to 3 brackets of room". The projection
-    // multiplies stored convAmt (today's $) by inflationFactor to get nominal $. The actual
-    // rothConv in any year must not exceed that nominal cap (within $1 rounding). Catches
-    // units mismatches and row-indexing offsets that historically inflated late-year conv.
+  it('honors the convAmt cap — actual rothConv ≤ BRACKET_24_TOP × inflF', () => {
+    // The optimizer's per-year conversion cap is BRACKET_24_TOP (24% bracket top, ~$403K today's $).
+    // The projection multiplies stored convAmt (today's $) by inflationFactor to get nominal $.
+    // The actual rothConv in any year must not exceed that nominal cap (within $1 rounding).
+    // Catches units mismatches and row-indexing offsets that historically inflated late-year conv.
     const plan = defaultPlan();
     plan.conversion.mode = 'off'; // ensure no legacy fallback inflation
     const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
     for (const row of r.projection.rows) {
-      const capNominal = 3 * BRACKET_12_TOP * row.inflationFactor;
+      const capNominal = BRACKET_24_TOP * row.inflationFactor;
       // Tolerance: $1 for rounding. Also bound by begTraditional in case trad is depleted.
       expect(
         row.rothConv,
-        `Year ${row.year} ageA=${row.ageA}: rothConv $${row.rothConv} exceeds 3×bracket cap $${capNominal.toFixed(0)}`
+        `Year ${row.year} ageA=${row.ageA}: rothConv $${row.rothConv} exceeds 24%-bracket cap $${capNominal.toFixed(0)}`
       ).toBeLessThanOrEqual(capNominal + 1);
     }
   }, 120_000);

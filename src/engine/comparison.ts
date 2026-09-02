@@ -1,6 +1,13 @@
 import type { Plan } from '../schemas/plan';
 import { runProjection, type ProjectionResult } from './projection';
 
+/** Returns false when an optimizer-authored customPolicy has no stored no-conversion baseline.
+ *  In that case the ordering was co-optimized against the conversion schedule, so holding it
+ *  fixed yields a meaningless counterfactual rather than a fair "conversions off" experiment. */
+export function hasComparableConversionBaseline(plan: Plan): boolean {
+  return !(plan.customPolicy?.source === 'optimizer' && plan.conversionBaselinePolicy == null);
+}
+
 export interface ComparisonResult {
   withConv: ProjectionResult;
   noConv: ProjectionResult;

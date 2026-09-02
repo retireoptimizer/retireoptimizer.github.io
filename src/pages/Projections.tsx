@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useProjection, usePlanStore } from '../store/usePlanStore';
 import type { DisplayMode } from '../store/usePlanStore';
 import { fmtUSD, fmtFull } from '../lib/format';
 import CashFlowsBalanced from '../components/charts/CashFlowsBalanced';
 import WhatIfBar from '../components/WhatIfBar';
 import ChartFrame from '../components/charts/ChartFrame';
+import type { YearDecision } from '../engine/explain/yearDecisions';
 
 const fmt = (n: number, mode: DisplayMode, inflF: number): string => {
   if (!isFinite(n) || n === 0) return '—';
@@ -21,7 +22,7 @@ const stickyTd = (left: number, bg = '#fff', minWidth = 60): React.CSSProperties
 });
 
 type Row = ReturnType<typeof useProjection>['rows'][number];
-type GroupKey = 'income' | 'withdrawals' | 'spending' | 'taxes' | 'balances';
+type GroupKey = 'income' | 'withdrawals' | 'spending' | 'taxes' | 'balances' | 'decisions';
 
 interface Column {
   key: string;
@@ -41,6 +42,7 @@ const BG: Record<'identity' | GroupKey, string> = {
   spending:    '#e8d8ee',
   taxes:       '#ced7e2',
   balances:    '#d3d6d9',
+  decisions:   '#dce8e8',
 };
 
 /**
@@ -117,6 +119,7 @@ const GROUP_LABELS: Record<GroupKey, string> = {
   spending:    'Spending',
   taxes:       'Taxes',
   balances:    'Balances',
+  decisions:   'Decisions',
 };
 
 const GROUP_COLORS: Record<GroupKey, { bg: string; text: string }> = {
@@ -125,6 +128,7 @@ const GROUP_COLORS: Record<GroupKey, { bg: string; text: string }> = {
   spending:    { bg: '#6a2d6a', text: '#fff' },
   taxes:       { bg: '#3b5e8a', text: '#fff' },
   balances:    { bg: '#0d1b2e', text: '#fff' },
+  decisions:   { bg: '#2d6a6a', text: '#fff' },
 };
 
 function GroupCheckbox({ cols, visibleKeys, onToggle }: {
@@ -142,9 +146,12 @@ function GroupCheckbox({ cols, visibleKeys, onToggle }: {
   );
 }
 
-const STORAGE_KEY = 'fireopt-projections-cols-v4';
+const STORAGE_KEY = 'fireopt-projections-cols-v5';
 
-const DEFAULT_VISIBLE = new Set(COLUMNS.filter(c => c.essential || c.group === 'identity').map(c => c.key));
+const DEFAULT_VISIBLE = new Set([
+  ...COLUMNS.filter(c => c.essential || c.group === 'identity').map(c => c.key),
+  'why',
+]);
 
 const loadVisibleKeys = (): Set<string> => {
   if (typeof window === 'undefined') return DEFAULT_VISIBLE;
@@ -161,9 +168,42 @@ export default function Projections() {
   const [visibleKeys, setVisibleKeysState] = useState<Set<string>>(loadVisibleKeys);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ top: number; right: number; maxHeight: number }>({ top: 0, right: 0, maxHeight: 400 });
-  const [cellTip, setCellTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [cellTip, setCellTip] = useState<{ x: number; y: number; text: string; wide?: boolean } | null>(null);
+  const [expandedYear, setExpandedYear] = useState<number | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const notesMap = useMemo(() => {
+    const m = new Map<number, YearDecision[]>();
+    for (const n of proj.decisionNotes) {
+      const arr = m.get(n.year) ?? [];
+      arr.push(n);
+      m.set(n.year, arr);
+    }
+    return m;
+  }, [proj.decisionNotes]);
+
+  const whyColumn = useMemo<Column>(() => ({
+    key: 'why',
+    label: 'Why',
+    group: 'decisions',
+    essential: true,
+    fmt: 'raw',
+    get: (r: Row) => {
+      const notes = notesMap.get(r.year) ?? [];
+      if (!notes.length) return '';
+      // Strip newlines: CSV uses join('\n') so embedded newlines break naive consumers.
+      return notes.map(n => n.text.replace(/\n/g, ' ')).join(' | ');
+    },
+    tooltip: (r: Row) => {
+      const notes = notesMap.get(r.year) ?? [];
+      if (!notes.length) return '';
+      return notes.map(n => n.text.replace(/\n/g, ' ')).join('\n\n');
+    },
+    bg: BG.decisions,
+  }), [notesMap]);
+
+  const allColumns = useMemo<Column[]>(() => [...COLUMNS, whyColumn], [whyColumn]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -201,20 +241,20 @@ export default function Projections() {
   };
 
   const toggleGroup = (g: GroupKey) => {
-    const cols = COLUMNS.filter(c => c.group === g);
+    const cols = allColumns.filter(c => c.group === g);
     const allOn = cols.every(c => visibleKeys.has(c.key));
     const next = new Set(visibleKeys);
     cols.forEach(c => allOn ? next.delete(c.key) : next.add(c.key));
     save(next);
   };
 
-  const visibleColumns = COLUMNS.filter(c => c.group === 'identity' || visibleKeys.has(c.key));
+  const visibleColumns = allColumns.filter(c => c.group === 'identity' || visibleKeys.has(c.key));
 
   const downloadCSV = () => {
     // CSV always includes every column regardless of UI expansion.
-    const header = COLUMNS.map((c) => c.label).join(',');
+    const header = allColumns.map((c) => c.label).join(',');
     const rows = proj.rows.map((r) =>
-      COLUMNS.map((c) => {
+      allColumns.map((c) => {
         const v = c.get(r);
         if (typeof v === 'number') {
           const isMoney = c.fmt === 'money';
@@ -298,7 +338,7 @@ export default function Projections() {
                     maxHeight: pickerPos.maxHeight, overflowY: 'auto',
                   }}>
                     {(Object.keys(GROUP_LABELS) as GroupKey[]).map(g => {
-                      const cols = COLUMNS.filter(c => c.group === g);
+                      const cols = allColumns.filter(c => c.group === g);
                       const { bg, text } = GROUP_COLORS[g];
                       return (
                         <div key={g}>
@@ -378,40 +418,71 @@ export default function Projections() {
               </thead>
               <tbody>
                 {proj.rows.map((r) => {
+                  const rowNotes = notesMap.get(r.year) ?? [];
+                  const isExpanded = expandedYear === r.year;
                   const leftOffsets = [0, 60, 120, 180];
                   return (
-                    <tr key={r.year}>
-                      {visibleColumns.map((c, i) => {
-                        const sticky = c.group === 'identity';
-                        const v = c.get(r);
-                        let display: string | number;
-                        if (typeof v === 'string') display = v;
-                        else if (c.fmt === 'money') display = fmt(v, mode, r.inflationFactor);
-                        else if (c.fmt === 'pct') display = `${v.toFixed(1)}%`;
-                        else display = v;
-                        const tipText = c.tooltip?.(r);
-                        const style: React.CSSProperties = sticky
-                          ? { ...stickyTd(leftOffsets[i] ?? 0), textAlign: 'center' }
-                          : { textAlign: 'right', fontWeight: c.key === 'endTotal' ? 700 : undefined, cursor: tipText ? 'help' : undefined };
-                        return (
+                    <>
+                      <tr key={r.year}>
+                        {visibleColumns.map((c, i) => {
+                          const sticky = c.group === 'identity';
+                          const v = c.get(r);
+                          let display: string | number;
+                          if (typeof v === 'string') display = v;
+                          else if (c.fmt === 'money') display = fmt(v, mode, r.inflationFactor);
+                          else if (c.fmt === 'pct') display = `${v.toFixed(1)}%`;
+                          else display = v;
+                          const tipText = c.tooltip?.(r);
+                          const isWhy = c.key === 'why';
+                          const hasNotes = isWhy && rowNotes.length > 0;
+                          const style: React.CSSProperties = sticky
+                            ? { ...stickyTd(leftOffsets[i] ?? 0), textAlign: 'center' }
+                            : isWhy
+                              ? {
+                                  textAlign: 'left',
+                                  maxWidth: 220,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  cursor: hasNotes ? 'pointer' : undefined,
+                                  background: isExpanded && hasNotes ? '#c8dede' : undefined,
+                                }
+                              : { textAlign: 'right', fontWeight: c.key === 'endTotal' ? 700 : undefined, cursor: tipText ? 'help' : undefined };
+                          return (
+                            <td
+                              key={c.key}
+                              style={style}
+                              onMouseEnter={tipText ? (e) => setCellTip({ x: e.clientX, y: e.clientY, text: tipText, wide: isWhy }) : undefined}
+                              onMouseLeave={tipText ? () => setCellTip(null) : undefined}
+                              onClick={hasNotes ? () => setExpandedYear(y => y === r.year ? null : r.year) : undefined}
+                            >
+                              {display}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      {isExpanded && rowNotes.length > 0 && (
+                        <tr key={`why-${r.year}`} style={{ background: '#edf4f4' }}>
                           <td
-                            key={c.key}
-                            style={style}
-                            onMouseEnter={tipText ? (e) => setCellTip({ x: e.clientX, y: e.clientY, text: tipText }) : undefined}
-                            onMouseLeave={tipText ? () => setCellTip(null) : undefined}
+                            colSpan={visibleColumns.length}
+                            style={{ padding: '8px 18px 10px', fontSize: 11, lineHeight: 1.6, borderBottom: '1px solid #c8dede' }}
                           >
-                            {display}
+                            {rowNotes.map((n, idx) => (
+                              <div key={idx} style={{ marginBottom: idx < rowNotes.length - 1 ? 8 : 0 }}>
+                                <span style={{ fontWeight: n.binding ? 700 : 400 }}>{n.text}</span>
+                              </div>
+                            ))}
                           </td>
-                        );
-                      })}
-                    </tr>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
               </tbody>
             </table>
           </div>
           <div style={{ padding: '10px 18px', fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border-light)' }}>
-            Showing {visibleColumns.length} of {COLUMNS.length} columns · CSV export always includes all columns
+            Showing {visibleColumns.length} of {allColumns.length} columns · CSV export always includes all columns · Click a Why cell to expand
           </div>
         </div>
       </div>
@@ -420,7 +491,9 @@ export default function Projections() {
           position: 'fixed', left: cellTip.x + 12, top: cellTip.y - 8,
           background: '#1a2535', color: '#e8edf3', fontSize: 11,
           padding: '5px 9px', borderRadius: 5, pointerEvents: 'none',
-          whiteSpace: 'nowrap', zIndex: 9999, boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          whiteSpace: cellTip.wide ? 'pre-wrap' : 'nowrap',
+          maxWidth: cellTip.wide ? 420 : undefined,
+          zIndex: 9999, boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
         }}>
           {cellTip.text}
         </div>

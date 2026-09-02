@@ -13,11 +13,14 @@ export interface WithdrawalInputs {
   inflationFactor: number;
 }
 
+export type SpillKind = 'no-window' | 'trad-cap' | 'pct-unhonorable' | 'balance-exhausted';
+
 export interface WithdrawalOutputs {
   wdTax: number;
   wdTrd: number;
   wdRth: number;
   bracketOverridden?: boolean;
+  spill?: { kind: SpillKind; amount: number; tradCap?: number };
 }
 
 export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
@@ -28,6 +31,8 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
 
   const preset = PRESETS[strategy];
 
+  let spill: WithdrawalOutputs['spill'];
+
   if (preset.kind === 'proportional') {
     const total = taxable + traditional + roth;
     if (total > 0 && rem > 0) {
@@ -37,6 +42,7 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
       const filled = wdTax + wdTrd + wdRth;
       const leftover = rem - filled;
       if (leftover > 0.01) {
+        spill = { kind: 'pct-unhonorable', amount: leftover };
         const remTaxable = taxable - wdTax;
         const remTrad = traditional - wdTrd;
         const remRoth = roth - wdRth;
@@ -67,9 +73,10 @@ export function applyWithdrawalOrder(inp: WithdrawalInputs): WithdrawalOutputs {
       else if (src === 'trad' && traditional > 0) { wdTrd = Math.min(traditional, rem); rem -= wdTrd; }
       else if (src === 'roth' && roth > 0) { wdRth = Math.min(roth, rem); rem -= wdRth; }
     }
+    if (rem > 0.01) spill = { kind: 'balance-exhausted', amount: rem };
   }
 
-  return { wdTax, wdTrd, wdRth, bracketOverridden };
+  return { wdTax, wdTrd, wdRth, bracketOverridden, spill };
 }
 
 /**
@@ -99,19 +106,23 @@ export function applyBlendPolicy(inp: {
     const wdTaxF = Math.min(inp.taxable, r); r -= wdTaxF;
     const wdTrdF = Math.min(inp.traditional, r); r -= wdTrdF;
     const wdRthF = Math.min(inp.roth, r);
-    return { wdTax: wdTaxF, wdTrd: wdTrdF, wdRth: wdRthF };
+    return { wdTax: wdTaxF, wdTrd: wdTrdF, wdRth: wdRthF, spill: { kind: 'no-window', amount: rem } };
   }
 
   let wdTax = Math.min(inp.taxable, rem * w.pctTaxable);
   let wdTrd = Math.min(inp.traditional, rem * w.pctTraditional);
   let wdRth = Math.min(inp.roth, rem * w.pctRoth);
 
+  let blendSpill: WithdrawalOutputs['spill'];
   if (w.tradCap != null && wdTrd > w.tradCap) {
+    const uncapped = wdTrd;
     wdTrd = Math.max(0, Math.min(inp.traditional, w.tradCap));
+    blendSpill = { kind: 'trad-cap', amount: uncapped - wdTrd, tradCap: w.tradCap };
   }
 
   let leftover = rem - (wdTax + wdTrd + wdRth);
   if (leftover > 0.01) {
+    if (!blendSpill) blendSpill = { kind: 'pct-unhonorable', amount: leftover };
     const addTax = Math.min(inp.taxable - wdTax, leftover);
     wdTax += addTax; leftover -= addTax;
   }
@@ -124,5 +135,5 @@ export function applyBlendPolicy(inp: {
     wdRth += addRth;
   }
 
-  return { wdTax, wdTrd, wdRth };
+  return { wdTax, wdTrd, wdRth, spill: blendSpill };
 }
