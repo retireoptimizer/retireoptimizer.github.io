@@ -109,24 +109,25 @@ export const RMD_DIVISORS: Readonly<Record<number, number>> = {
   105: 4.6,
 };
 
-// IRMAA 2026 MAGI thresholds → per-person monthly Part B surcharge (CMS 2026).
-// Thresholds inflation-indexed at usage time; surcharge dollar amounts are CMS-set annually (not inflation-formulas).
-// Single-filer thresholds are roughly half of MFJ at each tier boundary.
-export const IRMAA_TIERS_MFJ: ReadonlyArray<{ magiTop: number; monthlyPerPerson: number }> = [
-  { magiTop: 218000, monthlyPerPerson:   0.00 },
-  { magiTop: 274000, monthlyPerPerson:  81.20 },
-  { magiTop: 342000, monthlyPerPerson: 202.90 },
-  { magiTop: 410000, monthlyPerPerson: 324.60 },
-  { magiTop: 750000, monthlyPerPerson: 446.30 },
-  { magiTop: Infinity, monthlyPerPerson: 487.00 },
+// IRMAA 2026 MAGI thresholds → per-person monthly surcharges for Part B and Part D (CMS/SSA POMS 2026).
+// Part B and Part D use identical MAGI boundaries; surcharge dollar amounts are CMS-set annually.
+// Thresholds are inflation-indexed at usage time (first 4 tiers CPI-adjusted annually; top tier
+// frozen until 2028 per SECURE 2.0, but we project it with CPI as a conservative approximation).
+export const IRMAA_TIERS_MFJ: ReadonlyArray<{ magiTop: number; partB: number; partD: number }> = [
+  { magiTop: 218000, partB:   0.00, partD:  0.00 },
+  { magiTop: 274000, partB:  81.20, partD: 14.50 },
+  { magiTop: 342000, partB: 202.90, partD: 37.50 },
+  { magiTop: 410000, partB: 324.60, partD: 60.40 },
+  { magiTop: 750000, partB: 446.30, partD: 83.30 },
+  { magiTop: Infinity, partB: 487.00, partD: 91.00 },
 ];
-export const IRMAA_TIERS_SINGLE: ReadonlyArray<{ magiTop: number; monthlyPerPerson: number }> = [
-  { magiTop: 109000, monthlyPerPerson:   0.00 },
-  { magiTop: 137000, monthlyPerPerson:  81.20 },
-  { magiTop: 171000, monthlyPerPerson: 202.90 },
-  { magiTop: 205000, monthlyPerPerson: 324.60 },
-  { magiTop: 500000, monthlyPerPerson: 446.30 },
-  { magiTop: Infinity, monthlyPerPerson: 487.00 },
+export const IRMAA_TIERS_SINGLE: ReadonlyArray<{ magiTop: number; partB: number; partD: number }> = [
+  { magiTop: 109000, partB:   0.00, partD:  0.00 },
+  { magiTop: 137000, partB:  81.20, partD: 14.50 },
+  { magiTop: 171000, partB: 202.90, partD: 37.50 },
+  { magiTop: 205000, partB: 324.60, partD: 60.40 },
+  { magiTop: 500000, partB: 446.30, partD: 83.30 },
+  { magiTop: Infinity, partB: 487.00, partD: 91.00 },
 ];
 
 // Illinois flat income-tax rate (4.95%). Retirement income (401k/IRA/Roth/SS/pension) is exempt.
