@@ -15,13 +15,15 @@ import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity, seniorBonusDeduction } from './tax';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from './taxConstants';
 import { rothConversion } from './conversion';
-import { applyWithdrawalOrder, applyBlendPolicy } from './withdrawal';
+import { applyWithdrawalOrder, applyBlendPolicy, type SpillKind } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
 import { findWindow } from './blendPolicy';
 import { annualIRMAACost } from './irmaa';
 import { annualNIIT } from './niit';
 import { stateTax, STATE_PROFILES } from './stateTax';
 import { acaNetPremium } from './aca';
+import { buildYearDecisions, type YearDecision } from './explain/yearDecisions';
+import { irmaaHeadroomNote, acaCliffNote } from './explain/headroom';
 
 export interface ProjectionRow {
   year: number;            // 1-indexed plan year
@@ -112,6 +114,7 @@ export interface ProjectionResult {
   yearsCovered: number;
   ranOut: boolean;          // true if portfolio hit zero before plan-to age
   overrideEvents: { age: number; reason: string }[];  // bracket-fill ceiling overrides
+  decisionNotes: YearDecision[];  // per-year attribution; populated only when opts.explain is true
 }
 
 const ageAt = (dob: string, planStartYear: number): number => {
@@ -205,6 +208,9 @@ export interface ProjectionOptions {
    * Omit for deterministic projections and the parametric MC model.
    */
   inflationOverrides?: number[];
+  /** Build per-year decision notes on the returned ProjectionResult. Off by default so the
+   * optimizer's thousands of projections never pay for it. */
+  explain?: boolean;
 }
 
 /** Map a stored MFJ bracket-fill ceiling to its Single equivalent by bracket index. */
@@ -251,6 +257,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   let taxableBasis = (pfA.taxableBasis ?? 0) + (pfB?.taxableBasis ?? 0);
 
   const rows: ProjectionRow[] = [];
+  const decisionNotes: YearDecision[] = [];
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
   let lifetimeFedTaxReal = 0, lifetimeRMDReal = 0, lifetimeConversionReal = 0;
   let ranOut = false;
@@ -441,8 +448,16 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         return alive ? sum + s.remainingBal : sum;
       }, 0);
     const maxConvEst  = Math.max(0, (trad - inheritedTradBal) * (1 + plan.assumptions.tradReturn) + contribToTrad - rmdAmt);
-    // Senior bonus adds to the effective deduction for 65+ filers; MAGI proxy = baseOrdEst1 (pre-conversion).
-    const seniorBonusEst = seniorBonusDeduction(filingStatus, filerAge, ageB, baseOrdEst1, calYear);
+    // Senior bonus MAGI must include the conversion and LTCG from taxable withdrawals to correctly
+    // model the OBBBA phase-out. Using pre-conversion ordinary income alone massively underestimates
+    // MAGI (e.g. $38k vs $260k in taxfirst), causing the conversion to be oversized by ~the full
+    // senior bonus. Two-pass: size conversion with no bonus to estimate post-conv MAGI, then resolve.
+    const convEstNoSB = Math.min(maxConvEst, Math.max(0, ceilForConv - (baseOrdEst1 - stdD)));
+    const qualDivEst = annualDivEst * taxableQualifiedPct;
+    const gainFractionEst = taxAvailEst > 0 ? Math.max(0, Math.min(1, 1 - taxableBasis / taxAvailEst)) : 0;
+    const ltcgEst = spendingGapEst * gainFractionEst + qualDivEst;
+    const magiEstPostConv = baseOrdEst1 + convEstNoSB + ltcgEst;
+    const seniorBonusEst = seniorBonusDeduction(filingStatus, filerAge, ageB, magiEstPostConv, calYear);
     const convEst    = Math.min(maxConvEst, Math.max(0, ceilForConv - (baseOrdEst1 - stdD - seniorBonusEst)));
     // Pass 2 — taxes on convEst also draw from taxable (payTaxFromBrokerage), leaving less for spending
     const convBracketRate = rateAtBracketCeiling(plan.conversion.bracketCeiling, filingStatus);
@@ -571,6 +586,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     let wdTax = 0, wdTrd = 0, wdRth = 0, fedTax = 0, ordIncomeFinal = 0, ltcgFinal = 0, effRate = 0, marginalRate = 0;
     let irmaa = 0, niit = 0, acaPremiumYear = 0, taxableSSFinal = 0, irmaaMAGIFinal = 0;
     let gap = 0;
+    let taxFromBrokFinal = 0;
+    let lastSpill: { kind: SpillKind; amount: number; tradCap?: number } | undefined;
     let overrideFiredThisYear = false;
 
     const numAt65Plus = (aliveA && ageA >= 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= 65 ? 1 : 0);
@@ -595,6 +612,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const taxFromBrok = (plan.payTaxFromBrokerage ?? false)
         ? Math.min(Math.max(0, taxBurden - incomeAvailForTax), taxAvail)
         : 0;
+      taxFromBrokFinal = taxFromBrok;
       gap = Math.max(0, netSpend - ss.total - other.gross - distributedCash - rmdAmt - lumpSumOrdIncomeEst - lumpSumTaxFreeEst + taxBurden - taxFromBrok);
       const w = activePolicy
         ? applyBlendPolicy({ policy: activePolicy, ageA, gap, taxable: taxAvail - taxFromBrok, traditional: tradAvail, roth: rothAvail })
@@ -606,6 +624,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
             stdD: stdD + seniorBonus, inflationFactor,
           });
       wdTax = w.wdTax + taxFromBrok; wdTrd = w.wdTrd; wdRth = w.wdRth;
+      lastSpill = w.spill;
       if (w.bracketOverridden) overrideFiredThisYear = true;
 
       const ltcg = wdTax * gainFraction + qualifiedDiv;
@@ -653,7 +672,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
           const scaledPremium = plan.assumptions.acaBenchmarkPremium * inflationFactor * preMedicareCount;
           acaPremiumYear = plan.assumptions.acaNoSubsidy
             ? scaledPremium  // full cost, no APTC applied
-            : acaNetPremium({ magi: surchargeMAGI + (ss.total - taxableSS), householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium });
+            : acaNetPremium({ magi: surchargeMAGI + (ss.total - taxableSS), householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium, inflationFactor });
         }
       }
 
@@ -689,6 +708,43 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     if (activePolicy) {
       const bw = findWindow(activePolicy, ageA);
       if (bw && bw.pctTraditional === 0 && wdTrd < 100) wdTrd = 0;
+    }
+
+    // Per-year decision attribution (gated on opts.explain so the optimizer never pays for it).
+    // Build after the de-minimis clamp so notes cite the same values that appear in the row.
+    if (opts?.explain) {
+      const isActiveBracketfill = !activePolicy && plan.withdrawalStrategy === 'bracketfill';
+      const wdBracketCeilNominal = effectiveBracketCeiling(plan.withdrawalBracketCeiling, filingStatus) * inflationFactor;
+      // Mirror roomInBracket from withdrawal.ts:58 — uses the withdrawal ceiling, not ceilForConv.
+      const bracketfillRoom = isActiveBracketfill
+        ? Math.max(0, wdBracketCeilNominal + (stdD + seniorBonus) - baseOrdIncForWd - wdTrd)
+        : 0;
+      const activeWindow = activePolicy ? findWindow(activePolicy, ageA) : undefined;
+      const spillWindow = activeWindow
+        ? { pctTaxable: activeWindow.pctTaxable, pctTraditional: activeWindow.pctTraditional, pctRoth: activeWindow.pctRoth }
+        : undefined;
+      const notes = buildYearDecisions({
+        year: i + 1,
+        ageA,
+        conv,
+        convPolicyZero: policyConv === 0,
+        headroomNominal,
+        maxConv,
+        ceilForConv,
+        baseOrdIncome: baseOrdIncForConv,
+        tradBalance: maxConv,
+        wdTax: wdTax - taxFromBrokFinal,  // show only the withdrawal portion, not the tax-from-brok pull
+        wdTrd,
+        wdRth,
+        gap,
+        rmdAmt,
+        bracketOverridden: overrideFiredThisYear,
+        spill: lastSpill,
+        spillWindow,
+        isActiveBracketfill,
+        bracketfillRoom,
+      });
+      decisionNotes.push(...notes);
     }
 
     // Update balances. Withdrawals were sized to cover all cash needs.
@@ -894,6 +950,16 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     });
   }
 
+  // IRMAA/ACA headroom notes — post-hoc pass; optimizer never pays for this.
+  if (opts?.explain) {
+    for (let i = 0; i < rows.length; i++) {
+      const in_ = irmaaHeadroomNote(rows, i);
+      if (in_) decisionNotes.push(in_);
+      const an = acaCliffNote(rows[i], plan.assumptions.acaHouseholdSize, plan.assumptions.modelACA);
+      if (an) decisionNotes.push(an);
+    }
+  }
+
   const last = rows[rows.length - 1];
   const endTotalNominal = last?.endTotal ?? 0;
   const endTotalReal = last ? endTotalNominal / last.inflationFactor : 0;
@@ -915,6 +981,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     yearsCovered: rows.length,
     ranOut,
     overrideEvents,
+    decisionNotes,
   };
 }
 
