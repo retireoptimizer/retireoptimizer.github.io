@@ -142,10 +142,12 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 27,
+      version: 28,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v28: add assumptions.legacyTargetTaxAdjReal (after-tax legacy floor for max-spending).
+        // Absent === 0 === unconstrained === pre-v28 behavior. No data rewrite needed.
         // v27: add per-person spousalContribution / spousalTarget (spousal IRA while the other
         // spouse still works). Both optional; absent === 0 === pre-v27 behavior, so no data
         // rewrite is needed. Version bumped only to record the schema change.

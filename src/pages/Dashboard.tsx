@@ -173,6 +173,14 @@ export default function Dashboard() {
                 {pendingGoal ? GOAL_LABELS[pendingGoal] ?? pendingGoal : 'Optimizer'} result ready
               </span>
               <span style={{ fontSize: 12, color: '#9a7830' }}>— not yet saved to your plan</span>
+              {(optimizerResult?.legacyTargetTaxAdjReal ?? 0) > 0 && (() => {
+                const tgt = optimizerResult!.legacyTargetTaxAdjReal!;
+                const achieved = optimizerResult?.achievedLegacyTaxAdjReal;
+                if (achieved === undefined) return null;
+                return <span style={{ fontSize: 12, color: '#9a7830' }}>
+                  {achieved >= tgt ? ` · legacy ${fmtM(tgt)} ✓` : ` · short by ${fmtM(tgt - achieved)}`}
+                </span>;
+              })()}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
@@ -231,7 +239,16 @@ export default function Dashboard() {
                 label="Tax-Adj Balance"
                 value={fmtM(real ? proj.endTaxAdjustedReal : proj.endTaxAdjustedNominal)}
                 valueColor={planLasts ? '#4ade80' : '#fbbf24'}
-                sub={<button onClick={() => setBreakdownOpen(true)} style={{ display: 'block', textAlign: 'left', background: 'none', border: 'none', color: 'rgba(255,255,255,0.72)', cursor: 'pointer', fontSize: 10, padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>end bal after tax · breakdown →</button>}
+                sub={<>
+                  <button onClick={() => setBreakdownOpen(true)} style={{ display: 'block', textAlign: 'left', background: 'none', border: 'none', color: 'rgba(255,255,255,0.72)', cursor: 'pointer', fontSize: 10, padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>end bal after tax · breakdown →</button>
+                  {(optimizerResult?.legacyTargetTaxAdjReal ?? 0) > 0 && (() => {
+                    const tgt = optimizerResult!.legacyTargetTaxAdjReal!;
+                    const achieved = proj.endTaxAdjustedReal;
+                    return <span style={{ display: 'block', fontSize: 10, color: achieved >= tgt ? '#4ade80' : '#fbbf24', marginTop: 2 }}>
+                      {achieved >= tgt ? `target ${fmtM(tgt)} ✓` : `short by ${fmtM(tgt - achieved)}`}
+                    </span>;
+                  })()}
+                </>}
                 title="The same ending balance, less estimated tax still owed on pre-tax accounts and unrealized gains. Roth is untaxed. Click breakdown for detail."
               />
               <Divider />

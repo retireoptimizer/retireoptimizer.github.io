@@ -71,6 +71,12 @@ export const AssumptionsSchema = z.object({
    *  Applied to gain above cost basis only — basis is already-taxed money and is untouched.
    *  Roth is never haircut. Setting to 0 along with taxAdjOrdRate disables tax-adjusted balance. */
   taxAdjLtcgRate: z.number().min(0).max(0.4).default(0),
+  /** Minimum after-tax portfolio value to leave at Plan Through Age, in today's dollars.
+   *  Constrains the max-sustainable-spending search only; ignored by other goals.
+   *  Measured on endTaxAdjustedReal (haircut by taxAdjOrdRate / taxAdjLtcgRate) — the same
+   *  quantity the inner optimizer maximizes, so constraint and objective are commensurate.
+   *  0 (default) = unconstrained, byte-identical to pre-existing behavior. */
+  legacyTargetTaxAdjReal: z.number().nonnegative().default(0),
   tradReturn: z.number().default(0.055),
   rothReturn: z.number().default(0.055),
   inflation: z.number(),
@@ -275,6 +281,7 @@ export const defaultPlan = (): Plan => ({
     taxableDistributePct: 0,
     taxAdjOrdRate: 0.22,
     taxAdjLtcgRate: 0,
+    legacyTargetTaxAdjReal: 0,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
@@ -346,6 +353,7 @@ export const samplePlan = (): Plan => ({
     taxableDistributePct: 0,
     taxAdjOrdRate: 0.22,
     taxAdjLtcgRate: 0,
+    legacyTargetTaxAdjReal: 0,
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,

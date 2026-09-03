@@ -159,6 +159,17 @@ export function explainPolicy(plan: Plan, result: OptimizeResult, trace?: Decisi
     : `Plan funds through age ${plan.personA.planThroughAge}.`;
   outcomeItems.push(`Result: ${endStr} end balance (today's $) · ${taxStr} lifetime federal tax. ${fundedStr}`);
 
+  if ((result.legacyTargetTaxAdjReal ?? 0) > 0) {
+    const tgt = result.legacyTargetTaxAdjReal!;
+    const achieved = result.achievedLegacyTaxAdjReal ?? result.projection.endTaxAdjustedReal;
+    const met = achieved >= tgt;
+    outcomeItems.push(
+      met
+        ? `Legacy target ${fmtUSD(tgt)} after tax: met (achieved ${fmtUSD(achieved)}).`
+        : `Legacy target ${fmtUSD(tgt)} after tax: not met — best achievable is ${fmtUSD(achieved)}.`
+    );
+  }
+
   // ── 4. Insights section ──────────────────────────────────────────────────────
   const insightItems: string[] = [];
   const ruleInsights = insightsForSurface(generateInsights(plan, result.projection), 'strategy');

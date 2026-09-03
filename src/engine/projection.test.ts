@@ -158,6 +158,82 @@ describe('optimizeStrategy (smoke)', () => {
     expect(r.recommendedAnnualSpend!).toBeCloseTo(baseSum * r.solvedSpendingMultiplier!, 0);
   }, 120_000);
 
+  // ── SWL: max-spending with a legacy target ──────────────────────────────────
+
+  it('legacyTargetTaxAdjReal = 0 is unconstrained (no legacy fields on result)', () => {
+    const plan = { ...defaultPlan(), assumptions: { ...defaultPlan().assumptions, legacyTargetTaxAdjReal: 0 } };
+    const r = optimizeStrategy(plan, 'max-sustainable-spending', { useNelderMead: false });
+    expect(r.legacyTargetTaxAdjReal).toBeUndefined();
+    expect(r.achievedLegacyTaxAdjReal).toBeUndefined();
+    expect(r.ranOut).toBe(false);
+  }, 120_000);
+
+  it('positive legacyTargetTaxAdjReal reduces spend and leaves endTaxAdjustedReal ≥ target', () => {
+    const base = defaultPlan();
+    const unconstrained = optimizeStrategy(base, 'max-sustainable-spending', { useNelderMead: false });
+    const target = 500_000;
+    const constrained = optimizeStrategy(
+      { ...base, assumptions: { ...base.assumptions, legacyTargetTaxAdjReal: target } },
+      'max-sustainable-spending', { useNelderMead: false },
+    );
+    expect(constrained.recommendedAnnualSpend!).toBeLessThan(unconstrained.recommendedAnnualSpend!);
+    expect(constrained.achievedLegacyTaxAdjReal!).toBeGreaterThanOrEqual(target * 0.9999);
+  }, 120_000);
+
+  it('higher legacy target produces non-increasing recommended spend (monotonicity)', () => {
+    const base = defaultPlan();
+    const lo = optimizeStrategy(
+      { ...base, assumptions: { ...base.assumptions, legacyTargetTaxAdjReal: 200_000 } },
+      'max-sustainable-spending', { useNelderMead: false },
+    );
+    const hi = optimizeStrategy(
+      { ...base, assumptions: { ...base.assumptions, legacyTargetTaxAdjReal: 800_000 } },
+      'max-sustainable-spending', { useNelderMead: false },
+    );
+    expect(hi.recommendedAnnualSpend!).toBeLessThanOrEqual(lo.recommendedAnnualSpend! + 1);
+  }, 120_000);
+
+  it('unreachable legacy target reports shortfall headline and does not return unconstrained answer', () => {
+    const base = defaultPlan();
+    const r = optimizeStrategy(
+      { ...base, assumptions: { ...base.assumptions, legacyTargetTaxAdjReal: 100_000_000 } },
+      'max-sustainable-spending', { useNelderMead: false },
+    );
+    expect(r.headlineLabel).toContain('unreachable');
+    expect(r.headline).toContain('Cannot leave');
+    expect(r.achievedLegacyTaxAdjReal).toBeUndefined();
+  }, 120_000);
+
+  it('tight plan (sustainable < amortAbs × 0.25) returns a real answer, not the 50%-fallback', () => {
+    // The pre-fix downward-halving bug: old code set lo$ = 0.25×amortAbs untested, so the
+    // bisection never searched below that floor. The late-start pension inflates avgExternalReal,
+    // pushing amortAbs well above the portfolio annuity value; the true answer falls below 25%.
+    const base = defaultPlan();
+    const tightPlan: Plan = {
+      ...base,
+      personA: { ...base.personA, dob: '1966-09-03', retirementAge: 60, planThroughAge: 92, ssPIA: 0 },
+      personB: { ...base.personB!, dob: '1970-09-03', retirementAge: 56, planThroughAge: 92, ssPIA: 0 },
+      portfolio: {
+        personA: { ...base.portfolio.personA, taxable: 0, taxableBasis: 0, traditional: 50_000, roth: 0, annualContribution: 0 },
+        personB: { ...base.portfolio.personB!, taxable: 0, taxableBasis: 0, traditional: 0, roth: 0, annualContribution: 0 },
+      },
+      incomeStreams: [
+        { id: 'late-pension', description: 'Late Pension', whose: 'A' as const, type: 'Other' as const,
+          startAge: 90, end: { mode: 'age' as const, age: 92 }, survivorPct: 0,
+          annualAmount: 100_000, growthPct: { mode: 'cpi' as const }, taxablePct: 1, stateTaxablePct: 1 },
+      ],
+      expenseStreams: [
+        { id: 'core', description: 'Core', whose: 'Household' as const,
+          startAge: 60, end: { mode: 'age' as const, age: 92 }, survivorPct: 1,
+          annualAmount: 30_000, inflationPct: { mode: 'cpi' as const } },
+      ],
+      assumptions: { ...base.assumptions, legacyTargetTaxAdjReal: 0 },
+    };
+    const r = optimizeStrategy(tightPlan, 'max-sustainable-spending', { useNelderMead: false });
+    expect(r.headline).not.toContain('depletes even at 50%');
+    expect(r.ranOut).toBe(false);
+  }, 120_000);
+
   it('min-retirement-age returns an age <= the current retirement age', () => {
     const plan = defaultPlan();
     const r = optimizeStrategy(plan, 'min-retirement-age', { useNelderMead: false });

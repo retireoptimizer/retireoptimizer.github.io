@@ -8,6 +8,7 @@ import { householdTotals, resolveGrowthRate } from '../schemas/plan';
 import type { IncomeStream, ExpenseStream, LumpSumEvent, PersonPortfolio, GrowthRate, EndRule } from '../schemas/plan';
 import { computePlanWarnings } from '../engine/planWarnings';
 import { NumberInput } from '../components/inputs/NumberInput';
+import { LegacyTargetInput } from '../components/inputs/LegacyTargetInput';
 import { listStates } from '../engine/stateTax';
 import { fmtM, fmtK, fmtPct, fmtFull } from '../lib/format';
 import { ageChipLabel, exactAgeFromDob, calendarYearAge } from '../lib/ageUtils';
@@ -875,11 +876,30 @@ export default function InputsPage() {
           </div>
           <div className="panel-body" style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <div style={inlineLabelStyle}>Goal</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ ...inlineLabelStyle, paddingTop: 8 }}>Goal</div>
+              <div style={{
+                display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start',
+                // Reserve room for the absolutely-positioned legacy input hanging below the pill.
+                paddingBottom: selectedGoal === 'max-sustainable-spending' ? 38 : 0,
+              }}>
                 {(Object.keys(USER_GOALS) as UserGoal[]).map((key) => {
                   const active = key === selectedGoal;
+                  if (key === 'max-sustainable-spending') {
+                    return (
+                      <div key={key} style={{ position: 'relative' }}>
+                        <button onClick={() => setSelectedGoal(key)} title={USER_GOALS[key].description}
+                          style={inputPillStyle(active)}>
+                          {active && <Chk />}{GOAL_SHORT_LABELS[key]}
+                        </button>
+                        {active && (
+                          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, whiteSpace: 'nowrap' }}>
+                            <LegacyTargetInput />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
                   return (
                     <button key={key} onClick={() => setSelectedGoal(key)} title={USER_GOALS[key].description}
                       style={inputPillStyle(active)}>

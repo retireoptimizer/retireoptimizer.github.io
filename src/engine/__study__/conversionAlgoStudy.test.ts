@@ -123,7 +123,7 @@ function algoRegimeConst(plan: Plan): AlgoResult {
     }));
   };
 
-  let regimeAmounts = new Array(nRegimes).fill(0);
+  const regimeAmounts = new Array(nRegimes).fill(0);
   let bestWindows = buildWindows(regimeAmounts);
   let bestProj = runProjection(plan, { policy: { windows: bestWindows, source: 'manual' } });
   let evals = 1;

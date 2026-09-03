@@ -130,6 +130,7 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           taxableDistributePct: 0,
           taxAdjOrdRate: s.taxAdjOrdRate,
           taxAdjLtcgRate: s.taxAdjLtcgRate,
+          legacyTargetTaxAdjReal: 0,
           tradReturn: s.tradReturn,
           rothReturn: s.rothReturn,
           inflation: s.inflation,

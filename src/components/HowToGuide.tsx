@@ -668,7 +668,7 @@ export function GuideContent() {
       <H3>What would you like to optimize for?</H3>
       <FieldTable rows={[
         ["Max End Balance", "Finds the plan that leaves the largest portfolio at your Plan Through Age. Good if your priority is leaving a legacy, or if you want the maximum safety cushion.", ""],
-        ["Max Sustainable Spending", "Finds the highest annual spending level your plan can support without running dry. Good for understanding your upper spending limit.", ""],
+        ["Max Sustainable Spending", "Finds the highest annual spending level your plan can support without running dry. Optionally set a legacy target (after tax) to constrain spending — the optimizer ensures the ending after-tax balance meets your floor. Good for understanding your upper spending limit and planning for heirs.", ""],
         ["Earliest Retirement Age", "Solves for the soonest you could retire while keeping the plan fully funded. Good for FIRE planning or exploring what is possible if you save more.", ""],
       ]} />
       <P>
@@ -752,7 +752,7 @@ export function GuideContent() {
         withdrawal blend and sizes Roth conversions for you. Two pill rows appear:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li><strong>Goal</strong>: pick what to optimize for: Max End Balance, Max Spending, or Earliest Retire. A ✓ marks the goal the plan was last built for. Selecting a different goal highlights it but does not run the optimizer yet.</li>
+        <li><strong>Goal</strong>: pick what to optimize for: Max End Balance, Max Spending, or Earliest Retire. A ✓ marks the goal the plan was last built for. For Max Spending, you can also set a legacy target (after tax) — the optimizer will limit spending to ensure that floor is met. Selecting a different goal highlights it but does not run the optimizer yet.</li>
         <li><strong>Roth conversions</strong>: five pills let you constrain how the optimizer handles conversions: <em>Optimizer decides</em> (the optimizer searches for the best amount), <em>None</em>, <em>Bracket-Fill</em>, <em>Fixed Amount</em>, or <em>Manual</em>. Picking any conversion pill turns it amber as a "pending" state. The charts do not change yet.</li>
       </ul>
       <P>

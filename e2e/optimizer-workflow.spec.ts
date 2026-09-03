@@ -9,8 +9,6 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { planA_simple } from '../src/engine/__golden/plans';
-import { runProjection } from '../src/engine/projection';
-import { fmtM } from '../src/lib/format';
 
 const STORAGE_KEY = 'fireopt-plan-v1';
 
@@ -143,9 +141,7 @@ test.describe('Optimizer workflow', () => {
 
   // ── Scenario 5 ──────────────────────────────────────────────────────────────
   test('S5: Discard (MSS pending) reverts to plan store projection; banner gone', async ({ page }) => {
-    const fixture = await injectFixture(page);
-    const baseProj = runProjection(fixture);
-    const expectedEndBalance = fmtM(baseProj.endTotalReal);
+    await injectFixture(page);
 
     await page.goto('/inputs');
     await page.getByRole('button', { name: /max end balance/i }).first().click();

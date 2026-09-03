@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Plan } from '../schemas/plan';
 import type { OptimizeResult } from '../engine/optimizer';
 import type { PolicyRationale } from '../engine/explain/optimizerRationale';
-import type { DecisionTrace, Counterfactual, SettingImpact } from '../engine/explain/decisionTrace';
+import type { DecisionTrace, Counterfactual } from '../engine/explain/decisionTrace';
 import type { YearDecision } from '../engine/explain/yearDecisions';
 import { buildDiagnosticsMarkdown, copyDiagnosticsToClipboard } from '../engine/explain/diagnosticsMarkdown';
 import { fmtM, fmtCompactWithSign } from '../lib/format';
@@ -211,37 +211,6 @@ function RateSensitivitySection({ ordRate }: { ordRate: NonNullable<DecisionTrac
   );
 }
 
-function SettingsImpactSection({ settings }: { settings: SettingImpact[] }) {
-  const active = settings.filter((s) => !s.inert);
-  if (active.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Key settings that shaped this plan</div>
-      <div style={{ border: '1px solid var(--border-light)', borderRadius: 8, overflow: 'hidden' }}>
-        {active.map((s, i) => (
-          <div
-            key={s.id}
-            style={{
-              padding: '10px 14px',
-              borderBottom: i < active.length - 1 ? '1px solid var(--border-light)' : 'none',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{s.label}</span>
-              <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", color: 'var(--text-secondary)' }}>{s.value}</span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.5 }}>{s.effect}</div>
-            {s.bestAlternative && (
-              <div style={{ fontSize: 11, color: '#d97706', marginTop: 3, fontWeight: 600 }}>
-                Better result possible: {s.bestAlternative}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const SEVERITY_ORDER: Record<YearDecision['severity'], number> = { warning: 0, caution: 1, info: 2 };
 
@@ -361,15 +330,12 @@ export default function OptimizerRationaleModal({ plan, optimizerResult, rationa
         {/* 4. Terminal rate sensitivity */}
         {trace?.ordRate && <RateSensitivitySection ordRate={trace.ordRate} />}
 
-        {/* 5. Key settings — hidden for now; data preserved in trace.settings */}
-        {/* {trace && trace.settings.length > 0 && <SettingsImpactSection settings={trace.settings} />} */}
-
-        {/* 6. Year-by-year decisions */}
+        {/* 5. Year-by-year decisions */}
         {decisionNotes && decisionNotes.length > 0 && (
           <YearDecisionsSection notes={decisionNotes} onClose={onClose} />
         )}
 
-        {/* 7. Footnotes */}
+        {/* 6. Footnotes */}
         {trace && trace.degraded.length > 0 && (
           <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 10, marginBottom: 16 }}>
             {trace.degraded.map((note, i) => (

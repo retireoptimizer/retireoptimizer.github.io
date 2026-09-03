@@ -180,9 +180,13 @@ export function buildDecisionTrace(plan: Plan, result: OptimizeResult): Decision
   const degraded: string[] = [];
 
   if (goal !== 'max-end-balance') {
+    const legacyNote = (result.legacyTargetTaxAdjReal ?? 0) > 0
+      ? ` The max-spending search was additionally constrained to leave at least $${Math.round(result.legacyTargetTaxAdjReal!).toLocaleString()} after tax.`
+      : '';
     degraded.push(
       "Ledger scores all rows on tax-adjusted end balance (today's $) — the optimizer's inner objective. " +
-      'This plan was optimized for a different goal, so deltas are a proxy metric, not the goal\'s own currency.'
+      'This plan was optimized for a different goal, so deltas are a proxy metric, not the goal\'s own currency.' +
+      legacyNote
     );
   }
 
