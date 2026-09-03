@@ -217,6 +217,7 @@ export interface ProjectionOptions {
 // The stored bracketCeiling is always the filing-status-appropriate bracket top, because
 // the UI dropdowns use FED_BRACKETS_MFJ for MFJ plans and FED_BRACKETS_SINGLE for Single plans.
 // No remapping needed — return the stored value directly.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function effectiveBracketCeiling(storedCeiling: number, _fs: FilingStatus): number {
   return storedCeiling;
 }

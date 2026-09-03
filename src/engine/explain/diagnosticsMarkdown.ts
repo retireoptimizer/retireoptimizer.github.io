@@ -169,7 +169,6 @@ export async function copyDiagnosticsToClipboard(markdown: string): Promise<void
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
     document.execCommand('copy');
     document.body.removeChild(ta);
   }

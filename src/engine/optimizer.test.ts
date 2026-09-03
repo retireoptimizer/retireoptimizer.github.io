@@ -8,9 +8,7 @@ import type { BlendPolicy } from './blendPolicy';
 import { assertProjectionInvariants } from './__invariants__/assertions';
 
 import { FED_BRACKETS_MFJ } from './taxConstants';
-// 12% bracket top (kept for existing tests that reference it).
-const BRACKET_12_TOP = FED_BRACKETS_MFJ[1][0];
-// 24% bracket top — the optimizer's per-year conversion cap (raised from 3 × BRACKET_12_TOP).
+// 24% bracket top — the optimizer's per-year conversion cap.
 const BRACKET_24_TOP = FED_BRACKETS_MFJ[3][0];
 
 /** Deep-clone a plan to keep test cases isolated. */
