@@ -5,10 +5,10 @@ import type { FilingStatus } from './filingStatus';
 export function irmaaMonthlySurcharge(magi: number, inflationFactor: number, filingStatus: FilingStatus): number {
   const tiers = filingStatus === 'MFJ' ? IRMAA_TIERS_MFJ : IRMAA_TIERS_SINGLE;
   for (const tier of tiers) {
-    if (magi < tier.magiTop * inflationFactor) return tier.partB + tier.partD;
+    if (magi < tier.magiTop * inflationFactor) return (tier.partB + tier.partD) * inflationFactor;
   }
   const last = tiers[tiers.length - 1];
-  return last.partB + last.partD;
+  return (last.partB + last.partD) * inflationFactor;
 }
 
 /** Annual IRMAA cost (Part B + Part D) = monthly × 12 × number of spouses on Medicare (age ≥ 65). */
