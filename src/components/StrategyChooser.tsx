@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePlanStore } from '../store/usePlanStore';
+import { LegacyTargetInput } from './inputs/LegacyTargetInput';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { useWhatIfStore } from '../store/useWhatIfStore';
 import { STRATEGIES } from '../engine/strategyPresets';
@@ -354,10 +355,29 @@ export default function StrategyChooser() {
             {approach === 'optimize' && (<>
               {/* Goal row */}
               <div style={{ ...inlineLabelStyle, paddingTop: 9 }}>Goal</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{
+                display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start',
+                // Reserve room for the absolutely-positioned legacy input hanging below the pill.
+                paddingBottom: selectedGoal === 'max-sustainable-spending' ? 38 : 0,
+              }}>
                 {(Object.keys(USER_GOALS) as UserGoal[]).map((key) => {
                   const selected = tabFreshEntry !== 'optimize' && key === selectedGoal;
                   const applied = optimizerDriven && key === activeGoal;
+                  if (key === 'max-sustainable-spending') {
+                    return (
+                      <div key={key} style={{ position: 'relative' }}>
+                        <button onClick={() => { setTabFreshEntry('none'); setSelectedGoal(key); }} title={USER_GOALS[key].description}
+                          style={pillStyle(selected ? 'active' : 'idle')}>
+                          {applied && <Chk />}{GOAL_SHORT_LABELS[key]}
+                        </button>
+                        {selectedGoal === 'max-sustainable-spending' && (
+                          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, whiteSpace: 'nowrap' }}>
+                            <LegacyTargetInput />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
                   return (
                     <button key={key} onClick={() => { setTabFreshEntry('none'); setSelectedGoal(key); }} title={USER_GOALS[key].description}
                       style={pillStyle(selected ? 'active' : 'idle')}>

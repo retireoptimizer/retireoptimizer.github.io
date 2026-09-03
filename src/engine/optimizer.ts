@@ -9,6 +9,7 @@ import { mulberry32, historicalBootstrap } from './returnModels';
 import { FED_BRACKETS_MFJ } from './taxConstants';
 import { federalPovertyLevel } from './aca';
 import { shiftRetirementAge } from './retirementAgeShift';
+import { taxAdjustedValue, taxAdjustedRates } from './taxAdjusted';
 
 const COARSE_STEPS = [0, 0.25, 0.5, 0.75, 1.0];
 const FINE_STEPS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
@@ -66,6 +67,10 @@ export interface OptimizeResult {
    *  handler to detect "already applied" without double-scaling. */
   recommendedAnnualSpend?: number;
   solvedRetirementAge?: number;         // for 'min-retirement-age'
+  /** Legacy floor the max-sustainable-spending run was constrained by (after-tax, today's $). 0 = unconstrained. */
+  legacyTargetTaxAdjReal?: number;
+  /** After-tax end balance the returned policy actually delivers (today's $). */
+  achievedLegacyTaxAdjReal?: number;
 
   // Headline string shown in the UI (e.g. "$112,400/yr · today's $").
   headline: string;
@@ -183,23 +188,6 @@ function rowsToSeed(proj: ProjectionResult, retireAge: number, planToAge: number
   return seed;
 }
 
-/** Like rowsToSeed but also seeds convAmt from the projection's per-year rothConv (converted
- *  to today's $ by dividing by inflationFactor). Used to warm-start the optimizer from a
- *  bracket-fill projection so it can refine both splits and conversion amounts together. */
-function rowsToSeedWithConv(proj: ProjectionResult, retireAge: number, planToAge: number): BlendWindow[] {
-  const seed: BlendWindow[] = [];
-  for (let age = retireAge; age <= planToAge; age++) {
-    const row = proj.rows.find((r) => r.ageA === age);
-    const total = row ? row.wdTrd + row.wdRth + row.wdTax : 0;
-    const convReal = row ? Math.round(row.rothConv / row.inflationFactor) : 0;
-    seed.push(
-      !row || total < 1
-        ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: convReal }
-        : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt: convReal }
-    );
-  }
-  return seed;
-}
 
 /**
  * Inner optimizer. Scoring: max endTaxAdjustedReal (inflation-adjusted, after estimated
@@ -711,7 +699,7 @@ const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
  * Returns both the absolute real dollar amount and the multiplier relative to current expenses.
  * The absolute amount is used when baseSpend = 0 so the bisection has a meaningful base to scale.
  */
-function amortizationSeed(plan: Plan): { absoluteReal: number; multiplier: number } {
+function amortizationSeed(plan: Plan, legacyTaxAdjReal = 0): { absoluteReal: number; multiplier: number } {
   const retireAge = plan.personA.retirementAge;
   const planToAge = householdPlanThroughAgeA(plan);
   const n = Math.max(1, planToAge - retireAge + 1);
@@ -751,8 +739,18 @@ function amortizationSeed(plan: Plan): { absoluteReal: number; multiplier: numbe
 
   // Annuity factor: PV of inflation-adjusted $1/yr at real rate for n years
   const annuityFactor = (1 - Math.pow(1 + realR, -n)) / realR;
-  const portfolioWithdrawalReal = portfolioRealAtRetire / annuityFactor;
-  const absoluteReal = Math.max(1, portfolioWithdrawalReal + avgExternalReal);
+  // Gross-up: how many gross dollars must remain to deliver legacyTaxAdjReal after-tax dollars.
+  // Uses the plan's own haircut rates at current bucket mix — crude but sufficient for a seed.
+  const taxAdjTaxable = p.personA.taxable + (p.personB?.taxable ?? 0);
+  const taxAdjBasis = p.personA.taxableBasis + (p.personB?.taxableBasis ?? 0);
+  const taxAdjTrad = p.personA.traditional + (p.personB?.traditional ?? 0);
+  const taxAdjRoth = p.personA.roth + (p.personB?.roth ?? 0);
+  const { ordRate, ltcgRate } = taxAdjustedRates(plan.assumptions);
+  const taxAdjTotal = taxAdjustedValue(taxAdjTaxable, taxAdjBasis, taxAdjTrad, taxAdjRoth, ordRate, ltcgRate);
+  const grossUp = (totA + totB) / Math.max(1, taxAdjTotal);
+  const reserveGrossToday = legacyTaxAdjReal * grossUp / Math.pow(1 + realR, n);
+  const spendable = Math.max(0, portfolioRealAtRetire - reserveGrossToday);
+  const absoluteReal = Math.max(1, spendable / annuityFactor + avgExternalReal);
 
   const baseSpend = plan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
   const multiplier = baseSpend > 0
@@ -779,7 +777,7 @@ function packageResult(
   inner: InnerEval,
   goal: UserGoal,
   evals: number,
-  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string; conversionBaselinePolicy?: BlendPolicy },
+  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string; conversionBaselinePolicy?: BlendPolicy; legacyTargetTaxAdjReal?: number; achievedLegacyTaxAdjReal?: number },
 ): OptimizeResult {
   const spec = REC_GOALS['max-end'];
   return {
@@ -796,6 +794,8 @@ function packageResult(
     solvedSpendingMultiplier: extras.solvedSpendingMultiplier,
     recommendedAnnualSpend: extras.recommendedAnnualSpend,
     solvedRetirementAge: extras.solvedRetirementAge,
+    legacyTargetTaxAdjReal: extras.legacyTargetTaxAdjReal,
+    achievedLegacyTaxAdjReal: extras.achievedLegacyTaxAdjReal,
     headline: extras.headline,
     headlineLabel: extras.headlineLabel,
   };
@@ -1125,7 +1125,9 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // Cross-goal seed: use customPolicy from a different goal as first-probe fallback.
     // Excluded when customPolicy is from this same goal to prevent feedback-loop drift.
     const baseAnnualSpend = plan.expenseStreams.reduce((sum, e) => sum + e.annualAmount, 0);
-    const { absoluteReal: amortAbs } = amortizationSeed(plan);
+    const legacy = plan.assumptions.legacyTargetTaxAdjReal ?? 0;
+    const { absoluteReal: amortAbs } = amortizationSeed(plan, legacy);
+    const meetsGoal = (e: InnerEval) => !e.ranOut && e.proj.endTaxAdjustedReal >= legacy;
 
     // Bisect over absolute spending dollars so the result is independent of how large
     // or small the plan's current expense streams are. A $1 or $0 base would make
@@ -1153,9 +1155,13 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     const scaleTo = (dollars: number) => scaleExpenses(basePlan, dollars / scaleBase);
 
     let bestFeasible: { dollars: number; inner: InnerEval } | null = null;
+    let bestLegacySeen = { legacyReal: -Infinity, dollars: NaN };
     const tryAtDollars = (dollars: number, label: string): InnerEval => {
       opts.onProgress?.(0, label);
-      return innerOptimize(scaleTo(dollars), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows);
+      const r = innerOptimize(scaleTo(dollars), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows);
+      if (!r.ranOut && r.proj.endTaxAdjustedReal > bestLegacySeen.legacyReal)
+        bestLegacySeen = { legacyReal: r.proj.endTaxAdjustedReal, dollars };
+      return r;
     };
 
     // Amortization seed: screen 3 diverse constant seeds + existing customPolicy (any goal).
@@ -1178,24 +1184,28 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       screened.sort((a, b) => (isBetter(a, b) ? -1 : isBetter(b, a) ? 1 : 0));
       const refined = screened.slice(0, 2).map((s) => innerOptimize(amortPlan, opts, evalCounter, undefined, s.policy.windows));
       const innerSeed = isBetter(refined[0], refined[1]) ? refined[0] : refined[1];
-      if (!innerSeed.ranOut) bestFeasible = { dollars: amortAbs, inner: innerSeed };
+      if (meetsGoal(innerSeed)) bestFeasible = { dollars: amortAbs, inner: innerSeed };
     }
 
     let lo$: number, hi$: number;
     if (!bestFeasible) {
-      // Seed is infeasible — search downward
+      // Seed is infeasible — halving loop mirrors the upward doubling below
       hi$ = amortAbs;
-      lo$ = amortAbs * 0.5;
-      const innerLow = tryAtDollars(lo$, `Testing ${fmtUSD(lo$)}/yr…`);
-      if (!innerLow.ranOut) bestFeasible = { dollars: lo$, inner: innerLow };
-      else lo$ = amortAbs * 0.25;
+      let probe$ = amortAbs * 0.5;
+      for (let i = 0; i < 4; i++) {
+        const innerLow = tryAtDollars(probe$, `Testing ${fmtUSD(probe$)}/yr…`);
+        if (meetsGoal(innerLow)) { bestFeasible = { dollars: probe$, inner: innerLow }; break; }
+        hi$ = probe$;
+        probe$ *= 0.5;
+      }
+      lo$ = bestFeasible?.dollars ?? 0; // 0 = "spend nothing"; bisection promotes only passing probes
     } else {
       // Seed is feasible — expand upward to bracket the infeasible side
       lo$ = amortAbs;
       hi$ = amortAbs * 1.5;
       for (let probe = 0; probe < 4; probe++) {
         const innerHi = tryAtDollars(hi$, `Testing ${fmtUSD(hi$)}/yr…`);
-        if (innerHi.ranOut) break;
+        if (!meetsGoal(innerHi)) break;
         bestFeasible = { dollars: hi$, inner: innerHi };
         lo$ = hi$;
         hi$ = hi$ * 2;
@@ -1208,7 +1218,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       const d = (lo$ + hi$) / 2;
       opts.onProgress?.(i / STEPS, `Refining ${fmtUSD(d)}/yr…`);
       const inner = tryAtDollars(d, `Refining ${fmtUSD(d)}/yr…`);
-      if (!inner.ranOut) { bestFeasible = { dollars: d, inner }; lo$ = d; }
+      if (meetsGoal(inner)) { bestFeasible = { dollars: d, inner }; lo$ = d; }
       else hi$ = d;
     }
     opts.onProgress?.(1, 'Done');
@@ -1216,6 +1226,15 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     if (!bestFeasible) {
       const fallbackDollars = amortAbs * 0.5;
       const inner = innerOptimize(scaleTo(fallbackDollars), opts, evalCounter);
+      if (legacy > 0) {
+        return packageResult(inner, goal, evalCounter.n, {
+          solvedSpendingMultiplier: baseAnnualSpend > 0 ? fallbackDollars / baseAnnualSpend : NaN,
+          recommendedAnnualSpend: fallbackDollars,
+          headline: `Cannot leave ${fmtUSD(legacy)} after tax — best achievable is ${fmtUSD(bestLegacySeen.legacyReal > -Infinity ? bestLegacySeen.legacyReal : 0)}`,
+          headlineLabel: 'Max sustainable spending — legacy target unreachable',
+          legacyTargetTaxAdjReal: legacy,
+        });
+      }
       return packageResult(inner, goal, evalCounter.n, {
         solvedSpendingMultiplier: baseAnnualSpend > 0 ? fallbackDollars / baseAnnualSpend : NaN,
         recommendedAnnualSpend: fallbackDollars,
@@ -1225,13 +1244,20 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     }
     const sustainable = bestFeasible.dollars;
     const solvedMultiplier = baseAnnualSpend > 0 ? sustainable / baseAnnualSpend : NaN;
+    const achieved = bestFeasible.inner.proj.endTaxAdjustedReal;
     return packageResult(bestFeasible.inner, goal, evalCounter.n, {
       solvedSpendingMultiplier: solvedMultiplier,
       recommendedAnnualSpend: sustainable,
-      headline: `${fmtUSD(sustainable)}/yr (today's $)`,
-      headlineLabel: baseAnnualSpend > 0
-        ? `Max sustainable spending — ${(solvedMultiplier * 100).toFixed(0)}% of current plan`
-        : 'Max sustainable spending',
+      headline: legacy > 0
+        ? `${fmtUSD(sustainable)}/yr (today's $) · leaves ${fmtUSD(achieved)} after tax`
+        : `${fmtUSD(sustainable)}/yr (today's $)`,
+      headlineLabel: legacy > 0
+        ? `Max sustainable spending leaving ${fmtUSD(legacy)} after tax (target ${fmtUSD(legacy)})`
+        : baseAnnualSpend > 0
+          ? `Max sustainable spending — ${(solvedMultiplier * 100).toFixed(0)}% of current plan`
+          : 'Max sustainable spending',
+      legacyTargetTaxAdjReal: legacy > 0 ? legacy : undefined,
+      achievedLegacyTaxAdjReal: legacy > 0 ? achieved : undefined,
     });
   }
 
