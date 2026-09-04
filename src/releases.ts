@@ -14,6 +14,20 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.0.0',
+    date: '2026-09-03',
+    summary: 'Set a legacy floor when maximizing spending, year-by-year decision explanations, optimizer rationale summary, and five accuracy fixes including complete Medicare IRMAA costs.',
+    changes: [
+      { kind: 'feature', text: 'Legacy target for Max Spending: when your goal is "Maximize My Spending," you can now set a minimum after-tax amount to leave behind — in today\'s dollars. Retirement Optimizer finds the highest spending level that still meets the target. If the target is out of reach, it tells you the gap and shows the best achievable amount so you can decide whether to adjust.' },
+      { kind: 'feature', text: 'Strategy explainer — two views to understand the plan Retirement Optimizer built. First, a year-by-year breakdown shows why each withdrawal and conversion amount was chosen — which bracket it was filling, what the tax cost was, and how each decision fits the overall plan. Second, an optimizer rationale summary (available after running the optimizer) walks through the overall strategy it chose, including whether a legacy constraint changed the recommended spending level and by how much.' },
+      { kind: 'fix', text: 'Medicare Part D surcharges were missing. Higher-income retirees pay IRMAA surcharges on Part D (prescription drug) coverage, not just Part B. Only Part B was included, understating total Medicare costs for affected households. Both surcharges are now included.' },
+      { kind: 'fix', text: 'Medicare surcharge amounts now adjust for inflation. IRMAA thresholds were already indexed to CPI but the surcharge dollar amounts themselves were not. Both are now adjusted together, so projected Medicare costs in future years are more accurate.' },
+      { kind: 'fix', text: 'Roth conversion amounts corrected when capital gains are taxed at higher-than-zero rates. In those years, the bracket-fill conversion was over-converting by roughly the age-65 standard deduction bonus. The calculation is now correct.' },
+      { kind: 'fix', text: 'Bracket-fill income ceiling was cut in half for single filers. The ceiling that determines how much to convert or withdraw before hitting the next tax bracket was calculated at half the correct value for single filers. Fixed.' },
+      { kind: 'fix', text: 'Date-of-birth chip now shows your exact age, and simulation-year alert wording is clearer.' },
+    ],
+  },
+  {
     version: '1.9.1',
     date: '2026-08-31',
     summary: 'Two defect fixes: manual Roth conversion table now extends through the survivor\'s end age, and the optimizer\'s bracket-fill conversion ceiling is no longer capped by the withdrawal bracket-fill setting.',
