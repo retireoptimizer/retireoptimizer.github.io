@@ -37,3 +37,9 @@ CLAUDE.md
 
 # Personal reference artifacts (research snapshots, prototypes)
 reference/
+
+# Working / scratch documents (not for version control)
+handover.md
+SWL-handover.md
+speed-up.md
+spend-with-legacy.md
