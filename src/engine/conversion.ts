@@ -30,7 +30,10 @@ export function rothConversion(inp: ConversionInputs): number {
 
   if (params.mode === 'bracket-fill') {
     const ceiling = params.bracketCeiling * inflationFactor;
-    const headroom = Math.max(0, ceiling - (baseOrdinaryIncome - stdDeduction));
+    // Floor to the nearest cent: algebraically headroom = ceiling - (base - std) produces
+    // taxableOrdinary = ceiling exactly, but IEEE 754 cancellation can leave a femtocent
+    // residual above the bracket boundary, flipping marginalRate from 24 % → 32 %.
+    const headroom = Math.max(0, Math.floor((ceiling - (baseOrdinaryIncome - stdDeduction)) * 100) / 100);
     return Math.min(traditionalBalance, headroom);
   }
 

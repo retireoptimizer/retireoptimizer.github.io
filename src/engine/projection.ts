@@ -129,13 +129,18 @@ const sumIncomeStreams = (
   yearIndex: number,
   aliveA: boolean,
   aliveB: boolean,
-): { gross: number; taxableAmt: number; exemptInterest: number; nonExempt: number; pensionAmt: number } => {
-  let gross = 0, taxableAmt = 0, exemptInterest = 0, nonExempt = 0, pensionAmt = 0;
+): { gross: number; taxableAmt: number; exemptInterest: number; nonExempt: number; pensionAmt: number; nonExemptSS: number } => {
+  let gross = 0, taxableAmt = 0, exemptInterest = 0, nonExempt = 0, pensionAmt = 0, nonExemptSS = 0;
   for (const { s, w, growthRate } of resolved) {
-    if (s.type === 'SS') continue; // SS handled separately via PIA
     const factor = streamFactor(w, ageA, ageB, aliveA, aliveB);
     if (factor === 0) continue;
     const amount = s.annualAmount * factor * Math.pow(1 + growthRate, yearIndex);
+    if (s.type === 'SS') {
+      // SS gross/federal-taxable handled separately via PIA + §86 provisional-income formula.
+      // Accumulate state-taxable portion here so stateTax() can apply it when ssExempt=false.
+      nonExemptSS += amount * (s.stateTaxablePct ?? 1);
+      continue;
+    }
     const taxablePortion = amount * s.taxablePct;
     gross += amount;
     taxableAmt += taxablePortion;
@@ -155,7 +160,7 @@ const sumIncomeStreams = (
         pensionAmt += taxablePortion * stf; break;
     }
   }
-  return { gross, taxableAmt, exemptInterest, nonExempt, pensionAmt };
+  return { gross, taxableAmt, exemptInterest, nonExempt, pensionAmt, nonExemptSS };
 };
 
 const sumExpenseStreams = (
@@ -597,7 +602,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // For CA/NY: retirement withdrawals + conversions are also taxable.
     // We compute it once per iter pass (after withdrawal sizing) to capture CA/NY retirement-tax dependence.
     const numPersons = (aliveA ? 1 : 0) + (aliveB ? 1 : 0);
-    let stateAmt = stateTax(plan.state, other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + lumpSumHSAIncomeEst, other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate); // initial pass; ltcg unknown until loop iter 1
+    let stateAmt = stateTax(plan.state, other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + lumpSumHSAIncomeEst, other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS); // initial pass; ltcg unknown until loop iter 1
 
     // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
@@ -653,7 +658,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       irmaaMAGIFinal = irmaaMAGI;
       const irmaaFS = i >= 2 ? filingStatusHistory[i - 2] : filingStatus;
       irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGI, inflationFactor, numAt65Plus, irmaaFS) : 0;
-      niit = annualNIIT(magi, ltcg, filingStatus);
+      niit = annualNIIT(magi, ltcg + ordinaryDiv, filingStatus);
 
       // Refine state tax to include retirement distributions for states that tax them.
       // Include stateAmt in the convergence check — for CA/NY plans, state tax is a
@@ -661,7 +666,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // (caught by Layer-1's SPENDING COVERAGE invariant on planG_californiaCouple).
       // ltcg goes into nonExemptOrdinaryIncome so IL (retirementExempt:true) still taxes it —
       // IL exempts retirement distributions but NOT capital gains.
-      stateAmt = stateTax(plan.state, other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcg + lumpSumHSAIncomeEst, wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate);
+      stateAmt = stateTax(plan.state, other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcg + lumpSumHSAIncomeEst, wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS);
 
       // ACA marketplace premium (pre-Medicare years when the user has opted in).
       acaPremiumYear = 0;
@@ -850,7 +855,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         plan.state,
         other.nonExempt + exemptInt * exemptStatePct + ltcgFinal + lumpSumHSAIncome,
         wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDist,
-        numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate,
+        numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS,
       );
     }
 

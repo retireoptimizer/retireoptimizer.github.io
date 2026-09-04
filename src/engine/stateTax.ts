@@ -71,14 +71,16 @@ export function stateTax(
   inflationFactor = 1,
   numOver65 = 0,
   customRate?: number,
+  ssIncome = 0,
 ): number {
   const profile = STATE_PROFILES[state];
   if (!profile) return 0;
   const effectiveRate = state === 'CUSTOM' ? (customRate ?? 0) : profile.effectiveRate;
   if (effectiveRate === 0) return 0;
+  const stateSS = profile.ssExempt ? 0 : ssIncome;
   const grossTaxable = profile.retirementExempt
-    ? Math.max(0, nonExemptOrdinaryIncome)
-    : Math.max(0, nonExemptOrdinaryIncome + retirementDistributions);
+    ? Math.max(0, nonExemptOrdinaryIncome + stateSS)
+    : Math.max(0, nonExemptOrdinaryIncome + stateSS + retirementDistributions);
   const exemption = (
     profile.personalExemptionPerPerson * numPersons +
     profile.over65ExemptionPerPerson * numOver65
