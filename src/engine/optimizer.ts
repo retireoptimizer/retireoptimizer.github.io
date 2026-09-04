@@ -26,6 +26,27 @@ const BRACKET_24_TOP = FED_BRACKETS_MFJ[3][0];
 // Scale for normalising convAmt deltas to the same magnitude as split-fraction deltas (both ≈ [0,1]).
 const CONV_PENALTY_SCALE = BRACKET_24_TOP;
 
+// ─── max-sustainable-spending search tuning ───────────────────────────────────
+// The bisection needs a yes/no feasibility answer per probe, not a polished policy, so
+// probes run screenOnly (coarse+fine grid, no thorough/smoothing/Nelder-Mead) — roughly
+// 4–8× cheaper per probe. Screening can only under-claim: a probe is called feasible only
+// when an actual projection meets the goal, so the returned spend is always achievable.
+// The full optimizer is then re-applied at the boundary (see SWL_GUARD_STEPS).
+/** Bisection stops once the bracket is tighter than max(abs, rel × lo). */
+const SWL_TOL_ABS = 500;
+const SWL_TOL_REL = 0.0025;
+/** Hard cap on bisection steps; the tolerance above normally stops the loop sooner. */
+const SWL_BISECT_STEPS = 14;
+/**
+ * Bounded-loss guard. Screening + the stop tolerance both bias the answer low, by an amount
+ * that isn't bounded by construction. After the bracket closes, the *unmodified* full
+ * optimizer re-probes upward from the screened boundary: first at hi$ (the lowest spend the
+ * screen called infeasible), then in tolerance-sized steps. Each probe is promoted only if a
+ * real projection meets the goal, so the result stays achievable while recovering most of the
+ * screening loss. Each step costs one full innerOptimize.
+ */
+const SWL_GUARD_STEPS = 2;
+
 interface Split { tax: number; trad: number; roth: number; }
 
 const buildSplits = (steps: number[]): Split[] => {
@@ -1156,9 +1177,11 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
 
     let bestFeasible: { dollars: number; inner: InnerEval } | null = null;
     let bestLegacySeen = { legacyReal: -Infinity, dollars: NaN };
-    const tryAtDollars = (dollars: number, label: string): InnerEval => {
+    /** Bracket/bisection probe. screenOnly by default — the loop only needs feasibility,
+     *  and the boundary is re-probed with the full optimizer afterwards. */
+    const tryAtDollars = (dollars: number, label: string, screenOnly = true): InnerEval => {
       opts.onProgress?.(0, label);
-      const r = innerOptimize(scaleTo(dollars), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows);
+      const r = innerOptimize(scaleTo(dollars), opts, evalCounter, undefined, bestFeasible?.inner.policy.windows, screenOnly);
       if (!r.ranOut && r.proj.endTaxAdjustedReal > bestLegacySeen.legacyReal)
         bestLegacySeen = { legacyReal: r.proj.endTaxAdjustedReal, dollars };
       return r;
@@ -1168,6 +1191,8 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // Taking the best of all screens ensures we always reach the highest-quality basin
     // available. Including customPolicy regardless of its goal means each run is
     // monotonically improving — the result can only stay the same or get better.
+    // The winning screen is used as-is (no full refinement here): the seed's only job is to
+    // pick a basin and an opening bracket, and the boundary gets the full optimizer at the end.
     opts.onProgress?.(0, `Testing ${fmtUSD(amortAbs)}/yr (amortization seed)…`);
     {
       const amortPlan = scaleTo(amortAbs);
@@ -1182,8 +1207,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       if (plan.customPolicy?.windows?.length) amortSeeds.push(plan.customPolicy.windows);
       const screened = amortSeeds.map((seed) => innerOptimize(amortPlan, opts, evalCounter, undefined, seed, true));
       screened.sort((a, b) => (isBetter(a, b) ? -1 : isBetter(b, a) ? 1 : 0));
-      const refined = screened.slice(0, 2).map((s) => innerOptimize(amortPlan, opts, evalCounter, undefined, s.policy.windows));
-      const innerSeed = isBetter(refined[0], refined[1]) ? refined[0] : refined[1];
+      const innerSeed = screened[0];
       if (meetsGoal(innerSeed)) bestFeasible = { dollars: amortAbs, inner: innerSeed };
     }
 
@@ -1212,14 +1236,37 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       }
     }
 
-    // Bisection inside [lo$, hi$]
-    const STEPS = 14;
-    for (let i = 0; i < STEPS; i++) {
+    // Bisection inside [lo$, hi$]. lo$ is always a verified-feasible spend, hi$ the lowest
+    // spend seen to fail, so stopping early can only leave the answer low — never overstate it.
+    const tolAt = (x: number) => Math.max(SWL_TOL_ABS, x * SWL_TOL_REL);
+    for (let i = 0; i < SWL_BISECT_STEPS; i++) {
+      if (hi$ - lo$ <= tolAt(lo$)) break;
       const d = (lo$ + hi$) / 2;
-      opts.onProgress?.(i / STEPS, `Refining ${fmtUSD(d)}/yr…`);
+      opts.onProgress?.(i / SWL_BISECT_STEPS, `Refining ${fmtUSD(d)}/yr…`);
       const inner = tryAtDollars(d, `Refining ${fmtUSD(d)}/yr…`);
       if (meetsGoal(inner)) { bestFeasible = { dollars: d, inner }; lo$ = d; }
       else hi$ = d;
+    }
+
+    // Bounded-loss guard — see SWL_GUARD_STEPS. Every probe here runs the full optimizer.
+    if (bestFeasible) {
+      // Polish the winning level first, so the returned policy is fully refined and the
+      // climb probes below are seeded from a full-quality solution. Smoothing can trade a
+      // little end balance for a flatter schedule, so keep the screened policy if the
+      // refinement drops below the legacy floor.
+      opts.onProgress?.(1, `Refining ${fmtUSD(bestFeasible.dollars)}/yr…`);
+      const full = tryAtDollars(bestFeasible.dollars, `Refining ${fmtUSD(bestFeasible.dollars)}/yr…`, false);
+      if (meetsGoal(full)) bestFeasible = { dollars: bestFeasible.dollars, inner: full };
+
+      for (let i = 0; i < SWL_GUARD_STEPS; i++) {
+        // First probe hi$ — the lowest spend the screen rejected. Once that is promoted there
+        // is no known-infeasible bound left, so subsequent probes step up by one tolerance.
+        const d: number = i === 0 && hi$ > bestFeasible.dollars ? hi$ : bestFeasible.dollars + tolAt(bestFeasible.dollars);
+        opts.onProgress?.(1, `Verifying ${fmtUSD(d)}/yr…`);
+        const cand = tryAtDollars(d, `Verifying ${fmtUSD(d)}/yr…`, false);
+        if (!meetsGoal(cand)) break;
+        bestFeasible = { dollars: d, inner: cand };
+      }
     }
     opts.onProgress?.(1, 'Done');
 
