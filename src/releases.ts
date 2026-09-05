@@ -14,6 +14,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.0.1',
+    date: '2026-09-04',
+    summary: 'Three accuracy fixes from the tax-calculation audit: correct marginal rate display when bracket-fill conversions hit the ceiling exactly, Social Security state-tax inclusion, and ordinary dividends now counted in the NIIT base.',
+    changes: [
+      { kind: 'fix', text: 'Marginal rate no longer jumps to 32% when a bracket-fill conversion fills the 24% bracket exactly. IEEE 754 rounding left a sub-cent residual above the 24%/32% boundary, causing the TaxDrag chart to display 32% for every year with active conversions. The actual tax owed was always correct; only the displayed marginal rate was wrong.' },
+      { kind: 'fix', text: 'Social Security income is now included in the state tax base when a per-stream State Taxable % is set. Two layers of dead code caused SS to be silently excluded regardless of that setting — the Custom state profile\'s "applied to all income including SS" note was not being honored. Plans using a custom flat-rate state with SS income will see corrected (higher) state tax in projection years where SS is taxable.' },
+      { kind: 'fix', text: 'Ordinary dividends are now included in the Net Investment Income Tax base alongside qualified dividends and LTCG. IRC §1411 requires this; the prior calculation used only LTCG as a proxy. Impact is proportional to the ordinary-dividend yield on taxable balances — roughly $380/year per $10K of ordinary dividends for NIIT-exposed plans.' },
+    ],
+  },
+  {
     version: '2.0.0',
     date: '2026-09-03',
     summary: 'Set a legacy floor when maximizing spending, year-by-year decision explanations, optimizer rationale summary, and five accuracy fixes including complete Medicare IRMAA costs.',
