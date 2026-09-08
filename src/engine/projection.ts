@@ -129,9 +129,13 @@ const sumIncomeStreams = (
   yearIndex: number,
   aliveA: boolean,
   aliveB: boolean,
+  retiredA = true,
+  retiredB = true,
 ): { gross: number; taxableAmt: number; exemptInterest: number; nonExempt: number; pensionAmt: number; nonExemptSS: number } => {
   let gross = 0, taxableAmt = 0, exemptInterest = 0, nonExempt = 0, pensionAmt = 0, nonExemptSS = 0;
   for (const { s, w, growthRate } of resolved) {
+    const eligible = s.whose === 'A' ? retiredA : s.whose === 'B' ? retiredB : (retiredA || retiredB);
+    if (!eligible) continue;
     const factor = streamFactor(w, ageA, ageB, aliveA, aliveB);
     if (factor === 0) continue;
     const amount = s.annualAmount * factor * Math.pow(1 + growthRate, yearIndex);
@@ -366,8 +370,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       planThroughAgeB: passingBInAFrame,
     });
 
-    // Other income streams
-    const other = sumIncomeStreams(rIncome, ageA, ageB, i, aliveA, aliveB);
+    // Other income streams — gated by retirement, same as expenses
+    const other = sumIncomeStreams(rIncome, ageA, ageB, i, aliveA, aliveB, retiredA, retiredB);
 
     // Expenses start when either person retires (semi-retirement or full retirement).
     // Per-whose gate inside sumExpenseStreams: A-tagged on retiredA, B-tagged on retiredB,

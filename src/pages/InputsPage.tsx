@@ -591,7 +591,7 @@ export default function InputsPage() {
                         <option value="VA">VA / Disability</option>
                         <option value="Other">Other</option>
                       </select>
-                      <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.round(v) })} />
+                      <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateIncomeStream(s.id, { startAge: Math.max(Math.round(v), minStartAge(s.whose)) })} />
                       {lockedSS
                         ? <span style={{ fontSize: 12, color: 'var(--text-muted)', paddingLeft: 2 }} title="SS never stops — survivor benefit is built-in">Last survivor</span>
                         : <EndRuleControl end={s.end} startAge={s.startAge} onChange={(end) => updateIncomeStream(s.id, { end })} />
@@ -684,7 +684,7 @@ export default function InputsPage() {
                     <option value="A">{nameA}</option>
                     {B && <option value="B">{nameB}</option>}
                   </select>
-                  <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.round(v) })} />
+                  <NumberInput value={s.startAge} digits={0} min={minStartAge(s.whose)} max={110} style={{ fontSize: 13 }} onCommit={(v) => updateExpenseStream(s.id, { startAge: Math.max(Math.round(v), minStartAge(s.whose)) })} />
                   <EndRuleControl end={s.end} startAge={s.startAge} onChange={(end) => updateExpenseStream(s.id, { end })} />
                   <div className="input-prefix-wrap"><span className="input-prefix">$</span>
                     <NumberInput value={s.annualAmount} digits={0} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateExpenseStream(s.id, { annualAmount: Math.round(v) })} />
