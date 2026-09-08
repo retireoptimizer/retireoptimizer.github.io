@@ -1,6 +1,7 @@
 import { usePlanStore } from '../../store/usePlanStore';
 import { NumberInput } from '../inputs/NumberInput';
 import { calendarYearAge } from '../../lib/ageUtils';
+import { householdPlanThroughAgeA } from '../../engine/planInputKey';
 
 /** Per-window withdrawal-blend editor (advanced). Extracted from the pre-refactor
  *  Strategy page; now lives inside the Dashboard "Customize" side sheet. */
@@ -11,7 +12,7 @@ export default function CustomBlendPanel() {
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
   const policy = plan.customPolicy;
   const retireAge = plan.personA.retirementAge;
-  const planThroughAge = plan.personA.planThroughAge;
+  const planThroughAge = householdPlanThroughAgeA(plan);
   const isNominal = displayMode === 'nominal';
   const inflation = plan.assumptions.inflation;
   const currentAgeA = calendarYearAge(plan.personA.dob);
