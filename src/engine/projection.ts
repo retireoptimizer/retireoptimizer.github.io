@@ -368,6 +368,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       yearIndex: i,
       planThroughAgeA: passingA,
       planThroughAgeB: passingBInAFrame,
+      retiredA,
+      retiredB,
     });
 
     // Other income streams — gated by retirement, same as expenses

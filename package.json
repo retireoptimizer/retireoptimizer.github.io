@@ -1,11 +1,12 @@
 {
   "name": "retirement-optimizer",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:singlefile": "tsc -b && vite build --config vite.config.singlefile.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -42,6 +43,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
+    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^4.1.6"
   }
 }

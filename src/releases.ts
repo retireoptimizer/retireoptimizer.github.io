@@ -14,6 +14,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.0.2',
+    date: '2026-09-09',
+    summary: 'Three accuracy fixes: income and Social Security streams are now correctly gated to the retirement phase, and the custom blend window upper age now uses the household horizon for couples.',
+    changes: [
+      { kind: 'fix', text: 'Income streams (pension, dividend, other) no longer appear in pre-retirement years. The retirement-phase gate that already applied to expense streams was missing from income streams — causing pension and other income to show up during the accumulation phase. The gate now applies to each stream based on whose retirement it tracks (Person A, Person B, or either for Household streams). Income and expense stream start ages are also clamped at the point you save the field, so a below-retirement value can never reach the projection engine regardless of how you navigate away.' },
+      { kind: 'fix', text: 'Social Security income is now gated by retirement phase, consistent with income streams. Previously, SS streams could fire during the accumulation phase if the stream\'s start age was reached before retirement. The same per-person gate (A-tagged on Person A\'s retirement, B-tagged on Person B\'s, Household on either) now applies to SS. Survivor-phase SS is unaffected — in the survivor phase both persons were retired, so the gate is always open.' },
+      { kind: 'fix', text: 'Custom blend window upper age now uses the household plan-through age for couples. The blend policy editor was capping the "To age" field against Person A\'s plan-through age only, cutting the blend window short in plans where Person B has a later plan-through age. The cap now matches the value used by the optimizer and projection engine.' },
+    ],
+  },
+  {
     version: '2.0.1',
     date: '2026-09-04',
     summary: 'Three accuracy fixes from the tax-calculation audit: correct marginal rate display when bracket-fill conversions hit the ceiling exactly, Social Security state-tax inclusion, and ordinary dividends now counted in the NIIT base.',

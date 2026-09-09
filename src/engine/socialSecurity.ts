@@ -23,6 +23,11 @@ interface SSInput {
   // deceased person's stream benefit for the survivor-max comparison.
   planThroughAgeA?: number;
   planThroughAgeB?: number; // B's planThroughAge converted to A-frame by caller
+  // Retirement-phase gates — mirrors the gate in sumIncomeStreams so SS streams
+  // don't fire during accumulation phase (same rule: A-tagged on retiredA,
+  // B-tagged on retiredB, Household on retiredA||retiredB).
+  retiredA?: boolean;
+  retiredB?: boolean;
 }
 
 interface SSOutput {
@@ -53,6 +58,8 @@ function ssFromStreams(
   ageA: number,
   yearIndex: number,
   clampAge?: number,
+  retiredA = true,
+  retiredB = true,
 ): number {
   const effectiveAge = clampAge !== undefined ? Math.min(ageA, clampAge) : ageA;
   let total = 0;
@@ -61,6 +68,9 @@ function ssFromStreams(
     // 'Household' SS streams default to person A's age (legacy default-plan shape).
     const matchWhose = s.whose === whose || (whose === 'A' && s.whose === 'Household');
     if (!matchWhose) continue;
+    // Gate by retirement phase — same rule as sumIncomeStreams.
+    const eligible = s.whose === 'A' ? retiredA : s.whose === 'B' ? retiredB : (retiredA || retiredB);
+    if (!eligible) continue;
     // Use A's-frame age (effectiveAge) for the window check — resolveWindow already
     // converted B-frame startAge/stopAge into A-frame when building the ResolvedWindow.
     if (!windowActiveAt(w, effectiveAge)) continue;
@@ -76,12 +86,14 @@ function ssFromStreams(
 export function householdSS(input: SSInput): SSOutput {
   const streams = input.ssStreams ?? [];
   const yi = input.yearIndex ?? 0;
+  const rA = input.retiredA ?? true;
+  const rB = input.retiredB ?? true;
 
   const hasSSStreamA = hasSSStreamFor(streams, 'A');
   const hasSSStreamB = hasSSStreamFor(streams, 'B');
 
   // ssFromStreams uses A-frame ageA for all window checks (resolveWindow converts B-frame→A-frame).
-  const streamA = input.aliveA ? ssFromStreams(streams, 'A', input.ageA, yi) : 0;
+  const streamA = input.aliveA ? ssFromStreams(streams, 'A', input.ageA, yi, undefined, rA, rB) : 0;
   const benefitA = !input.aliveA
     ? 0
     : hasSSStreamA
@@ -90,7 +102,7 @@ export function householdSS(input: SSInput): SSOutput {
 
   const hasB = input.piaB !== undefined && input.claimAgeB !== undefined && input.ageB !== undefined;
   const streamB = hasB && input.aliveB && input.ageB !== undefined
-    ? ssFromStreams(streams, 'B', input.ageA, yi)
+    ? ssFromStreams(streams, 'B', input.ageA, yi, undefined, rA, rB)
     : 0;
   const benefitB = !hasB || !input.aliveB
     ? 0
@@ -105,9 +117,10 @@ export function householdSS(input: SSInput): SSOutput {
 
   // Survivor keeps the larger of the two. Clamp the deceased person's A-frame age to their
   // planThroughAge so the stream window check doesn't zero out the deceased's benefit.
+  // In the survivor phase both persons were retired, so pass true for both gates.
   if (hasB) {
     if (input.aliveA && !input.aliveB) {
-      const bStream = ssFromStreams(streams, 'B', input.ageA, yi, input.planThroughAgeB);
+      const bStream = ssFromStreams(streams, 'B', input.ageA, yi, input.planThroughAgeB, true, true);
       const bAtDeath = hasSSStreamB
         ? bStream
         : annualSSBenefit(input.piaB!, input.claimAgeB!, input.ageB!) * input.inflationFactor;
@@ -115,7 +128,7 @@ export function householdSS(input: SSInput): SSOutput {
       return { ssA: surv, ssB: 0, total: surv };
     }
     if (!input.aliveA && input.aliveB) {
-      const aStream = ssFromStreams(streams, 'A', input.ageA, yi, input.planThroughAgeA);
+      const aStream = ssFromStreams(streams, 'A', input.ageA, yi, input.planThroughAgeA, true, true);
       const aAtDeath = hasSSStreamA
         ? aStream
         : annualSSBenefit(input.piaA, input.claimAgeA, input.ageA) * input.inflationFactor;
