@@ -4,14 +4,14 @@
 
 ### Fixes
 
+**Custom blend window no longer cut short for couples with different end ages**
+The "To age" field in the blend policy editor was capped against Person A's plan-through age only. For couples where Person B has a later plan-through age, this shortened the blend window. The cap now uses the household plan-through age, consistent with the optimizer and projection engine.
+
 **Income streams no longer appear before retirement**
 Pension, dividend, and other income streams were not gated to the retirement phase — pre-retirement years were showing income that shouldn't exist until you retire. The same gate that already applied to expense streams now applies to income streams, keyed to whose retirement it tracks (Person A's, Person B's, or either for Household streams). Income and expense stream start ages are also clamped when you save the field, so a below-retirement value can never reach the projection engine.
 
 **Social Security income now gated by retirement phase**
 Social Security streams could fire during the accumulation phase if the stream's start age was reached before the person retired. The retirement gate now applies to SS streams using the same per-person logic as income streams. The survivor phase is unaffected — both persons were already retired by then.
-
-**Custom blend window no longer cut short for couples with different end ages**
-The "To age" field in the blend policy editor was capped against Person A's plan-through age only. For couples where Person B has a later plan-through age, this shortened the blend window. The cap now uses the household plan-through age, consistent with the optimizer and projection engine.
 
 ---
 
