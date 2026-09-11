@@ -4,6 +4,7 @@ import type { SpillKind } from '../withdrawal';
 export type DecisionCode =
   | 'conv-bracket-headroom'
   | 'conv-trad-cap'
+  | 'conv-optimizer-policy'
   | 'conv-policy-zero'
   | 'conv-with-trad-wd'
   | 'conv-during-rmd'
@@ -31,6 +32,8 @@ export interface YearDecisionContext {
   conv: number;
   /** convAmt was explicitly pinned to 0 (not undefined — undefined releases the path). */
   convPolicyZero: boolean;
+  /** True when a policy window set convAmt explicitly (optimizer or manual schedule), not bracket-fill formula. */
+  convOptimizerSet: boolean;
   headroomNominal: number;
   maxConv: number;
   ceilForConv: number;
@@ -82,6 +85,23 @@ function convTradCap(ctx: YearDecisionContext): YearDecision {
       `but only ${fmtUSD(maxConv)} remained in the pre-tax account, ` +
       `so ${fmtUSD(conv)} was converted.`,
     amounts: { headroomNominal, maxConv, conv },
+  };
+}
+
+function convOptimizerPolicy(ctx: YearDecisionContext): YearDecision {
+  const { ageA, year, conv, headroomNominal, ceilForConv, baseOrdIncome } = ctx;
+  return {
+    year, ageA,
+    code: 'conv-optimizer-policy',
+    severity: 'info',
+    binding: true,
+    text: `Age ${ageA} — the optimizer set the conversion to ${fmtUSD(conv)}, ` +
+      `below the full available bracket room of ${fmtUSD(headroomNominal)} ` +
+      `(${fmtUSD(ceilForConv)} ceiling, ${fmtUSD(baseOrdIncome)} of other ordinary income, ` +
+      `plus the standard and senior deductions). ` +
+      `Converting the full headroom was projected to cost more in taxes over your lifetime ` +
+      `than converting this smaller amount — likely due to future RMDs, IRMAA thresholds, or ACA subsidy limits.`,
+    amounts: { conv, headroomNominal, ceilForConv, baseOrdIncome },
   };
 }
 
@@ -219,9 +239,16 @@ export function buildYearDecisions(ctx: YearDecisionContext): YearDecision[] {
 
   if (ctx.conv > 1) {
     // Exactly one binding conversion-sizing note per year.
-    const bindingConv = ctx.headroomNominal <= ctx.maxConv
+    // Use a $1 epsilon: convBracketHeadroom fires only when conv actually reached the bracket ceiling;
+    // convTradCap only when conv hit the trad balance; otherwise the optimizer chose an intermediate amount.
+    const EPS = 1;
+    const hitHeadroom = ctx.conv >= ctx.headroomNominal - EPS;
+    const hitTradCap  = !hitHeadroom && ctx.conv >= ctx.maxConv - EPS;
+    const bindingConv = hitHeadroom
       ? convBracketHeadroom(ctx)
-      : convTradCap(ctx);
+      : hitTradCap || !ctx.convOptimizerSet
+        ? convTradCap(ctx)
+        : convOptimizerPolicy(ctx);
     notes.push(bindingConv);
 
     // Non-binding pattern callouts (can coexist).

@@ -96,6 +96,7 @@ export interface ProjectionRow {
   endTaxableBasis: number;
   endTaxAdjusted: number;
   ranOut: boolean;          // true from the first year spending could not be funded from the portfolio
+  shortfall: number;        // unfunded spending gap this year (today's $, 0 when plan survives)
 }
 
 export interface ProjectionResult {
@@ -112,6 +113,7 @@ export interface ProjectionResult {
   endTaxAdjustedNominal: number;
   endTaxAdjustedReal: number;
   yearsCovered: number;
+  lifetimeShortfallReal: number;  // cumulative unfunded spending, today's $
   ranOut: boolean;          // true if portfolio hit zero before plan-to age
   overrideEvents: { age: number; reason: string }[];  // bracket-fill ceiling overrides
   decisionNotes: YearDecision[];  // per-year attribution; populated only when opts.explain is true
@@ -270,6 +272,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
   const decisionNotes: YearDecision[] = [];
   let lifetimeFedTax = 0, lifetimeRMD = 0, lifetimeConversion = 0;
   let lifetimeFedTaxReal = 0, lifetimeRMDReal = 0, lifetimeConversionReal = 0;
+  let lifetimeShortfallReal = 0;
   let ranOut = false;
 
   const inheritedState: Array<{ ev: LumpSumEvent; remainingBal: number; injected: boolean }> =
@@ -735,15 +738,21 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const spillWindow = activeWindow
         ? { pctTaxable: activeWindow.pctTaxable, pctTraditional: activeWindow.pctTraditional, pctRoth: activeWindow.pctRoth }
         : undefined;
+      // Use final resolved seniorBonus and ordIncomeFinal for accurate WHY-note display.
+      // headroomNominal was estimated before convergence (uses seniorBonusEst); the final
+      // seniorBonus can differ materially when OBBBA phase-out depends on actual conv size.
+      const baseOrdIncDisplay = ordIncomeFinal - conv;
+      const headroomNominalDisplay = Math.max(0, ceilForConv - (baseOrdIncDisplay - stdD - seniorBonus));
       const notes = buildYearDecisions({
         year: i + 1,
         ageA,
         conv,
         convPolicyZero: policyConv === 0,
-        headroomNominal,
+        convOptimizerSet: policyConv != null,
+        headroomNominal: headroomNominalDisplay,
         maxConv,
         ceilForConv,
-        baseOrdIncome: baseOrdIncForConv,
+        baseOrdIncome: baseOrdIncDisplay,
         tradBalance: maxConv,
         wdTax: wdTax - taxFromBrokFinal,  // show only the withdrawal portion, not the tax-from-brok pull
         wdTrd,
@@ -893,11 +902,12 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // capped at bal, so residuals decay geometrically toward zero but never quite hit it —
     // the old `endTotal <= 0` check failed to fire and the plan appeared to survive forever
     // while silently failing to pay expenses.
-    if (retired && !ranOut) {
-      const fundedFromPortfolio = wdTax + wdTrd + wdRth;
-      const neededFromPortfolio = gap;  // gap is netSpend + taxes - SS - other - RMD
-      if (neededFromPortfolio - fundedFromPortfolio > 1) ranOut = true;
+    let shortfall = 0;
+    if (retired) {
+      shortfall = Math.max(0, gap - (wdTax + wdTrd + wdRth));
+      if (!ranOut && shortfall > 1) ranOut = true;
     }
+    lifetimeShortfallReal += shortfall / inflationFactor;
 
     lifetimeFedTax += fedTax;
     lifetimeFedTaxReal += fedTax / inflationFactor;
@@ -959,6 +969,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       endTaxableBasis: taxableBasis,
       endTaxAdjusted: taxAdjustedValue(taxable, taxableBasis, tradA + tradB, roth, taxAdjRates.ordRate, taxAdjRates.ltcgRate),
       ranOut,
+      shortfall,
     });
   }
 
@@ -991,6 +1002,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     endTaxAdjustedNominal,
     endTaxAdjustedReal,
     yearsCovered: rows.length,
+    lifetimeShortfallReal,
     ranOut,
     overrideEvents,
     decisionNotes,
