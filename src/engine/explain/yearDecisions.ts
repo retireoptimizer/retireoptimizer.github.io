@@ -89,19 +89,20 @@ function convTradCap(ctx: YearDecisionContext): YearDecision {
 }
 
 function convOptimizerPolicy(ctx: YearDecisionContext): YearDecision {
-  const { ageA, year, conv } = ctx;
+  const { ageA, year, conv, headroomNominal } = ctx;
+  const unused = Math.max(0, headroomNominal - conv);
   return {
     year, ageA,
     code: 'conv-optimizer-policy',
     severity: 'info',
     binding: true,
-    text: `Age ${ageA} — the optimizer set this year's conversion to ${fmtUSD(conv)}. ` +
-      `More bracket room was available, but the multi-year model determined that converting more here ` +
-      `would reduce projected after-tax wealth. ` +
+    text: `Age ${ageA} — the optimizer set this year's conversion to ${fmtUSD(conv)}, ` +
+      `leaving ${fmtUSD(unused)} of the ${fmtUSD(headroomNominal)} available below the bracket ceiling unused. ` +
+      `The multi-year model determined that converting more here would reduce projected after-tax wealth. ` +
       `The optimizer evaluates all years simultaneously — the trade-off is driven by future-year tax ` +
       `interactions (RMD pressure, IRMAA tiers, bracket shifts after one spouse passes) ` +
       `that are not visible in this row alone.`,
-    amounts: { conv },
+    amounts: { conv, headroomNominal, unused },
   };
 }
 
