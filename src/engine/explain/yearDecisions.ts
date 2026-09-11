@@ -97,7 +97,7 @@ function convOptimizerPolicy(ctx: YearDecisionContext): YearDecision {
     severity: 'info',
     binding: true,
     text: `Age ${ageA} — the optimizer set this year's conversion to ${fmtUSD(conv)}, ` +
-      `leaving ${fmtUSD(unused)} of the ${fmtUSD(headroomNominal)} available below the bracket ceiling unused. ` +
+      `leaving ${fmtUSD(unused)} of the ${fmtUSD(headroomNominal)} available below the next bracket ceiling unused. ` +
       `The multi-year model determined that converting more here would reduce projected after-tax wealth. ` +
       `The optimizer evaluates all years simultaneously — the trade-off is driven by future-year tax ` +
       `interactions (RMD pressure, IRMAA tiers, bracket shifts after one spouse passes) ` +
