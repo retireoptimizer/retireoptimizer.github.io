@@ -89,19 +89,19 @@ function convTradCap(ctx: YearDecisionContext): YearDecision {
 }
 
 function convOptimizerPolicy(ctx: YearDecisionContext): YearDecision {
-  const { ageA, year, conv, headroomNominal, ceilForConv, baseOrdIncome } = ctx;
+  const { ageA, year, conv } = ctx;
   return {
     year, ageA,
     code: 'conv-optimizer-policy',
     severity: 'info',
     binding: true,
-    text: `Age ${ageA} — the optimizer set the conversion to ${fmtUSD(conv)}, ` +
-      `below the full available bracket room of ${fmtUSD(headroomNominal)} ` +
-      `(${fmtUSD(ceilForConv)} ceiling, ${fmtUSD(baseOrdIncome)} of other ordinary income, ` +
-      `plus the standard and senior deductions). ` +
-      `Converting the full headroom was projected to cost more in taxes over your lifetime ` +
-      `than converting this smaller amount — likely due to future RMDs, IRMAA thresholds, or ACA subsidy limits.`,
-    amounts: { conv, headroomNominal, ceilForConv, baseOrdIncome },
+    text: `Age ${ageA} — the optimizer set this year's conversion to ${fmtUSD(conv)}. ` +
+      `More bracket room was available, but the multi-year model determined that converting more here ` +
+      `would reduce projected after-tax wealth. ` +
+      `The optimizer evaluates all years simultaneously — the trade-off is driven by future-year tax ` +
+      `interactions (RMD pressure, IRMAA tiers, bracket shifts after one spouse passes) ` +
+      `that are not visible in this row alone.`,
+    amounts: { conv },
   };
 }
 
