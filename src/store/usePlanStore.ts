@@ -108,12 +108,20 @@ export const usePlanStore = create<PlanState>()(
         plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.map(x => x.id === id ? { ...x, ...patch } : x), solvedSpendingMultiplier: undefined },
       })),
       removeExpenseStream: (id) => set((s) => ({ plan: { ...s.plan, expenseStreams: s.plan.expenseStreams.filter(x => x.id !== id), solvedSpendingMultiplier: undefined } })),
-      setWithdrawalStrategy: (withdrawalStrategy) => set((s) => ({
-        plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined },
-      })),
+      setWithdrawalStrategy: (withdrawalStrategy) => set((s) => {
+        if (s.plan.customPolicy?.source === 'optimizer') {
+          useToastStore.getState().show('info', 'Optimizer strategy cleared — re-run the optimizer to restore it.');
+        }
+        return { plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
+      }),
       setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } })),
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
-      clearCustomPolicy: () => set((s) => ({ plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined } })),
+      clearCustomPolicy: () => set((s) => {
+        if (s.plan.customPolicy?.source === 'optimizer') {
+          useToastStore.getState().show('info', 'Optimizer strategy cleared — re-run the optimizer to restore it.');
+        }
+        return { plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
+      }),
       // Editing conversion settings invalidates an optimizer-authored withdrawal ordering, which was
       // co-optimized against the old conversion schedule. Discard it (revert to the preset) and tell
       // the user to re-run — otherwise the projection silently runs on a withdrawal plan they never
@@ -121,7 +129,7 @@ export const usePlanStore = create<PlanState>()(
       setConversion: (patch) => set((s) => {
         if (s.plan.customPolicy?.source === 'optimizer') {
           useToastStore.getState().show('info', 'Withdrawal ordering reset — re-run the optimizer to co-optimize withdrawals and conversions.');
-          return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch }, customPolicy: undefined, conversionBaselinePolicy: undefined } };
+          return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch }, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
         }
         return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } };
       }),

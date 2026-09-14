@@ -49,6 +49,13 @@ export const toReal = (nominal: number, inflationFactor: number): number => {
   return nominal / inflationFactor;
 };
 
+/** Signed percentage-points delta: '+3 pts' / '-1.5 pts' / '0 pts'. */
+export const fmtPtsWithSign = (d: number, digits = 0): string => {
+  if (!isFinite(d)) return '—';
+  const pts = d * 100;
+  return `${pts > 0 ? '+' : pts < 0 ? '-' : ''}${Math.abs(pts).toFixed(digits)} pts`;
+};
+
 /** Format a number string with grouping commas while preserving trailing decimals.
  *  Used by NumberInput for live-while-typing display. Returns the input unchanged
  *  if it's not a parseable number, so the user's intermediate text isn't disturbed. */

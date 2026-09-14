@@ -10,6 +10,8 @@ export interface OptimizeWorkerOptions {
   useNelderMead?: boolean;
   thorough?: boolean;
   mcAware?: boolean;
+  equityPct?: number;
+  mcPosture?: 'floor' | 'balanced' | 'growth';
 }
 
 export interface EngineWorkerAPI {
@@ -36,6 +38,8 @@ const api: EngineWorkerAPI = {
       useNelderMead: options?.useNelderMead,
       thorough: options?.thorough,
       mcAware: options?.mcAware,
+      equityPct: options?.equityPct,
+      mcPosture: options?.mcPosture,
       onProgress: onProgress ? (frac, msg) => onProgress(frac, msg) : undefined,
     });
   },

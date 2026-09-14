@@ -9,7 +9,7 @@ export interface MonteCarloOptions {
   trials?: number;       // default 500
   model?: ReturnModel;   // default 'historical'
   equityPct?: number;    // default plan.assumptions.equityPct (0..1)
-  blockYears?: number;   // historical bootstrap block length, default 7
+  blockYears?: number;   // historical bootstrap block length, default 3
   meanReturn?: number;   // parametric arithmetic mean; default plan.postRetReturn
   stdDev?: number;       // parametric std dev; default 0.10
   seed?: number;         // optional deterministic seed

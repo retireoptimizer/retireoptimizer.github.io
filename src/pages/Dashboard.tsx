@@ -1,9 +1,8 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
-import { useWhatIfStore } from '../store/useWhatIfStore';
-import { planInputKey } from '../engine/planInputKey';
 import { fmtM, fmtCompactWithSign } from '../lib/format';
+import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
 import WhatIfBar from '../components/WhatIfBar';
 import ScenarioCompare from '../components/ScenarioCompare';
 import StrategyChooser from '../components/StrategyChooser';
@@ -22,17 +21,14 @@ import OptimizerRationaleModal from '../components/OptimizerRationaleModal';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import type { Plan } from '../schemas/plan';
-
-const GOAL_LABELS: Record<string, string> = {
-  'max-end-balance': 'Max End Balance',
-  'max-sustainable-spending': 'Max Spending',
-  'min-retirement-age': 'Earliest Retire',
-};
+import OptimizerBadge from '../components/OptimizerBadge';
+import { GOAL_LABELS } from '../engine/goalLabels';
+import { useOptimizerApplied } from '../hooks/useOptimizerApplied';
 
 export default function Dashboard() {
   const plan = usePlanStore((s) => s.plan);
-  const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const displayMode = usePlanStore((s) => s.displayMode);
+  const applyOptimizerPlan = useApplyOptimizerPlan();
   const real = displayMode === 'real';
   const addScenario = usePlanStore((s) => s.addScenario);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -44,7 +40,6 @@ export default function Dashboard() {
   const pendingGoal = useOptimizerStore((s) => s.pendingGoal);
   const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
   const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
-  const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
   const setResult = useOptimizerStore((s) => s.setResult);
   const proj = useProjection(pendingPlan ?? undefined);
 
@@ -115,16 +110,11 @@ export default function Dashboard() {
   const defaultYearIdx = Math.max(0, proj.rows.findIndex((r) => r.ageA === (initialRow?.ageA ?? A.retirementAge)));
   const [yearIdx, setYearIdx] = useState<number>(defaultYearIdx);
   const yearRow = proj.rows[Math.min(yearIdx, proj.rows.length - 1)] ?? proj.rows[0];
-
-  const resetWhatIf = useWhatIfStore((s) => s.reset);
+  const optimizerAppliedState = useOptimizerApplied();
 
   const handleApply = () => {
     if (!pendingPlan) return;
-    applyOptimizerResult(pendingPlan);
-    setPlanKey(planInputKey(pendingPlan));
-    setPendingPlan(null);
-    setPendingGoal(null);
-    resetWhatIf();
+    applyOptimizerPlan(pendingPlan);
   };
 
   const handleDiscard = () => {
@@ -220,6 +210,7 @@ export default function Dashboard() {
             <span className={`badge ${planLasts ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: 11, padding: '4px 10px' }}>
               {planLasts ? `✓ Fully Funded · ${retirementYears} yrs` : `⚠ Funded through Age ${longevityAge} · ${yearsFunded}/${retirementYears} yrs`}
             </span>
+            <OptimizerBadge state={optimizerAppliedState} style={{ fontSize: 11, padding: '4px 10px' }} />
             {optimizerResult && (
               <button
                 onClick={() => !reoptimizing && setRationaleOpen(true)}

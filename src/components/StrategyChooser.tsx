@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { usePlanStore } from '../store/usePlanStore';
 import { LegacyTargetInput } from './inputs/LegacyTargetInput';
 import { useOptimizerStore } from '../store/useOptimizerStore';
-import { useWhatIfStore } from '../store/useWhatIfStore';
 import { STRATEGIES } from '../engine/strategyPresets';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
 import type { ConversionParams } from '../schemas/plan';
@@ -11,12 +10,8 @@ import { getEngineWorker } from '../engine/workerClient';
 import StrategyCustomizeSheet from './strategy/StrategyCustomizeSheet';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../engine/taxConstants';
 import { planInputKey } from '../engine/planInputKey';
-
-const GOAL_SHORT_LABELS: Record<UserGoal, string> = {
-  'max-end-balance': 'Max End Balance',
-  'max-sustainable-spending': 'Max Spending',
-  'min-retirement-age': 'Earliest Retire',
-};
+import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
+import { GOAL_LABELS as GOAL_SHORT_LABELS } from '../engine/goalLabels';
 
 type ConvMode = ConversionParams['mode'];
 const CONV_LABELS: Record<ConvMode, string> = {
@@ -71,15 +66,13 @@ export default function StrategyChooser() {
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
   const setConversion = usePlanStore((s) => s.setConversion);
   const setPayTaxFromBrokerage = usePlanStore((s) => s.setPayTaxFromBrokerage);
-  const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const optimizedPlanKey = useOptimizerStore((s) => s.planKey);
   const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
   const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
   const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
   const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
-
-  const resetWhatIf = useWhatIfStore((s) => s.reset);
+  const applyOptimizerPlan = useApplyOptimizerPlan();
 
   const [sheetMode, setSheetMode] = useState<null | 'blend' | 'conversion' | 'chart'>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -175,12 +168,7 @@ export default function StrategyChooser() {
         setPendingPlan(appliedPlan);
         setPendingGoal(goalToUse);
       } else {
-        applyOptimizerResult(appliedPlan);
-        setPendingPlan(null);
-        setPendingGoal(null);
-        // Clear any what-if overrides so the dashboard reflects the optimizer's actual inputs,
-        // not stale slider positions from a prior what-if session.
-        resetWhatIf();
+        applyOptimizerPlan(appliedPlan);
       }
     } catch (err) {
       console.error('[StrategyChooser] Re-optimize failed:', err);

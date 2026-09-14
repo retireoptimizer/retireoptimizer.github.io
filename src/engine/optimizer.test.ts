@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection, effectiveBracketCeiling } from './projection';
 import { optimizeStrategy } from './optimizer';
+import { planP_tightPlan } from './__golden/plans';
 import { runMonteCarlo } from './monteCarlo';
 import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { Plan } from '../schemas/plan';
@@ -351,4 +352,39 @@ describe('Tax-adjusted balance objective', () => {
       expect(proj.endTaxAdjustedReal).toBeLessThan(proj.endTotalReal);
     }
   });
+});
+
+describe('MC-aware optimizer (P2)', () => {
+  it('seed-reproducibility: same mcSeed produces identical policy and projection', () => {
+    // Two optimizeStrategy calls with the same mcSeed must return byte-identical policies.
+    // Verifies that the MC path generation is deterministic and the accept gate is pure.
+    const plan = planP_tightPlan();
+    const opts = { useNelderMead: true, thorough: false, mcAware: true, mcSeed: 99999 };
+    const r1 = optimizeStrategy(plan, 'max-end-balance', opts);
+    const r2 = optimizeStrategy(plan, 'max-end-balance', opts);
+    expect(JSON.stringify(r1.perYearPolicy.windows)).toBe(JSON.stringify(r2.perYearPolicy.windows));
+    expect(r1.projection.endTaxAdjustedReal).toBeCloseTo(r2.projection.endTaxAdjustedReal, 0);
+  }, 300_000);
+
+  it('MC-aware optimization improves or maintains 500-path success rate on planP_tightPlan (balanced)', () => {
+    const plan = planP_tightPlan();
+    const seed = 77777;
+    const equityPct = 0.6;
+
+    const detResult = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: true, thorough: false });
+    const detMC = runMonteCarlo(plan, { trials: 500, seed, model: 'historical', equityPct });
+    // Apply deterministic policy to plan
+    const detPlan = { ...plan, customPolicy: { ...detResult.perYearPolicy, source: 'optimizer' as const } };
+    const detSR = runMonteCarlo(detPlan, { trials: 500, seed, model: 'historical', equityPct }).successRate;
+
+    const mcResult = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: true, thorough: false, mcAware: true, mcSeed: seed, mcPosture: 'balanced' });
+    void detMC;
+    const mcPlan = { ...plan, customPolicy: { ...mcResult.perYearPolicy, source: 'optimizer' as const } };
+    const mcSR = runMonteCarlo(mcPlan, { trials: 500, seed, model: 'historical', equityPct }).successRate;
+
+    expect(
+      mcSR,
+      `MC-aware success rate ${(mcSR * 100).toFixed(1)}% should be ≥ deterministic ${(detSR * 100).toFixed(1)}% on planP`
+    ).toBeGreaterThanOrEqual(detSR - 0.02);  // allow 2 pts noise from path randomness
+  }, 600_000);
 });

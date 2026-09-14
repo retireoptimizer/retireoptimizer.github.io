@@ -3,6 +3,14 @@ import type { OptimizeResult } from '../engine/optimizer';
 import type { UserGoal } from '../engine/recommender';
 import type { Plan } from '../schemas/plan';
 
+export interface RobustComparison {
+  before: number;
+  after: number;
+  trials: number;
+  equityPct: number;
+  seed: number;
+}
+
 /** Ephemeral store for optimizer state. Non-persisted — resets on reload. */
 interface OptimizerState {
   result: OptimizeResult | null;
@@ -17,6 +25,12 @@ interface OptimizerState {
   /** Which goal produced the current pendingPlan. */
   pendingGoal: UserGoal | null;
   setPendingGoal: (goal: UserGoal | null) => void;
+  /** MC robustness-optimized plan preview. Survives navigation; discarded on Apply/Discard. */
+  robustnessPlan: Plan | null;
+  setRobustnessPlan: (plan: Plan | null) => void;
+  /** Before/after success-rate comparison from the most recent Optimize for Robustness run. */
+  robustnessComparison: RobustComparison | null;
+  setRobustnessComparison: (c: RobustComparison | null) => void;
 }
 
 export const useOptimizerStore = create<OptimizerState>()((set) => ({
@@ -28,4 +42,8 @@ export const useOptimizerStore = create<OptimizerState>()((set) => ({
   setPendingPlan: (pendingPlan) => set({ pendingPlan }),
   pendingGoal: null,
   setPendingGoal: (pendingGoal) => set({ pendingGoal }),
+  robustnessPlan: null,
+  setRobustnessPlan: (robustnessPlan) => set({ robustnessPlan }),
+  robustnessComparison: null,
+  setRobustnessComparison: (robustnessComparison) => set({ robustnessComparison }),
 }));

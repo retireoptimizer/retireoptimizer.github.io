@@ -11,6 +11,27 @@ import { federalPovertyLevel } from './aca';
 import { shiftRetirementAge } from './retirementAgeShift';
 import { taxAdjustedValue, taxAdjustedRates } from './taxAdjusted';
 
+interface Posture { failYears: number; tailWeight: number; }
+const POSTURES: Record<string, Posture> = {
+  floor:    { failYears: 15, tailWeight: 0.75 },
+  balanced: { failYears: 10, tailWeight: 0.50 },
+  growth:   { failYears:  5, tailWeight: 0.25 },
+};
+
+const MC_PATH_YEARS = 100;
+const MC_PATHS_DEFAULT = 32;
+
+interface McContext {
+  paths: Array<{ returns: number[]; inflations: number[] }>;
+  seed: number;
+  equityPct: number;
+  posture: Posture;
+}
+
+interface InternalOptions extends OptimizeOptions {
+  mcCtx?: McContext;
+}
+
 const COARSE_STEPS = [0, 0.25, 0.5, 0.75, 1.0];
 const FINE_STEPS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 const CONV_COARSE = [0, 0.25, 0.5, 0.75, 1.0];
@@ -111,6 +132,14 @@ export interface OptimizeOptions {
    *  across real return sequences rather than the assumed mean return. Requires useNelderMead.
    *  Adds ~15× cost to the NM phase; partially offset by fewer NM iters per year (~60–90s). */
   mcAware?: boolean;
+  /** Equity fraction (0–1) for MC bootstrap paths. Defaults to plan.assumptions.equityPct ?? 0.6. */
+  equityPct?: number;
+  /** Risk posture for mcAware objective. Governs failYears and CVaR tail weight.
+   *  'floor' = protect the floor (high tail weight), 'growth' = favor growth (low tail weight).
+   *  Defaults to 'balanced'. */
+  mcPosture?: 'floor' | 'balanced' | 'growth';
+  /** Fixed seed for MC path generation. Default: random per call. For testing/reproducibility. */
+  mcSeed?: number;
   /** Progress callback (0..1). Called from outer + inner loops. Worker uses this. */
   onProgress?: (frac: number, message?: string) => void;
 }
@@ -223,7 +252,7 @@ function rowsToSeed(proj: ProjectionResult, retireAge: number, planToAge: number
  */
 function innerOptimize(
   plan: Plan,
-  opts: OptimizeOptions,
+  opts: InternalOptions,
   evalCounter: { n: number },
   outerProgress?: () => void,
   seedWindows?: BlendWindow[],
@@ -562,129 +591,154 @@ function innerOptimize(
   }
 
   if (opts.useNelderMead) {
-    // MC path pre-generation for mcAware mode.
-    // 15 paths, seed=42 (same default as runMonteCarlo), so the NM objective
-    // is aligned with what the Monte Carlo page displays.
-    type MCPath = { returns: number[]; inflations: number[] };
-    let mcPaths: MCPath[] | null = null;
-    if (opts.mcAware) {
-      const rand = mulberry32(42);
-      const equityPct = plan.assumptions.equityPct;
-      const nYears = bestProj.rows.length;
-      mcPaths = Array.from({ length: 15 }, () =>
-        historicalBootstrap(rand, equityPct, nYears, 3)
-      );
-    }
+    const mcCtx = opts.mcCtx ?? null;
 
-    // NM objective: single deterministic score (standard) or 15-path MC average (mcAware).
-    // Returns value to minimise; depletion ⇒ 1e15 penalty.
-    const nmObj = (windows: BlendWindow[]): number => {
+    // CVaR-based utility for MC paths. Saturating penalty avoids the 1e15 flat landscape
+    // that causes Nelder-Mead to exit on iteration 0 for marginal plans.
+    // annualSpendReal: first full retirement year's net spend in today's $.
+    const retireRow = bestProj.rows.find(r => r.phase === 'Retire' || r.phase === 'Survivor');
+    const annualSpendReal = retireRow ? retireRow.netSpend / retireRow.inflationFactor : 0;
+
+    const pathUtility = (proj: ProjectionResult): number => {
+      if (!mcCtx) return 0;
+      const spend = Math.max(1, annualSpendReal);
+      const failCap = mcCtx.posture.failYears * spend;
+      const s = proj.lifetimeShortfallReal;
+      return s > 0
+        ? -failCap * (s / (s + spend))  // saturating, bounded at -failCap
+        : proj.endTaxAdjustedReal;
+    };
+
+    const aggregateMC = (us: number[]): number => {
+      if (!mcCtx || us.length === 0) return 0;
+      const mean = us.reduce((a, b) => a + b, 0) / us.length;
+      const k = Math.max(1, Math.ceil(0.25 * us.length));
+      const worst = [...us].sort((a, b) => a - b).slice(0, k);
+      return (1 - mcCtx.posture.tailWeight) * mean
+           + mcCtx.posture.tailWeight * (worst.reduce((a, b) => a + b, 0) / k);
+    };
+
+    // NM objective: deterministic (mcCtx absent) or CVaR-based (mcCtx present).
+    // Returns value to minimise. Deterministic mode keeps 1e15 for depletion.
+    // MC mode: no 1e15 — the saturating penalty makes the landscape continuous.
+    const nmObj = (windows: BlendWindow[], nPaths = 0): number => {
       const policy: BlendPolicy = { windows, source: 'optimizer' };
-      if (!mcPaths) {
+      if (!mcCtx) {
         const proj = runProjection(plan, { policy });
         evalCounter.n++;
         return proj.ranOut ? 1e15 : -spec.score(proj);
       }
-      let sum = 0;
-      let anyRanOut = false;
-      for (const path of mcPaths) {
+      const paths = mcCtx.paths.slice(0, nPaths);
+      const us = paths.map(path => {
         const proj = runProjection(plan, {
           policy,
           returnOverrides: path.returns,
           inflationOverrides: path.inflations,
         });
         evalCounter.n++;
-        if (proj.ranOut) anyRanOut = true;
-        else sum += spec.score(proj);
-      }
-      return anyRanOut ? 1e15 : -(sum / mcPaths.length);
+        return pathUtility(proj);
+      });
+      return -aggregateMC(us);
     };
 
-    // Fewer NM iters in mcAware mode — each eval costs ~15×.
-    const nA = opts.mcAware ? 15 : 40;
-    const nB = opts.mcAware ? 10 : 30;
-    const nC = opts.mcAware ? 8 : 20;
+    // Iter counts: deterministic uses larger budgets; MC uses smaller since each
+    // eval costs 8–32× more. Path counts are tiered (prefixes of a shared list)
+    // so common random numbers reduce variance in the per-candidate difference signal.
+    const nA = mcCtx ? 12 : 40;
+    const nB = mcCtx ? 10 : 30;
+    const nC = mcCtx ?  8 : 20;
+    const pathsA = mcCtx ?  8 : 0;
+    const pathsB = mcCtx ? 16 : 0;
+    const pathsC = mcCtx ? MC_PATHS_DEFAULT : 0;
 
-    // Run Nelder-Mead for one retirement year and accept the result.
-    // Standard mode: accept only if deterministically better.
-    // MC mode: accept any non-depleting result — the MC objective drove the search;
-    // a small deterministic trade-off is expected and intentional.
-    const nmYear = (yi: number, maxIter: number): void => {
+    // Track the MC objective of the current-best policy for the monotone accept gate.
+    // Seeded once before sweep 6a using the full path count.
+    let bestMcObj: number | null = null;
+
+    // nmYear: runs Nelder-Mead for one retirement year and accepts improvements.
+    // mkWindows bakes rounding into the objective so nm.f is the exact objective at the
+    // returned policy — making bestMcObj directly comparable without re-evaluation.
+    const nmYear = (yi: number, maxIter: number, nPaths: number): void => {
       const cur = bestWindows[yi];
-      const cap = convCapAtYear(bestProj, yi);
+      const cap = optimizeConversions ? convCapAtYear(bestProj, yi) : 0;
+
+      const mkWindows = (tax: number, trad: number, cf?: number): BlendWindow[] => {
+        const r4 = (x: number) => Math.round(x * 10000) / 10000;
+        const rt = r4(tax), rtd = r4(trad);
+        const rroth = Math.max(0, r4(1 - rt - rtd));
+        return bestWindows.map((w, idx) => {
+          if (idx !== yi) return w;
+          const updated: BlendWindow = { ...w, pctTaxable: rt, pctTraditional: rtd, pctRoth: rroth };
+          if (optimizeConversions && cf !== undefined) updated.convAmt = Math.round(cf * cap);
+          return updated;
+        });
+      };
+
+      // MC mode: larger tolerance lets NM converge instead of burning full maxIter budget.
+      const nmTolerance = mcCtx ? Math.max(100, Math.abs(bestMcObj ?? 0) * 1e-4) : 1e-3;
+
       let newWindows: BlendWindow[];
+      let nmF: number;
 
-      // Round NM output to 4 decimal places. sameWindow() uses 1e-4 tolerance, so values
-      // within that band collapse to the same float, ensuring compact() merges them correctly
-      // and result.projection matches the re-projected applied plan exactly (round-trip).
-      const r4 = (x: number) => Math.round(x * 10000) / 10000;
-
-      // 2-D withdrawal-only search when there's no conversion headroom (cap < 1) OR when
-      // conversions aren't optimized (convAmt must stay undefined — never write it here).
       if (cap < 1 || !optimizeConversions) {
-        const obj = (p: [number, number]): number => {
-          const [tax, trad] = p;
-          return nmObj(bestWindows.map((w, idx) =>
-            idx === yi ? { ...w, pctTaxable: tax, pctTraditional: trad, pctRoth: Math.max(0, 1 - tax - trad) } : w
-          ));
-        };
-        const nm = nelderMead2D([cur.pctTaxable, cur.pctTraditional], obj, { maxIter });
-        const tax = r4(nm.x[0]), trad = r4(nm.x[1]);
-        newWindows = bestWindows.map((w, idx) =>
-          idx === yi ? { ...w, pctTaxable: tax, pctTraditional: trad, pctRoth: Math.max(0, r4(1 - tax - trad)) } : w
-        );
+        const obj2D = (p: [number, number]): number => nmObj(mkWindows(p[0], p[1]), nPaths);
+        const nm = nelderMead2D([cur.pctTaxable, cur.pctTraditional], obj2D, { maxIter, tolerance: nmTolerance });
+        newWindows = mkWindows(nm.x[0], nm.x[1]);
+        nmF = nm.f;
       } else {
-        const startCF = (cur.convAmt ?? 0) / cap;
-        const obj = (p: [number, number, number]): number => {
-          const [tax, trad, cf] = p;
-          return nmObj(bestWindows.map((w, idx) =>
-            idx === yi ? { ...w, pctTaxable: tax, pctTraditional: trad, pctRoth: Math.max(0, 1 - tax - trad), convAmt: cf * cap } : w
-          ));
-        };
-        const nm = nelderMead3D([cur.pctTaxable, cur.pctTraditional, startCF], obj, { maxIter });
-        const tax = r4(nm.x[0]), trad = r4(nm.x[1]);
-        newWindows = bestWindows.map((w, idx) =>
-          idx === yi ? {
-            ...w,
-            pctTaxable: tax,
-            pctTraditional: trad,
-            pctRoth: Math.max(0, r4(1 - tax - trad)),
-            convAmt: Math.round(nm.x[2] * cap),
-          } : w
-        );
+        const startCF = (cur.convAmt ?? 0) / Math.max(1, cap);
+        const obj3D = (p: [number, number, number]): number => nmObj(mkWindows(p[0], p[1], p[2]), nPaths);
+        const nm = nelderMead3D([cur.pctTaxable, cur.pctTraditional, startCF], obj3D, { maxIter, tolerance: nmTolerance });
+        newWindows = mkWindows(nm.x[0], nm.x[1], nm.x[2]);
+        nmF = nm.f;
       }
 
-      const trialPolicy: BlendPolicy = { windows: newWindows, source: 'optimizer' };
-      const proj = runProjection(plan, { policy: trialPolicy });
-      evalCounter.n++;
-      const candidate: InnerEval = { policy: trialPolicy, proj, score: spec.score(proj), ranOut: proj.ranOut };
-      const nmTol = Math.max(1000, Math.abs(bestScore) * 0.001);
-      const accept = mcPaths
-        ? !candidate.ranOut
-        : isBetter(candidate, { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut }, nmTol);
-      if (accept) {
+      if (mcCtx) {
+        // MC mode: monotone non-increasing accept gate. Removing !candidate.ranOut
+        // is intentional — requiring deterministic survival reintroduces a cliff.
+        const threshold = (bestMcObj ?? Infinity) - Math.max(1, Math.abs(bestMcObj ?? 0) * 1e-6);
+        if (nmF >= threshold) return;
+        bestMcObj = nmF;
         bestWindows = newWindows;
-        bestPolicy = trialPolicy;
-        bestProj = proj;
-        bestScore = candidate.score;
+        bestPolicy = { windows: newWindows, source: 'optimizer' };
+        bestProj = runProjection(plan, { policy: bestPolicy });
+        evalCounter.n++;
+        bestScore = spec.score(bestProj);
+      } else {
+        // Deterministic mode: original isBetter accept logic.
+        const trialPolicy: BlendPolicy = { windows: newWindows, source: 'optimizer' };
+        const proj = runProjection(plan, { policy: trialPolicy });
+        evalCounter.n++;
+        const candidate: InnerEval = { policy: trialPolicy, proj, score: spec.score(proj), ranOut: proj.ranOut };
+        const detTol = Math.max(1000, Math.abs(bestScore) * 0.001);
+        if (isBetter(candidate, { policy: bestPolicy, proj: bestProj, score: bestScore, ranOut: bestProj.ranOut }, detTol)) {
+          bestWindows = newWindows;
+          bestPolicy = trialPolicy;
+          bestProj = proj;
+          bestScore = candidate.score;
+        }
       }
     };
 
-    // Phase 6a — backward sweep: start from final year, work toward first.
-    // Correctly propagates the terminal-value signal backward so early Roth
-    // conversions see their downstream RMD reduction benefit during search.
+    // Seed bestMcObj before NM sweeps using the full path count.
+    if (mcCtx) {
+      bestMcObj = nmObj(bestWindows, MC_PATHS_DEFAULT);
+    }
+
+    // Phase 6a — backward sweep: propagates terminal-value signal backward so early
+    // Roth conversions see their downstream RMD reduction benefit during search.
     for (let yi = bestWindows.length - 1; yi >= 0; yi--) {
-      nmYear(yi, nA);
+      nmYear(yi, nA, pathsA);
       outerProgress?.();
     }
-    // Phase 6b — forward sweep: refine early years given updated later-year policies.
+    // Phase 6b — forward sweep: refines early years given updated later-year policies.
     for (let yi = 0; yi < bestWindows.length; yi++) {
-      nmYear(yi, nB);
+      nmYear(yi, nB, pathsB);
       outerProgress?.();
     }
-    // Phase 6c — backward convergence pass: propagate any forward-pass changes back.
+    // Phase 6c — backward convergence pass: propagates forward-pass changes back.
     for (let yi = bestWindows.length - 1; yi >= 0; yi--) {
-      nmYear(yi, nC);
+      nmYear(yi, nC, pathsC);
       outerProgress?.();
     }
   }
@@ -1116,6 +1170,17 @@ function computeConversionBaseline(
   return { windows: compact(baseline.policy.windows), source: 'optimizer', goal: 'max-end-balance' };
 }
 
+function buildMcContext(plan: Plan, opts: OptimizeOptions): McContext {
+  const seed = opts.mcSeed ?? ((Math.random() * 2 ** 31) >>> 0);
+  const rand = mulberry32(seed);
+  const equityPct = opts.equityPct ?? plan.assumptions.equityPct ?? 0.6;
+  const posture = POSTURES[opts.mcPosture ?? 'balanced'];
+  const paths = Array.from({ length: MC_PATHS_DEFAULT }, () =>
+    historicalBootstrap(rand, equityPct, MC_PATH_YEARS, 3)
+  );
+  return { paths, seed, equityPct, posture };
+}
+
 export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptions = {}): OptimizeResult {
   const evalCounter = { n: 0 };
 
@@ -1123,12 +1188,30 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     opts.onProgress?.(0, 'Optimizing withdrawals and conversions…');
     // Multi-start: screen 3 diverse seeds, fully refine top-2, take the best.
     // Prevents coordinate descent from being stuck in a single local basin.
-    const inner = multiStartInner(plan, opts, evalCounter);
+    let ticks = 0, lastFrac = 0;
+    const progressTick = opts.onProgress ? () => {
+      ticks++;
+      const frac = Math.min(0.88, 0.88 * (1 - Math.exp(-ticks / 400)));
+      if (frac - lastFrac >= 0.005) { lastFrac = frac; opts.onProgress!(frac, 'Optimizing withdrawals and conversions…'); }
+    } : undefined;
+    const inner = multiStartInner(plan, opts, evalCounter, progressTick);
+
+    // MC single-refinement: warm-start from the deterministic multi-start winner.
+    // Built once here (not inside innerOptimize) so ~195 redundant historicalBootstrap
+    // calls from the old per-innerOptimize path generation are eliminated.
+    // Runs only at the end, after all deterministic multi-start work is done.
+    let finalInner = inner;
+    if (opts.mcAware && opts.useNelderMead) {
+      const mcCtx = buildMcContext(plan, opts);
+      const mcInner = innerOptimize(plan, { ...opts, mcCtx }, evalCounter, progressTick, inner.policy.windows);
+      if (!mcInner.ranOut) finalInner = mcInner;
+    }
+
     opts.onProgress?.(0.9, 'Measuring conversion benefit…');
-    const conversionBaselinePolicy = computeConversionBaseline(plan, opts, evalCounter, inner);
+    const conversionBaselinePolicy = computeConversionBaseline(plan, opts, evalCounter, finalInner);
     opts.onProgress?.(1, 'Done');
-    const endTaxAdj = inner.proj.endTaxAdjustedReal;
-    return packageResult(inner, goal, evalCounter.n, {
+    const endTaxAdj = finalInner.proj.endTaxAdjustedReal;
+    return packageResult(finalInner, goal, evalCounter.n, {
       headline: fmtM(endTaxAdj),
       headlineLabel: 'Tax-adjusted balance (today\'s $)',
       conversionBaselinePolicy,
