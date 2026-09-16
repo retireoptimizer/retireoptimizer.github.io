@@ -15,24 +15,21 @@ export function householdPlanThroughAgeA(plan: Plan): number {
   return Math.max(ptA, bEndInATerms);
 }
 
+export const OPTIMIZER_INPUT_FIELDS = [
+  'personA', 'personB', 'assumptions', 'portfolio',
+  'incomeStreams', 'lumpSumEvents', 'expenseStreams', 'withdrawalStrategy',
+  'withdrawalBracketCeiling', 'conversion', 'payTaxFromBrokerage', 'state',
+  'customStateTaxRate', 'goals',
+] as const;
+
+export const OPTIMIZER_OUTPUT_FIELDS = [
+  'customPolicy', 'conversionBaselinePolicy', 'optimizedForGoal', 'solvedSpendingMultiplier',
+] as const;
+
 /** Stable fingerprint of the plan fields that affect optimizer output.
- *  Excludes optimizer-output fields (customPolicy, optimizedForGoal, solvedSpendingMultiplier)
- *  so they don't create false positives. */
+ *  Excludes optimizer-output fields so they don't create false positives. */
 export function planInputKey(plan: Plan): string {
-  return JSON.stringify({
-    personA: plan.personA,
-    personB: plan.personB,
-    assumptions: plan.assumptions,
-    portfolio: plan.portfolio,
-    incomeStreams: plan.incomeStreams,
-    lumpSumEvents: plan.lumpSumEvents,
-    expenseStreams: plan.expenseStreams,
-    withdrawalStrategy: plan.withdrawalStrategy,
-    withdrawalBracketCeiling: plan.withdrawalBracketCeiling,
-    conversion: plan.conversion,
-    payTaxFromBrokerage: plan.payTaxFromBrokerage,
-    state: plan.state,
-    customStateTaxRate: plan.customStateTaxRate,
-    goals: plan.goals,
-  });
+  return JSON.stringify(
+    Object.fromEntries(OPTIMIZER_INPUT_FIELDS.map((k) => [k, plan[k]]))
+  );
 }

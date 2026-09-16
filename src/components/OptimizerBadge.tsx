@@ -12,14 +12,6 @@ export default function OptimizerBadge({ state, style }: Props) {
 
   const label = GOAL_LABELS[state.goal] ?? state.goal;
 
-  if (state.kind === 'orphaned') {
-    return (
-      <span className="badge badge-neutral" style={style}>
-        {label} · strategy cleared
-      </span>
-    );
-  }
-
   if (state.kind === 'stale') {
     return (
       <span className="badge badge-warning" style={style}>

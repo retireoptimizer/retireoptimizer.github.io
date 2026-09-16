@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
+import { useOptimizerStore } from '../store/useOptimizerStore';
+import { policyStatus } from '../engine/policyStatus';
+import StalePlanGate from '../components/StalePlanGate';
 import IrmaaMagiLine from '../components/charts/IrmaaMagiLine';
 import TaxDrag from '../components/charts/TaxDrag';
 import CumulativeTaxCompare from '../components/charts/CumulativeTaxCompare';
@@ -15,6 +18,7 @@ type TaxTab = 'federal' | 'state' | 'irmaa';
 export default function TaxPlanning() {
   const proj = useProjection();
   const plan = usePlanStore((s) => s.plan);
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const displayMode = usePlanStore((s) => s.displayMode);
   const real = displayMode === 'real';
   const stateProfile = STATE_PROFILES[plan.state] ?? STATE_PROFILES.IL;
@@ -39,6 +43,8 @@ export default function TaxPlanning() {
   const taxAdjActive = (plan.assumptions.taxAdjOrdRate ?? 0.22) > 0 || (plan.assumptions.taxAdjLtcgRate ?? 0) > 0;
   const balLabel = taxAdjActive ? 'After-tax end balance' : 'End balance';
   const dollarLabel = real ? "today's $" : 'nominal $';
+
+  if (policyStatus(plan) === 'stale' && pendingPlan === null) return <StalePlanGate />;
 
   return (
     <div className="page">

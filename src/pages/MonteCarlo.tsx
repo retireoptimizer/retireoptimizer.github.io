@@ -18,6 +18,8 @@ import OptimizerBadge from '../components/OptimizerBadge';
 import { useOptimizerApplied } from '../hooks/useOptimizerApplied';
 import LearnMoreModal, { MC_SIMULATE_HELP, MC_OPTIMIZE_HELP } from '../components/LearnMoreModal';
 import type { HelpTopic } from '../components/LearnMoreModal';
+import { policyStatus } from '../engine/policyStatus';
+import StalePlanGate from '../components/StalePlanGate';
 
 interface RiskBand {
   label: string;
@@ -186,6 +188,8 @@ export default function MonteCarlo() {
     : null;
 
   const tradReturnPct = fmtPct(mcBase.assumptions.tradReturn ?? 0.055, 1);
+
+  if (policyStatus(plan) === 'stale' && pendingPlan === null) return <StalePlanGate />;
 
   return (
     <div className="page">

@@ -12,6 +12,7 @@ import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
 import { useOptimizerStore } from './useOptimizerStore';
 import { disposeEngineWorker } from '../engine/workerClient';
 import { migratePlanToV24, migratePlanToV25 } from './planMigrations';
+import { planInputKey } from '../engine/planInputKey';
 
 export type DisplayMode = 'real' | 'nominal';
 
@@ -122,17 +123,9 @@ export const usePlanStore = create<PlanState>()(
         }
         return { plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
       }),
-      // Editing conversion settings invalidates an optimizer-authored withdrawal ordering, which was
-      // co-optimized against the old conversion schedule. Discard it (revert to the preset) and tell
-      // the user to re-run — otherwise the projection silently runs on a withdrawal plan they never
-      // chose. Matches StrategyChooser's Manual tab, which already clears the policy first.
-      setConversion: (patch) => set((s) => {
-        if (s.plan.customPolicy?.source === 'optimizer') {
-          useToastStore.getState().show('info', 'Withdrawal ordering reset — re-run the optimizer to co-optimize withdrawals and conversions.');
-          return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch }, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
-        }
-        return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } };
-      }),
+      setConversion: (patch) => set((s) => ({
+        plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } },
+      })),
       setWithdrawalBracketCeiling: (v: number) => set((s) => ({
         plan: {
           ...s.plan,
@@ -150,10 +143,19 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 28,
+      version: 29,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v29: stamp inputKey on existing optimizer-authored customPolicy so users aren't gated on
+        // first load after the upgrade. Treats already-persisted policies as fresh (mirrors pre-v29 behavior).
+        if (fromVersion < 29 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const cp = planObj.customPolicy as Record<string, unknown> | undefined;
+          if (cp && cp.source === 'optimizer' && !cp.inputKey) {
+            cp.inputKey = planInputKey(planObj as unknown as Plan);
+          }
+        }
         // v28: add assumptions.legacyTargetTaxAdjReal (after-tax legacy floor for max-spending).
         // Absent === 0 === unconstrained === pre-v28 behavior. No data rewrite needed.
         // v27: add per-person spousalContribution / spousalTarget (spousal IRA while the other

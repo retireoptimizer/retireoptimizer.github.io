@@ -10,7 +10,7 @@ import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { getEngineWorker } from '../engine/workerClient';
 import StrategyCustomizeSheet from './strategy/StrategyCustomizeSheet';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../engine/taxConstants';
-import { planInputKey } from '../engine/planInputKey';
+import { policyStatus } from '../engine/policyStatus';
 import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
 import { GOAL_LABELS as GOAL_SHORT_LABELS } from '../engine/goalLabels';
 
@@ -67,9 +67,9 @@ export default function StrategyChooser() {
   const clearCustomPolicy = usePlanStore((s) => s.clearCustomPolicy);
   const setConversion = usePlanStore((s) => s.setConversion);
   const setPayTaxFromBrokerage = usePlanStore((s) => s.setPayTaxFromBrokerage);
-  const optimizedPlanKey = useOptimizerStore((s) => s.planKey);
-  const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
+  const setRobustnessPlan = useOptimizerStore((s) => s.setRobustnessPlan);
+  const setRobustnessComparison = useOptimizerStore((s) => s.setRobustnessComparison);
   const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
   const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
   const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
@@ -86,7 +86,7 @@ export default function StrategyChooser() {
   const optimizerDriven = hasCustom && activeGoal != null;
   const handEdited = hasCustom && activeGoal == null;
   // True when plan store inputs changed since the optimizer last ran against them.
-  const planInputsChanged = optimizedPlanKey != null && planInputKey(plan) !== optimizedPlanKey;
+  const planInputsChanged = policyStatus(plan) === 'stale';
   const conv = effectivePlan.conversion;
   const optimizeOn = conv.optimize ?? true;
 
@@ -141,6 +141,8 @@ export default function StrategyChooser() {
 
   const runReOptimize = async () => {
     setOptimizing(true);
+    setRobustnessPlan(null);
+    setRobustnessComparison(null);
     try {
       const worker = getEngineWorker();
       // Plan store is always the clean baseline — no base* restoration needed.
@@ -154,8 +156,6 @@ export default function StrategyChooser() {
         useToastStore.getState().show('info', 'Conversions turned off — the optimizer found a higher balance without Roth conversions. Re-run any time to re-evaluate.');
       }
       const appliedPlan = applyResultToPlan(planForOptimize, r);
-      // planKey fingerprints planForOptimize (what the optimizer actually saw, including any pendingConv).
-      setPlanKey(planInputKey(planForOptimize));
       setTabFreshEntry('none');
       setOptimizerResult(r);
       // Commit pending selections to the plan store — they're user preferences, not optimizer outputs.

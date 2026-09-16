@@ -199,6 +199,7 @@ export const BlendPolicySchema = z.object({
   windows: z.array(BlendWindowSchema).min(1),
   source: z.enum(['optimizer', 'manual']).optional(),
   goal: z.string().optional(),
+  inputKey: z.string().optional(),
 });
 export type BlendPolicySchemaT = z.infer<typeof BlendPolicySchema>;
 

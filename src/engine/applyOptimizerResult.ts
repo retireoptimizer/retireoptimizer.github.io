@@ -1,6 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import type { OptimizeResult } from './optimizer';
 import { shiftRetirementAge } from './retirementAgeShift';
+import { planInputKey } from './planInputKey';
 
 /** Pure function that returns the plan as it would be after the optimizer runs.
  *  The caller is responsible for deciding whether to commit this to the plan store
@@ -67,6 +68,15 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
   ) {
     next = shiftRetirementAge(next, result.solvedRetirementAge);
   }
+
+  // Stamp the fingerprint from the fully-mutated plan so the key stays valid even when
+  // max-sustainable-spending or min-retirement-age rewrites fields that are inside planInputKey.
+  next = {
+    ...next,
+    customPolicy: next.customPolicy
+      ? { ...next.customPolicy, inputKey: planInputKey(next) }
+      : next.customPolicy,
+  };
 
   return next;
 }

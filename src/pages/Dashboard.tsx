@@ -25,6 +25,8 @@ import type { Plan } from '../schemas/plan';
 import OptimizerBadge from '../components/OptimizerBadge';
 import { GOAL_LABELS } from '../engine/goalLabels';
 import { useOptimizerApplied } from '../hooks/useOptimizerApplied';
+import StalePlanGate from '../components/StalePlanGate';
+import { policyStatus } from '../engine/policyStatus';
 
 export default function Dashboard() {
   const plan = usePlanStore((s) => s.plan);
@@ -148,6 +150,8 @@ export default function Dashboard() {
       setReoptimizing(false);
     }
   }, [optimizerResult, reoptimizing, effectivePlan, setResult, setPendingPlan, setPendingGoal]);
+
+  if (policyStatus(plan) === 'stale' && pendingPlan === null) return <StalePlanGate />;
 
   return (
     <div className="page">
