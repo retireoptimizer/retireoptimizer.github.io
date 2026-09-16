@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection, effectiveBracketCeiling } from './projection';
-import { optimizeStrategy, CONVERSION_BASELINE_MARGIN } from './optimizer';
+import { optimizeStrategy, CONVERSION_BASELINE_MARGIN, rowsToSeed } from './optimizer';
 import { applyResultToPlan } from './applyOptimizerResult';
 import { planP_tightPlan, planG_californiaCouple } from './__golden/plans';
 import { runMonteCarlo } from './monteCarlo';
@@ -246,6 +246,37 @@ describe('Custom BlendPolicy ↔ Projection', () => {
     const projA = runProjection(plan, { policy: opt.perYearPolicy });
     const projB = runProjection(plan, { policy: manualPolicy });
     expect(JSON.stringify(projA.rows)).toBe(JSON.stringify(projB.rows));
+  }, 60_000);
+
+  it('rowsToSeed carries the realized conversion schedule, not convAmt: 0', () => {
+    // Regression: rowsToSeed hardcoded convAmt: 0 in both branches. Competitors 4–8 screen each
+    // ordering preset with the incumbent's conversion schedule pinned as manual mode; reseeding
+    // the escalation with conversions stripped drops the schedule that made the screen win, so a
+    // candidate proven better than the incumbent could be lost when the re-search landed lower.
+    const plan = defaultPlan();
+    plan.conversion.mode = 'bracket-fill';
+    plan.conversion.bracketCeiling = 250_000;
+    const proj = runProjection(plan);
+    const retireAge = plan.personA.retirementAge;
+    const planToAge = plan.personA.planThroughAge;
+
+    const seed = rowsToSeed(proj, retireAge, planToAge, true);
+    // The source projection must actually convert, or the test proves nothing.
+    const converting = proj.rows.filter((r) => r.ageA >= retireAge && r.rothConv > 1);
+    expect(converting.length, 'fixture should produce conversions').toBeGreaterThan(0);
+
+    for (const row of converting) {
+      const w = seed.find((x) => x.fromAge === row.ageA);
+      expect(w, `age ${row.ageA} missing from seed`).toBeDefined();
+      // convAmt is today's $ while row.rothConv is nominal — the deflation is load-bearing.
+      expect(w!.convAmt).toBe(Math.round(row.rothConv / row.inflationFactor));
+    }
+    expect(seed.some((w) => (w.convAmt ?? 0) > 1), 'seed carries no conversions').toBe(true);
+
+    // optimizeConversions=false must leave convAmt undefined: 0 would pin conversions to zero
+    // via the policyConv != null branch and override the plan's own conversion mode.
+    const modeOwned = rowsToSeed(proj, retireAge, planToAge, false);
+    expect(modeOwned.every((w) => w.convAmt === undefined)).toBe(true);
   }, 60_000);
 
   it('explicit convAmt=0 means truly zero, not a fallback to plan.conversion.mode', () => {

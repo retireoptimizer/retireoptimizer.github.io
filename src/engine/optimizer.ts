@@ -229,21 +229,62 @@ const buildConstantSeed = (
 };
 
 /** Convert a projection's rows to a per-year BlendWindow seed for innerOptimize.
- *  Extracts withdrawal split fractions; sets convAmt: 0 so coordinate descent
- *  re-searches conversion amounts from the ordering basin found by the source plan. */
-function rowsToSeed(proj: ProjectionResult, retireAge: number, planToAge: number): BlendWindow[] {
+ *  Extracts both the withdrawal split fractions and the realized conversion schedule.
+ *
+ *  convAmt carries the conversions the source projection actually made (deflated to today's $,
+ *  since convAmt is real and row.rothConv is nominal). Hardcoding 0 here used to discard the
+ *  conversion schedule that made the source plan win: competitors 4–8 screen each ordering preset
+ *  with the incumbent's conversions pinned as manual mode, so a seed with conversions stripped
+ *  starts in a different basin than the candidate being escalated and can land lower.
+ *
+ *  Respects optimizeConversions: never writes 0 when the plan's conversion mode owns conversions,
+ *  because policyConv=0 pins them to zero (see the CRITICAL note on buildConstantSeed). */
+export function rowsToSeed(
+  proj: ProjectionResult,
+  retireAge: number,
+  planToAge: number,
+  optimizeConversions: boolean,
+): BlendWindow[] {
   const seed: BlendWindow[] = [];
   for (let age = retireAge; age <= planToAge; age++) {
     const row = proj.rows.find((r) => r.ageA === age);
     const total = row ? row.wdTrd + row.wdRth + row.wdTax : 0;
+    const convAmt = optimizeConversions
+      ? (row ? Math.round(row.rothConv / row.inflationFactor) : 0)
+      : undefined;
     seed.push(
       !row || total < 1
-        ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt: 0 }
-        : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt: 0 }
+        ? { fromAge: age, toAge: age, pctTaxable: 1, pctTraditional: 0, pctRoth: 0, convAmt }
+        : { fromAge: age, toAge: age, pctTaxable: row.wdTax / total, pctTraditional: row.wdTrd / total, pctRoth: row.wdRth / total, convAmt }
     );
   }
   return seed;
 }
+
+/** Restate a screened projection as an explicit per-year policy and score it against the real plan.
+ *
+ *  The screening plans (a preset ordering plus a pinned or mode-owned conversion schedule) are not
+ *  shippable: applyResultToPlan ships a customPolicy, so a screen that beats the incumbent has to
+ *  be materialized before it can be adopted. Without this the known-better candidate is only ever
+ *  a seed for a re-search, and is lost outright whenever that re-search lands lower — the screen
+ *  is proven better than the incumbent and then thrown away. */
+function materializeScreen(
+  plan: Plan,
+  screenProj: ProjectionResult,
+  retireAge: number,
+  planToAge: number,
+  evalCounter: { n: number },
+  optimizeConversions: boolean,
+): InnerEval {
+  const policy: BlendPolicy = {
+    windows: rowsToSeed(screenProj, retireAge, planToAge, optimizeConversions),
+    source: 'optimizer',
+  };
+  const proj = runProjection(plan, { policy });
+  evalCounter.n++;
+  return { policy, proj, score: REC_GOALS['max-end'].score(proj), ranOut: proj.ranOut };
+}
+
 
 /**
  * Inner optimizer. Scoring: max endTaxAdjustedReal (inflation-adjusted, after estimated
@@ -1006,7 +1047,11 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
     };
     const bfCheckProj = runProjection(bfCheckPlan);
     if (!bfCheckProj.ranOut && REC_GOALS['max-end'].score(bfCheckProj) > best.score) {
-      const bfRefined = innerOptimize(plan, opts, evalCounter, outerProgress, rowsToSeed(bfCheckProj, retireAge, planToAge));
+      // Adopt the screen itself first, so a candidate proven better than the incumbent survives
+      // even if the re-search below lands lower.
+      const bfMat = materializeScreen(plan, bfCheckProj, retireAge, planToAge, evalCounter, optimizeConversions);
+      if (isBetter(bfMat, best)) best = bfMat;
+      const bfRefined = innerOptimize(plan, opts, evalCounter, outerProgress, bfMat.policy.windows);
       if (isBetter(bfRefined, best)) best = bfRefined;
     }
   }
@@ -1044,7 +1089,11 @@ function multiStartInner(plan: Plan, opts: OptimizeOptions, evalCounter: { n: nu
       const checkPlan: Plan = { ...plan, withdrawalStrategy: preset, customPolicy: undefined, conversion: pinnedConv };
       const checkProj = runProjection(checkPlan);
       if (!checkProj.ranOut && REC_GOALS['max-end'].score(checkProj) > best.score) {
-        const presetRefined = innerOptimize(plan, opts, evalCounter, outerProgress, rowsToSeed(checkProj, retireAge, planToAge));
+        // Adopt the screen itself first — see materializeScreen. The seed now carries the pinned
+        // conversion schedule, so the re-search starts in the basin that won the screen.
+        const presetMat = materializeScreen(plan, checkProj, retireAge, planToAge, evalCounter, optimizeConversions);
+        if (isBetter(presetMat, best)) best = presetMat;
+        const presetRefined = innerOptimize(plan, opts, evalCounter, outerProgress, presetMat.policy.windows);
         if (isBetter(presetRefined, best)) best = presetRefined;
       }
     }
