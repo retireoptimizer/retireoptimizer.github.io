@@ -3,7 +3,7 @@ import { optimizeStrategy } from './optimizer';
 import { runProjection } from './projection';
 import { applyResultToPlan } from './applyOptimizerResult';
 import { samplePlan as defaultPlan } from '../schemas/plan';
-import { planF_allTradCouple } from './__golden/plans';
+import { planF_allTradCouple, planG_californiaCouple } from './__golden/plans';
 import type { UserGoal } from './recommender';
 
 /** Round-trip contract: for every UserGoal, the plan produced by applyResultToPlan
@@ -86,4 +86,26 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
     const applied = applyResultToPlan(plan, result);
     expect(applied.optimizedForGoal).toBe('max-end-balance');
   }, 120_000);
+
+  it('planG (bracket-fill, optimize:false): applied plan re-projects to result.projection and no conversions are resurrected when adoption fires', () => {
+    // Landmine regression: planG has conversion.mode='bracket-fill' and optimize:false. When the
+    // adoption guard ships the no-conversion baseline, the applied plan's policy windows carry
+    // convAmt:undefined. Without the conversion.mode override in applyResultToPlan, the projection
+    // falls through to plan.conversion (bracket-fill) and resurrects ~$1.2M of conversions.
+    const plan = planG_californiaCouple();
+    const result = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: false });
+    const appliedPlan = applyResultToPlan(plan, result);
+    const reproj = runProjection(appliedPlan);
+
+    // Round-trip contract: applied plan must re-project identically to the optimizer's result.
+    expect(reproj.endTotalReal).toBeCloseTo(result.projection.endTotalReal, 0);
+    expect(reproj.lifetimeFedTax).toBeCloseTo(result.projection.lifetimeFedTax, 0);
+    expect(reproj.ranOut).toBe(result.projection.ranOut);
+
+    // If the adoption guard fired, conversions must stay off — no resurrection.
+    if (result.conversionsDisabled) {
+      expect(appliedPlan.conversion.mode).toBe('off');
+      expect(reproj.lifetimeConversion).toBeLessThan(1000);
+    }
+  }, 180_000);
 });

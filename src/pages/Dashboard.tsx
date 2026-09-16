@@ -20,6 +20,7 @@ import TaxAdjustedBreakdown from '../components/TaxAdjustedBreakdown';
 import OptimizerRationaleModal from '../components/OptimizerRationaleModal';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
+import { useToastStore } from '../store/useToastStore';
 import type { Plan } from '../schemas/plan';
 import OptimizerBadge from '../components/OptimizerBadge';
 import { GOAL_LABELS } from '../engine/goalLabels';
@@ -134,6 +135,9 @@ export default function Dashboard() {
     try {
       const worker = getEngineWorker();
       const result = await worker.optimize(patchedPlan, optimizerResult.goal, { useNelderMead: true, thorough: true });
+      if (result.conversionsDisabled) {
+        useToastStore.getState().show('info', 'Conversions turned off — the optimizer found a higher balance without Roth conversions. Re-run any time to re-evaluate.');
+      }
       const appliedPlan = applyResultToPlan(patchedPlan, result);
       setResult(result);
       setPendingPlan(appliedPlan);

@@ -227,3 +227,50 @@ export function assertDeterministic(plan: Plan, opts?: Parameters<typeof runProj
     throw new Error('Projection nondeterministic in aggregates (rows identical)');
   }
 }
+
+/** No fully round-tripped conversion: converting $X into an empty Roth and withdrawing the full
+ *  amount back out in the same year repositions nothing while still taxing the conversion.
+ *
+ *  Deliberately separate from assertProjectionInvariants, which asserts conservation and
+ *  arithmetic over *any* plan. A round trip is a strategy-quality defect, not a dollar-flow one:
+ *  a plan configured with bracket-fill conversions plus a Roth-draining withdrawal order produces
+ *  one legitimately, and the engine is modelling it faithfully. That configuration is surfaced to
+ *  the user by the conv-roth-first-incoherent plan warning instead. What we do assert is that the
+ *  *optimizer* never authors one, which is the regression this guards.
+ *
+ *  begRoth < 1 gates to an empty starting Roth: with existing principal the withdrawal may be
+ *  drawing on that rather than the newly converted funds, which is legitimate. The $1k floor keeps
+ *  degenerate sub-dollar conversions from tripping it.
+ */
+export function assertNoRoundTrippedConversions(proj: ProjectionResult): void {
+  for (const r of proj.rows) {
+    if (r.rothConv > 1000 && r.begRoth < 1 && r.wdRth >= r.rothConv) {
+      throw new Error(
+        `Fully round-tripped conversion at year ${r.year} (ageA=${r.ageA}): rothConv=${r.rothConv.toFixed(0)}, wdRth=${r.wdRth.toFixed(0)}, begRoth=0 — conversion was immediately withdrawn from an empty Roth, repositioning nothing.`
+      );
+    }
+  }
+}
+
+/** No conversion year also draws from Roth. Once the optimizer's round-trip collapse has run, a
+ *  year holds either a conversion or a Roth withdrawal, never both: where the conversion covered
+ *  the draw the draw is moved to pre-tax, and where the draw exceeded the conversion the
+ *  conversion is driven to zero.
+ *
+ *  Separate from the full-round-trip check above, which only fires when wdRth >= rothConv and so
+ *  cannot see a small residue — a $2 draw beside a $57k conversion passes it while still being a
+ *  round trip. That residue is exactly what a delta-based pctRoth adjustment leaves behind, since
+ *  the split fractions apply to the spending gap rather than to total withdrawals.
+ *
+ *  The $1 floor on wdRth is deliberately tight; the point is to catch slivers, not just material
+ *  amounts. Applies to optimizer output only, for the same reason as above.
+ */
+export function assertNoConcurrentConversionAndRothDraw(proj: ProjectionResult): void {
+  for (const r of proj.rows) {
+    if (r.rothConv > 1000 && r.wdRth > 1) {
+      throw new Error(
+        `Conversion and Roth withdrawal in the same year at year ${r.year} (ageA=${r.ageA}): rothConv=${r.rothConv.toFixed(0)}, wdRth=${r.wdRth.toFixed(2)} — the round-trip collapse left a residue; this year should hold one or the other, not both.`
+      );
+    }
+  }
+}

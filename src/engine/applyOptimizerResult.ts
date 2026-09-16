@@ -25,6 +25,14 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
     conversionBaselinePolicy: result.conversionBaselinePolicy,
     optimizedForGoal: result.goal,
     solvedSpendingMultiplier: result.goal !== 'max-sustainable-spending' ? undefined : plan.solvedSpendingMultiplier,
+    // When the optimizer adopted the no-conversion baseline, mirror the baseline plan exactly:
+    // the adopted policy windows carry convAmt:undefined, so projection would fall back to
+    // plan.conversion mode (e.g. bracket-fill) and resurrect the conversions. Setting mode:'off'
+    // closes that path at the source without requiring a store migration (mode:'off' is already
+    // in the enum; version stays at 28).
+    conversion: result.conversionsDisabled
+      ? { ...plan.conversion, mode: 'off' as const, optimize: false }
+      : plan.conversion,
   };
 
   // max-sustainable-spending: scale all expense streams proportionally to the optimizer's

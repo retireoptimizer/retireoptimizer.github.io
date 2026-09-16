@@ -94,6 +94,13 @@ export interface OptimizeResult {
    *  splits. Undefined when the result has no conversions (benefit is 0) or for other goals.
    *  Consumed as the "without conversions" baseline for the Roth Conversion Benefit metric. */
   conversionBaselinePolicy?: BlendPolicy;
+  /** End-balance metric of the no-conversion baseline (today's $). Defined whenever the baseline
+   *  ran, regardless of whether the baseline was adopted. Use this (not conversionBaselinePolicy)
+   *  to test that the baseline ran, since adoption clears conversionBaselinePolicy. */
+  conversionBaselineMetric?: number;
+  /** True when the optimizer adopted the no-conversion baseline because it scored higher than
+   *  the with-conversion result. The applied plan's conversion.mode is set to 'off'. */
+  conversionsDisabled?: boolean;
   metric: number;
   metricFormatted: string;
   ranOut: boolean;
@@ -852,13 +859,15 @@ function packageResult(
   inner: InnerEval,
   goal: UserGoal,
   evals: number,
-  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string; conversionBaselinePolicy?: BlendPolicy; legacyTargetTaxAdjReal?: number; achievedLegacyTaxAdjReal?: number },
+  extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string; conversionBaselinePolicy?: BlendPolicy; conversionBaselineMetric?: number; conversionsDisabled?: boolean; legacyTargetTaxAdjReal?: number; achievedLegacyTaxAdjReal?: number },
 ): OptimizeResult {
   const spec = REC_GOALS['max-end'];
   return {
     policy: { ...inner.policy, windows: compact(inner.policy.windows), source: 'optimizer', goal },
     perYearPolicy: inner.policy,
     conversionBaselinePolicy: extras.conversionBaselinePolicy,
+    conversionBaselineMetric: extras.conversionBaselineMetric,
+    conversionsDisabled: extras.conversionsDisabled,
     metric: inner.score,
     metricFormatted: spec.format(inner.score),
     ranOut: inner.ranOut,
@@ -1133,6 +1142,11 @@ export function measureOptimalityGap(
   return { runs, bestScore, worstScore, spreadPct, depletedCount: runs.length - nonDepleted.length };
 }
 
+/** Minimum margin by which the no-conversion baseline must beat the with-conversion result before
+ *  adoption. Depletion-first, then strict improvement beyond this margin. Exported so tests use
+ *  the same constant rather than hard-coding a figure that drifts with legitimate search changes. */
+export const CONVERSION_BASELINE_MARGIN = (score: number) => Math.max(1000, Math.abs(score) * 1e-4);
+
 /** No-conversion counterfactual for the Roth Conversion Benefit metric (max-end-balance only).
  *  Re-runs the optimizer with conversions disabled so the withdrawal ordering re-adapts to the
  *  no-conversion world (the with-conversion ordering is co-optimized against a conversion schedule
@@ -1145,7 +1159,7 @@ function computeConversionBaseline(
   opts: OptimizeOptions,
   evalCounter: { n: number },
   withConvInner: InnerEval,
-): BlendPolicy | undefined {
+): { eval: InnerEval; policy: BlendPolicy } | undefined {
   // "Has conversions" must reflect what the projection actually converted, not just the optimizer's
   // per-window convAmt: when conversion.optimize is false the optimizer owns only the withdrawal
   // ordering and conversions flow from conversion.mode (auto-window / bracket-fill / manual), landing
@@ -1167,7 +1181,10 @@ function computeConversionBaseline(
   const warm = innerOptimize(baselinePlan, opts, evalCounter, undefined, warmSeed);
   if (isBetter(warm, baseline)) baseline = warm;
 
-  return { windows: compact(baseline.policy.windows), source: 'optimizer', goal: 'max-end-balance' };
+  return {
+    eval: baseline,
+    policy: { windows: compact(baseline.policy.windows), source: 'optimizer', goal: 'max-end-balance' },
+  };
 }
 
 function buildMcContext(plan: Plan, opts: OptimizeOptions): McContext {
@@ -1208,13 +1225,130 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     }
 
     opts.onProgress?.(0.9, 'Measuring conversion benefit…');
-    const conversionBaselinePolicy = computeConversionBaseline(plan, opts, evalCounter, finalInner);
+    // Compute the no-conversion baseline against the deterministic winner (before any MC step),
+    // so the deterministic metric is the reference point for the adoption guard.
+    const conversionBaseline = computeConversionBaseline(plan, opts, evalCounter, finalInner);
+
+    // Adoption guard: if the no-conversion baseline beats the with-conversion result, ship the
+    // baseline. Uses depletion-first, then strict improvement beyond a margin — deliberately NOT
+    // reusing isBetter (which tolerates near-ties via TV penalty to prefer smoother policies).
+    let shippedInner = finalInner;
+    let conversionsDisabled: boolean | undefined;
+    let conversionBaselinePolicy: BlendPolicy | undefined;
+    const conversionBaselineMetric = conversionBaseline?.eval.score;
+    if (conversionBaseline != null) {
+      const margin = CONVERSION_BASELINE_MARGIN(finalInner.score);
+      const baselineWins =
+        (!conversionBaseline.eval.ranOut && finalInner.ranOut) ||
+        (!conversionBaseline.eval.ranOut && !finalInner.ranOut &&
+          conversionBaseline.eval.score - finalInner.score > margin);
+      if (baselineWins) {
+        shippedInner = conversionBaseline.eval;
+        conversionsDisabled = true;
+        // conversionBaselinePolicy stays undefined: benefit is definitionally 0 when adopted.
+      } else {
+        conversionBaselinePolicy = conversionBaseline.policy;
+      }
+    }
+
+    // Collapse round-tripped conversions. A year that converts $X into Roth and draws $X back out
+    // to fund spending is identical to converting $X less and drawing that much more from pre-tax:
+    // same ordinary income, same tax, same closing balance in all three buckets. Reporting the
+    // gross figure overstates what the user has to actually go and convert, so rewrite the policy
+    // to the equivalent form that carries no round-trip.
+    //
+    // Units matter: convAmt is today's dollars (the engine inflates it), while row.rothConv and
+    // row.wdRth are nominal. The round-trip is measured in nominal dollars, then deflated by the
+    // row's inflationFactor before it is taken off convAmt. Mixing the two over-subtracts by the
+    // full inflation factor and starves later conversions of pre-tax balance.
+    //
+    // Skipped when the baseline was adopted (those windows carry no convAmt) and for windows with
+    // convAmt == null, where conversions are owned by plan.conversion.mode rather than the policy.
+    if (!conversionsDisabled) {
+      for (let pass = 0; pass < 3; pass++) {
+        let roundTripped = 0;
+        const collapsed = shippedInner.policy.windows.map((w) => {
+          const conv = w.convAmt ?? 0;
+          if (conv <= 1) return w;
+          const row = shippedInner.proj.rows.find((r) => r.ageA === w.fromAge);
+          if (row == null || row.wdRth <= 1 || row.rothConv <= 1) return w;
+          const roundTripNom = Math.min(row.rothConv, row.wdRth);
+          const totalWD = row.wdTax + row.wdTrd + row.wdRth;
+          roundTripped += roundTripNom;
+          // Rounded here, not left fractional: applyResultToPlan rounds convAmt to whole dollars,
+          // and sub-dollar residue across every window compounds into a visible gap against the
+          // round-trip contract (runProjection(applied) must equal result.projection).
+          const nextConv = Math.max(0, Math.round(conv - roundTripNom / row.inflationFactor));
+          if (totalWD <= 0) return { ...w, convAmt: nextConv };
+          // Shift only the round-tripped share off Roth and onto pre-tax, as a delta on this
+          // window's own fractions. Replacing all three fractions with the realized split instead
+          // pins pctTaxable to one year's balance state and strips the policy's ability to adapt,
+          // which costs real value on plans whose taxable account stays healthy.
+          //
+          // When the conversion covers the whole Roth draw, zero pctRoth outright instead of
+          // subtracting a delta. The fractions apply to the spending gap, not to totalWD, and the
+          // two differ by the conversion tax, so the delta undershoots and leaves a sliver of
+          // pctRoth alive. That sliver re-emerges as a few stray dollars of Roth withdrawal in a
+          // year that is supposed to have none.
+          const shift = row.rothConv >= row.wdRth
+            ? w.pctRoth
+            : Math.min(roundTripNom / totalWD, w.pctRoth);
+          return {
+            ...w,
+            convAmt: nextConv,
+            pctTraditional: w.pctTraditional + shift,
+            pctRoth: w.pctRoth - shift,
+          };
+        });
+        if (roundTripped < 1) break;
+        // Canonicalize against compact() before scoring. compact() merges neighbours within 1e-4
+        // on fractions and $0.50 on convAmt, so a per-year policy and the compacted policy that
+        // packageResult actually ships can be different plans. Two contracts depend on them not
+        // being: result.projection must equal a re-projection of perYearPolicy, and also equal
+        // runProjection(applyResultToPlan(...)), which stores the compacted form. Collapsing
+        // round-trips moves adjacent years inside the merge threshold, so the loss grows and the
+        // two contracts start to conflict. Compacting then expanding back to per-year makes each
+        // merged run genuinely identical instead of merely near-identical, which makes the loss
+        // zero and lets both contracts hold at once.
+        const merged = compact(collapsed);
+        const canonical: BlendWindow[] = [];
+        for (const w of merged) {
+          for (let age = w.fromAge; age <= w.toAge; age++) canonical.push({ ...w, fromAge: age, toAge: age });
+        }
+        const canonicalProj = runProjection(plan, { policy: { ...shippedInner.policy, windows: canonical } });
+        shippedInner = {
+          policy: { ...shippedInner.policy, windows: canonical },
+          proj: canonicalProj,
+          score: REC_GOALS['max-end'].score(canonicalProj),
+          ranOut: canonicalProj.ranOut,
+        };
+      }
+
+      // The rewrite is value-neutral to within rounding, but the adoption guard above ran on the
+      // pre-rewrite score. Re-check against the stored baseline so the shipped result can never be
+      // one the no-conversion baseline beats, rather than relying on the drift staying small.
+      if (conversionBaseline != null) {
+        const margin = CONVERSION_BASELINE_MARGIN(shippedInner.score);
+        const baselineWins =
+          (!conversionBaseline.eval.ranOut && shippedInner.ranOut) ||
+          (!conversionBaseline.eval.ranOut && !shippedInner.ranOut &&
+            conversionBaseline.eval.score - shippedInner.score > margin);
+        if (baselineWins) {
+          shippedInner = conversionBaseline.eval;
+          conversionsDisabled = true;
+          conversionBaselinePolicy = undefined;
+        }
+      }
+    }
+
     opts.onProgress?.(1, 'Done');
-    const endTaxAdj = finalInner.proj.endTaxAdjustedReal;
-    return packageResult(finalInner, goal, evalCounter.n, {
+    const endTaxAdj = shippedInner.proj.endTaxAdjustedReal;
+    return packageResult(shippedInner, goal, evalCounter.n, {
       headline: fmtM(endTaxAdj),
       headlineLabel: 'Tax-adjusted balance (today\'s $)',
       conversionBaselinePolicy,
+      conversionBaselineMetric,
+      conversionsDisabled,
     });
   }
 

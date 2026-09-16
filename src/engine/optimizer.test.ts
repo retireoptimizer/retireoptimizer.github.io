@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection, effectiveBracketCeiling } from './projection';
-import { optimizeStrategy } from './optimizer';
-import { planP_tightPlan } from './__golden/plans';
+import { optimizeStrategy, CONVERSION_BASELINE_MARGIN } from './optimizer';
+import { applyResultToPlan } from './applyOptimizerResult';
+import { planP_tightPlan, planG_californiaCouple } from './__golden/plans';
 import { runMonteCarlo } from './monteCarlo';
 import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { Plan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
-import { assertProjectionInvariants } from './__invariants__/assertions';
+import { assertProjectionInvariants, assertNoRoundTrippedConversions, assertNoConcurrentConversionAndRothDraw } from './__invariants__/assertions';
 
 import { FED_BRACKETS_MFJ } from './taxConstants';
 // 24% bracket top — the optimizer's per-year conversion cap.
@@ -139,7 +140,69 @@ describe('Optimizer ↔ Projection coordination', () => {
     const plan = defaultPlan();
     const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
     assertProjectionInvariants(r.projection, plan);
+    // Optimizer-authored policies must never round-trip a conversion. Asserted here rather than
+    // inside assertProjectionInvariants because a user-configured plan (bracket-fill conversions
+    // plus a Roth-draining withdrawal order) can produce one legitimately, and the engine is
+    // modelling that faithfully; the conv-roth-first-incoherent warning covers that case.
+    assertNoRoundTrippedConversions(r.projection);
+    assertNoConcurrentConversionAndRothDraw(r.projection);
   }, 60_000);
+
+  it('round-trip collapse leaves no residual Roth draw in any conversion year', () => {
+    // Regression: the collapse originally adjusted pctRoth by subtracting roundTrip/totalWD, but
+    // the split fractions apply to the spending gap (which carries conversion tax), not to
+    // totalWD. The delta therefore undershot and left a sliver of pctRoth alive, surfacing as a
+    // few dollars of Roth withdrawal beside a large conversion — $2 next to $57k on a real plan.
+    // Asserted on the applied plan too, since that is what the user actually sees.
+    for (const [label, mk] of [
+      ['samplePlan', () => { const p = defaultPlan(); p.conversion.mode = 'off'; return p; }],
+      ['planG', planG_californiaCouple],
+      ['planP', planP_tightPlan],
+    ] as const) {
+      const plan = mk();
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      try {
+        assertNoConcurrentConversionAndRothDraw(r.projection);
+        assertNoConcurrentConversionAndRothDraw(runProjection(applyResultToPlan(plan, r)));
+      } catch (e) {
+        throw new Error(`${label}: ${(e as Error).message}`);
+      }
+    }
+  }, 300_000);
+
+  it('metric >= conversionBaselineMetric - margin on all golden plans (adoption guard holds)', () => {
+    // Durable invariant: the shipped result must never score worse than the no-conversion
+    // baseline by more than the adoption margin. If this fires, the adoption guard failed to
+    // adopt a superior baseline — either a new code path bypasses it or the margin constant drifted.
+    // Does NOT pin absolute dollar figures so legitimate search improvements don't break this.
+    const goldenPlans = [
+      defaultPlan(),
+      planG_californiaCouple(),
+      planP_tightPlan(),
+    ];
+    for (const plan of goldenPlans) {
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      if (r.conversionBaselineMetric !== undefined) {
+        const margin = CONVERSION_BASELINE_MARGIN(r.metric);
+        expect(
+          r.metric,
+          `Plan scored ${r.metric.toFixed(0)} but no-conv baseline scored ${r.conversionBaselineMetric.toFixed(0)} — adoption guard should have fired (margin ${margin.toFixed(0)})`
+        ).toBeGreaterThanOrEqual(r.conversionBaselineMetric - margin);
+      }
+    }
+  }, 300_000);
+
+  it('planG (bracket-fill optimize:false): conversionsDisabled=true and lifetimeConversion<1000 after fix', () => {
+    // Before Part 1+2: plan G had 100% round-tripped conversions ($1.2M gross) and the optimizer
+    // shipped a result $64,885 worse than its own no-conversion baseline.
+    // After the fix: the adoption guard must fire and conversions must be disabled.
+    const plan = planG_californiaCouple();
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    expect(r.conversionsDisabled, 'adoption guard must fire for planG').toBe(true);
+    expect(r.projection.lifetimeConversion, 'no conversions should survive after adoption').toBeLessThan(1000);
+    // Don't pin the absolute metric: any improvement above the old $6,134,672 is acceptable.
+    expect(r.metric, 'planG metric should improve above the old result').toBeGreaterThan(6_000_000);
+  }, 180_000);
 });
 
 describe('Custom BlendPolicy ↔ Projection', () => {
@@ -252,10 +315,11 @@ describe('conversion.optimize gate', () => {
     expect(r.projection.lifetimeConversion).toBe(0);
   }, 60_000);
 
-  it('optimizeConversions=false, mode=bracket-fill → conversions follow the mode', () => {
+  it('optimizeConversions=false, mode=bracket-fill → conversions follow the mode unless adoption fires', () => {
     // When optimize=false, the optimizer must NOT set explicit convAmt on any window
     // (doing so would override bracket-fill and break the user's Pick-tab intent).
-    // Conversions come entirely from the mode; the optimizer only searches withdrawals.
+    // Conversions come from the mode; if the adoption guard finds no-conv is better, it ships
+    // the baseline (conversionsDisabled=true) and r.projection has zero conversions — correct.
     const plan = defaultPlan();
     plan.conversion.mode = 'bracket-fill';
     plan.conversion.optimize = false;
@@ -263,7 +327,10 @@ describe('conversion.optimize gate', () => {
     for (const w of r.perYearPolicy.windows) {
       expect(w.convAmt, `window ${w.fromAge}-${w.toAge} convAmt must be undefined`).toBeUndefined();
     }
-    expect(r.projection.lifetimeConversion).toBeGreaterThan(0);
+    if (!r.conversionsDisabled) {
+      // Adoption did not fire: mode-driven conversions survived.
+      expect(r.projection.lifetimeConversion).toBeGreaterThan(0);
+    }
     // Withdrawals still optimized: end balance beats the all-taxable, mode-driven baseline.
     const baseline = runProjection(plan); // no policy → all-taxable withdrawals + same mode conversions
     expect(r.projection.endTotalReal).toBeGreaterThanOrEqual(baseline.endTotalReal - 1);
@@ -277,13 +344,15 @@ describe('conversion.optimize gate', () => {
   }, 60_000);
 
   it('optimizeConversions=false round-trips: applied plan matches result.projection', () => {
+    // Use applyResultToPlan (same path as the UI Apply button) so conversion.mode is correctly
+    // overridden to 'off' when the adoption guard fires. Manually setting customPolicy alone
+    // would leave conversion.mode=bracket-fill, resurrecting conversions (the landmine).
     const plan = defaultPlan();
     plan.conversion.mode = 'bracket-fill';
     plan.conversion.optimize = false;
     const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-    const applied = clone(plan);
-    applied.customPolicy = { ...r.perYearPolicy, source: 'optimizer' };
-    const verify = runProjection(applied, { policy: r.perYearPolicy });
+    const applied = applyResultToPlan(plan, r);
+    const verify = runProjection(applied);
     expect(verify.endTotalReal).toBeCloseTo(r.projection.endTotalReal, 0);
   }, 60_000);
 });

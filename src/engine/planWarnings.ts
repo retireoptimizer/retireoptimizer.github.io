@@ -100,5 +100,20 @@ export function computePlanWarnings(plan: Plan): PlanWarning[] {
     }
   }
 
+  // Warn when conversions are active alongside a Roth-first withdrawal ordering. Bracket-fill
+  // conversions sized against anticipated Roth draws will net to zero (converting into Roth then
+  // drawing immediately cancels out). Manual/auto-window amounts are explicit user instructions
+  // and are not capped, but the round-trip still makes them economically pointless.
+  const convMode = plan.conversion.mode;
+  const convActive = convMode !== 'off' && !(plan.conversion.optimize ?? true);
+  const rothFirstOrdering = plan.withdrawalStrategy === 'rothfirst';
+  if (convActive && rothFirstOrdering) {
+    warnings.push({
+      id: 'conv-roth-first-incoherent',
+      severity: 'warn',
+      message: 'Roth-first withdrawal ordering draws from the Roth account in the same year as conversions. Converted dollars are withdrawn immediately, so nothing is repositioned. Switch the withdrawal order to tax-first or traditional-first, or let the optimizer choose.',
+    });
+  }
+
   return warnings;
 }

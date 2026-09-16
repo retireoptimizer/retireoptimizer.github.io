@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePlanStore } from '../store/usePlanStore';
+import { useToastStore } from '../store/useToastStore';
 import { LegacyTargetInput } from './inputs/LegacyTargetInput';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { STRATEGIES } from '../engine/strategyPresets';
@@ -149,6 +150,9 @@ export default function StrategyChooser() {
       if (pendingPayTaxFromBrok !== null) planForOptimize = { ...planForOptimize, payTaxFromBrokerage: pendingPayTaxFromBrok };
       const goalToUse = (selectedGoal ?? activeGoal ?? 'max-end-balance') as UserGoal;
       const r = await worker.optimize(planForOptimize, goalToUse, { useNelderMead: true, thorough: true });
+      if (r.conversionsDisabled) {
+        useToastStore.getState().show('info', 'Conversions turned off — the optimizer found a higher balance without Roth conversions. Re-run any time to re-evaluate.');
+      }
       const appliedPlan = applyResultToPlan(planForOptimize, r);
       // planKey fingerprints planForOptimize (what the optimizer actually saw, including any pendingConv).
       setPlanKey(planInputKey(planForOptimize));
