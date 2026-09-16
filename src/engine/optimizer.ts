@@ -5,7 +5,7 @@ import { householdPlanThroughAgeA } from './planInputKey';
 import { REC_GOALS, USER_GOALS, type RecGoal, type UserGoal } from './recommender';
 import { calendarYearAge } from '../lib/ageUtils';
 import { nelderMead2D, nelderMead3D } from './nelderMead';
-import { mulberry32, historicalBootstrap } from './returnModels';
+import { mulberry32, historicalBootstrap, DEFAULT_EQUITY_PCT } from './returnModels';
 import { FED_BRACKETS_MFJ } from './taxConstants';
 import { federalPovertyLevel } from './aca';
 import { shiftRetirementAge } from './retirementAgeShift';
@@ -139,7 +139,7 @@ export interface OptimizeOptions {
    *  across real return sequences rather than the assumed mean return. Requires useNelderMead.
    *  Adds ~15× cost to the NM phase; partially offset by fewer NM iters per year (~60–90s). */
   mcAware?: boolean;
-  /** Equity fraction (0–1) for MC bootstrap paths. Defaults to plan.assumptions.equityPct ?? 0.6. */
+  /** Equity fraction (0–1) for MC bootstrap paths. Defaults to DEFAULT_EQUITY_PCT. */
   equityPct?: number;
   /** Risk posture for mcAware objective. Governs failYears and CVaR tail weight.
    *  'floor' = protect the floor (high tail weight), 'growth' = favor growth (low tail weight).
@@ -1293,10 +1293,10 @@ function computeConversionBaseline(
   };
 }
 
-function buildMcContext(plan: Plan, opts: OptimizeOptions): McContext {
+function buildMcContext(opts: OptimizeOptions): McContext {
   const seed = opts.mcSeed ?? ((Math.random() * 2 ** 31) >>> 0);
   const rand = mulberry32(seed);
-  const equityPct = opts.equityPct ?? plan.assumptions.equityPct ?? 0.6;
+  const equityPct = opts.equityPct ?? DEFAULT_EQUITY_PCT;
   const posture = POSTURES[opts.mcPosture ?? 'balanced'];
   const paths = Array.from({ length: MC_PATHS_DEFAULT }, () =>
     historicalBootstrap(rand, equityPct, MC_PATH_YEARS, 3)
@@ -1325,7 +1325,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     // Runs only at the end, after all deterministic multi-start work is done.
     let finalInner = inner;
     if (opts.mcAware && opts.useNelderMead) {
-      const mcCtx = buildMcContext(plan, opts);
+      const mcCtx = buildMcContext(opts);
       const mcInner = innerOptimize(plan, { ...opts, mcCtx }, evalCounter, progressTick, inner.policy.windows);
       if (!mcInner.ranOut) finalInner = mcInner;
     }

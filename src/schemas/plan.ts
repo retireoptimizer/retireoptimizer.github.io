@@ -80,8 +80,6 @@ export const AssumptionsSchema = z.object({
   tradReturn: z.number().default(0.055),
   rothReturn: z.number().default(0.055),
   inflation: z.number(),
-  /** Equity (stock) share of the portfolio, 0..1. Drives Monte Carlo stock/bond blend. */
-  equityPct: z.number().min(0).max(1).default(0.6),
   // ACA marketplace premium modeling (pre-Medicare gap years)
   modelACA: z.boolean().default(false),
   acaHouseholdSize: z.number().int().min(1).max(8).default(2),
@@ -286,7 +284,6 @@ export const defaultPlan = (): Plan => ({
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
-    equityPct: 0.6,
     modelACA: false,
     acaHouseholdSize: 1,
     acaBenchmarkPremium: 0,
@@ -358,7 +355,6 @@ export const samplePlan = (): Plan => ({
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
-    equityPct: 0.6,
     modelACA: false,
     acaHouseholdSize: 2,
     acaBenchmarkPremium: 0,

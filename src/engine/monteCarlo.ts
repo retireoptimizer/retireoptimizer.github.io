@@ -1,6 +1,6 @@
 import type { Plan } from '../schemas/plan';
 import { runProjection } from './projection';
-import { mulberry32, parametricNormal, historicalBootstrap, historicalSequence } from './returnModels';
+import { mulberry32, parametricNormal, historicalBootstrap, historicalSequence, DEFAULT_EQUITY_PCT } from './returnModels';
 import { indexOfYear, START_YEAR, N_YEARS } from './marketHistory';
 
 export type ReturnModel = 'historical' | 'parametric';
@@ -8,7 +8,7 @@ export type ReturnModel = 'historical' | 'parametric';
 export interface MonteCarloOptions {
   trials?: number;       // default 500
   model?: ReturnModel;   // default 'historical'
-  equityPct?: number;    // default plan.assumptions.equityPct (0..1)
+  equityPct?: number;    // stock share 0..1; defaults to DEFAULT_EQUITY_PCT (not plan data)
   blockYears?: number;   // historical bootstrap block length, default 3
   meanReturn?: number;   // parametric arithmetic mean; default plan.postRetReturn
   stdDev?: number;       // parametric std dev; default 0.10
@@ -101,7 +101,7 @@ function projectWithReturns(
 export function runMonteCarlo(plan: Plan, opts: MonteCarloOptions = {}): MonteCarloResult {
   const trials = opts.trials ?? 500;
   const model: ReturnModel = opts.model ?? 'historical';
-  const equityPct = opts.equityPct ?? plan.assumptions.equityPct ?? 0.6;
+  const equityPct = opts.equityPct ?? DEFAULT_EQUITY_PCT;
   const blockYears = opts.blockYears ?? 3;
   const meanReturn = opts.meanReturn ?? plan.assumptions.tradReturn;
   const stdDev = opts.stdDev ?? 0.10;
@@ -295,7 +295,7 @@ export interface HistoricalSweepResult {
  * window analysis. Pre-retirement years use the plan's tradReturn.
  */
 export function runHistoricalSweep(plan: Plan, opts: { equityPct?: number } = {}): HistoricalSweepResult {
-  const equityPct = opts.equityPct ?? plan.assumptions.equityPct ?? 0.6;
+  const equityPct = opts.equityPct ?? DEFAULT_EQUITY_PCT;
   const baseline = runProjection(plan);
   const nYears = baseline.rows.length;
   const ages = baseline.rows.map((r) => r.ageA);

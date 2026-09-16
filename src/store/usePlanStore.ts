@@ -143,10 +143,18 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 29,
+      version: 30,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v30: equityPct moved out of the plan. It is a Monte Carlo stress-test setting, not plan
+        // data, and leaving it in assumptions put it inside planInputKey, where changing the mix
+        // would mark an optimizer policy stale. Now a UI preference (lib/mcPrefs.ts). Delete the
+        // stale key so it stops riding along in plan exports.
+        if (fromVersion < 30 && ps.plan && typeof ps.plan === 'object') {
+          const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
+          if (asm && 'equityPct' in asm) delete asm.equityPct;
+        }
         // v29: stamp inputKey on existing optimizer-authored customPolicy so users aren't gated on
         // first load after the upgrade. Treats already-persisted policies as fresh (mirrors pre-v29 behavior).
         if (fromVersion < 29 && ps.plan && typeof ps.plan === 'object') {
@@ -310,11 +318,7 @@ export const usePlanStore = create<PlanState>()(
             planObj.incomeStreams = streams.filter((s: Record<string, unknown>) => s.type !== 'Wages' && s.type !== 'Rental');
           }
         }
-        // v6: equityPct (stock/bond split) added to assumptions for Monte Carlo.
-        if (fromVersion < 6 && ps.plan && typeof ps.plan === 'object') {
-          const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
-          if (asm && !('equityPct' in asm)) asm.equityPct = 0.6;
-        }
+        // v6 backfilled assumptions.equityPct; removed, since v30 deletes that field.
         // v5: contribGrowth moved from assumptions (household-wide) to each person's
         // portfolio. Copy the old single value onto both people so projections are
         // unchanged; persisted plans without it would otherwise yield NaN factors.

@@ -71,6 +71,10 @@ export function parametricNormal(
  * it will be passed as `inflationOverrides` so the projection deflator and CPI-indexed
  * expenses track actual historical inflation rather than a fixed rate.
  */
+/** Default equity share when no explicit mix is supplied. Monte Carlo is a stress test against
+ *  history, so the mix is a simulation setting rather than plan data; see lib/mcPrefs.ts. */
+export const DEFAULT_EQUITY_PCT = 0.6;
+
 export function historicalBootstrap(
   rand: () => number,
   equityPct: number,

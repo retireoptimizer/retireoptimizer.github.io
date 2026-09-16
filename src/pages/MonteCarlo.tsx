@@ -19,6 +19,7 @@ import { useOptimizerApplied } from '../hooks/useOptimizerApplied';
 import LearnMoreModal, { MC_SIMULATE_HELP, MC_OPTIMIZE_HELP } from '../components/LearnMoreModal';
 import type { HelpTopic } from '../components/LearnMoreModal';
 import { policyStatus } from '../engine/policyStatus';
+import { loadEquityPct, saveEquityPct } from '../lib/mcPrefs';
 import StalePlanGate from '../components/StalePlanGate';
 
 interface RiskBand {
@@ -90,7 +91,7 @@ export default function MonteCarlo() {
   const proj = useProjection(mcBase);
 
   const [trials, setTrials] = useState(5000);
-  const [equityPct, setEquityPct] = useState(Math.round((plan.assumptions.equityPct ?? 0.6) * 100));
+  const [equityPct, setEquityPct] = useState(loadEquityPct);
   const [mcPosture, setMcPosture] = useState<'floor' | 'balanced' | 'growth'>('balanced');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<MonteCarloResult | null>(null);
@@ -227,7 +228,7 @@ export default function MonteCarlo() {
                       type="number"
                       value={equityPct}
                       min={0} max={100} step={5}
-                      onChange={(e) => { setEquityPct(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0))); setDirty(true); setRobustnessComparison(null); }}
+                      onChange={(e) => { const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)); setEquityPct(v); saveEquityPct(v); setDirty(true); setRobustnessComparison(null); }}
                       style={{ width: 60 }}
                     />
                   </div>
