@@ -245,7 +245,6 @@ function rowsToSeed(proj: ProjectionResult, retireAge: number, planToAge: number
   return seed;
 }
 
-
 /**
  * Inner optimizer. Scoring: max endTaxAdjustedReal (inflation-adjusted, after estimated
  * tax on pre-tax and unrealized-gain balances), with ranOut strictly worse than any
@@ -855,26 +854,84 @@ function setRetirementAge(plan: Plan, ageA: number): Plan {
   return shiftRetirementAge(plan, ageA);
 }
 
+/** Score tolerance ($) for accepting the unreachable-split rewrite. */
+const UNREACHABLE_EPS = 1;
+/** Fraction by which a bucket must undershoot its requested share to count as exhausted.
+ *  Matches the split tolerance `sameWindow` uses when compacting windows. */
+const UNREACHABLE_SHARE_EPS = 1e-4;
+
+/**
+ * Rewrite split fractions the projection could never act on.
+ *
+ * When a bucket is exhausted, its percentage in that year's window is a free variable:
+ * applyBlendPolicy clamps each draw to the balance and refills the remainder taxable →
+ * traditional → Roth, so every value of that percentage scores identically. Coordinate descent
+ * and Nelder-Mead have no gradient there and leave whatever the seed contained, so the shipped
+ * policy asks for withdrawals that cannot happen and the explain layer reports "your withdrawal
+ * split could not be honored" for a year the optimizer deliberately accepted.
+ *
+ * Moving an unreachable share into traditional reproduces the refill exactly, so the rewrite is
+ * score-neutral by construction. It is still verified against a re-projection and discarded
+ * wholesale if the score or depletion moves, because the equivalence assumes traditional can
+ * absorb the shift.
+ */
+function normalizeUnreachableSplits(evalPlan: Plan, inner: InnerEval): InnerEval {
+  const rowByAge = new Map(inner.proj.rows.map((r) => [r.ageA, r]));
+  let changed = false;
+
+  const windows = inner.policy.windows.map((w) => {
+    // Per-year windows only — a merged window spans ages with differing balance states.
+    const row = w.fromAge === w.toAge ? rowByAge.get(w.fromAge) : undefined;
+    if (!row) return w;
+    // Exhausted for the whole year: contributed nothing and closed empty. Only this case is
+    // rewritten. A bucket that merely undershot its share still governed part of the draw, and
+    // restating the year at its realized shares would fold in forced flows (RMDs) the split never
+    // governed, so those years are left alone and continue to report an honest spill.
+    const taxDead = row.wdTax < UNREACHABLE_EPS && row.endTaxable < UNREACHABLE_EPS;
+    const rothDead = row.wdRth < UNREACHABLE_EPS && row.endRoth < UNREACHABLE_EPS;
+
+    let { pctTaxable, pctTraditional, pctRoth } = w;
+    // The refill order is taxable → traditional → Roth, so an unreachable taxable share is
+    // exactly what traditional absorbed.
+    if (taxDead && pctTaxable > UNREACHABLE_SHARE_EPS) { pctTraditional += pctTaxable; pctTaxable = 0; }
+    // Safe only once taxable is also dead, otherwise an unmet Roth share refills taxable first.
+    if (taxDead && rothDead && pctRoth > UNREACHABLE_SHARE_EPS) { pctTraditional += pctRoth; pctRoth = 0; }
+    if (pctTaxable === w.pctTaxable && pctRoth === w.pctRoth) return w;
+
+    changed = true;
+    return { ...w, pctTaxable, pctTraditional, pctRoth };
+  });
+  if (!changed) return inner;
+
+  const policy: BlendPolicy = { ...inner.policy, windows };
+  const proj = runProjection(evalPlan, { policy });
+  const score = REC_GOALS['max-end'].score(proj);
+  if (proj.ranOut !== inner.ranOut || Math.abs(score - inner.score) > UNREACHABLE_EPS) return inner;
+  return { policy, proj, score, ranOut: proj.ranOut };
+}
+
 function packageResult(
+  evalPlan: Plan,
   inner: InnerEval,
   goal: UserGoal,
   evals: number,
   extras: { solvedSpendingMultiplier?: number; recommendedAnnualSpend?: number; solvedRetirementAge?: number; headline: string; headlineLabel: string; conversionBaselinePolicy?: BlendPolicy; conversionBaselineMetric?: number; conversionsDisabled?: boolean; legacyTargetTaxAdjReal?: number; achievedLegacyTaxAdjReal?: number },
 ): OptimizeResult {
   const spec = REC_GOALS['max-end'];
+  const norm = normalizeUnreachableSplits(evalPlan, inner);
   return {
-    policy: { ...inner.policy, windows: compact(inner.policy.windows), source: 'optimizer', goal },
-    perYearPolicy: inner.policy,
+    policy: { ...norm.policy, windows: compact(norm.policy.windows), source: 'optimizer', goal },
+    perYearPolicy: norm.policy,
     conversionBaselinePolicy: extras.conversionBaselinePolicy,
     conversionBaselineMetric: extras.conversionBaselineMetric,
     conversionsDisabled: extras.conversionsDisabled,
-    metric: inner.score,
-    metricFormatted: spec.format(inner.score),
-    ranOut: inner.ranOut,
+    metric: norm.score,
+    metricFormatted: spec.format(norm.score),
+    ranOut: norm.ranOut,
     evaluations: evals,
     goal,
     goalLabel: USER_GOALS[goal].label,
-    projection: inner.proj,
+    projection: norm.proj,
     solvedSpendingMultiplier: extras.solvedSpendingMultiplier,
     recommendedAnnualSpend: extras.recommendedAnnualSpend,
     solvedRetirementAge: extras.solvedRetirementAge,
@@ -1343,7 +1400,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
 
     opts.onProgress?.(1, 'Done');
     const endTaxAdj = shippedInner.proj.endTaxAdjustedReal;
-    return packageResult(shippedInner, goal, evalCounter.n, {
+    return packageResult(plan, shippedInner, goal, evalCounter.n, {
       headline: fmtM(endTaxAdj),
       headlineLabel: 'Tax-adjusted balance (today\'s $)',
       conversionBaselinePolicy,
@@ -1489,9 +1546,10 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
 
     if (!bestFeasible) {
       const fallbackDollars = amortAbs * 0.5;
-      const inner = innerOptimize(scaleTo(fallbackDollars), opts, evalCounter);
+      const fallbackPlan = scaleTo(fallbackDollars);
+      const inner = innerOptimize(fallbackPlan, opts, evalCounter);
       if (legacy > 0) {
-        return packageResult(inner, goal, evalCounter.n, {
+        return packageResult(fallbackPlan, inner, goal, evalCounter.n, {
           solvedSpendingMultiplier: baseAnnualSpend > 0 ? fallbackDollars / baseAnnualSpend : NaN,
           recommendedAnnualSpend: fallbackDollars,
           headline: `Cannot leave ${fmtUSD(legacy)} after tax — best achievable is ${fmtUSD(bestLegacySeen.legacyReal > -Infinity ? bestLegacySeen.legacyReal : 0)}`,
@@ -1499,7 +1557,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
           legacyTargetTaxAdjReal: legacy,
         });
       }
-      return packageResult(inner, goal, evalCounter.n, {
+      return packageResult(fallbackPlan, inner, goal, evalCounter.n, {
         solvedSpendingMultiplier: baseAnnualSpend > 0 ? fallbackDollars / baseAnnualSpend : NaN,
         recommendedAnnualSpend: fallbackDollars,
         headline: 'Plan depletes even at 50% of estimated sustainable spending',
@@ -1509,7 +1567,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     const sustainable = bestFeasible.dollars;
     const solvedMultiplier = baseAnnualSpend > 0 ? sustainable / baseAnnualSpend : NaN;
     const achieved = bestFeasible.inner.proj.endTaxAdjustedReal;
-    return packageResult(bestFeasible.inner, goal, evalCounter.n, {
+    return packageResult(scaleTo(sustainable), bestFeasible.inner, goal, evalCounter.n, {
       solvedSpendingMultiplier: solvedMultiplier,
       recommendedAnnualSpend: sustainable,
       headline: legacy > 0
@@ -1582,7 +1640,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
     opts.onProgress?.(1, 'Done');
     if (!bestFeasible) {
       const inner = innerOptimize(plan, opts, evalCounter);
-      return packageResult(inner, goal, evalCounter.n, {
+      return packageResult(plan, inner, goal, evalCounter.n, {
         solvedRetirementAge: startAge,
         headline: `Age ${startAge} (current — earlier ages infeasible)`,
         headlineLabel: 'Earliest feasible retirement',
@@ -1592,7 +1650,7 @@ export function optimizeStrategy(plan: Plan, goal: UserGoal, opts: OptimizeOptio
       stopReason === 'early-trad' ? 'Earliest retirement on penalty-free assets' :
       stopReason === 'floor'      ? `Earliest feasible retirement — age ${minAge} floor reached` :
                                     'Earliest feasible retirement';
-    return packageResult(bestFeasible.inner, goal, evalCounter.n, {
+    return packageResult(setRetirementAge(plan, bestFeasible.age), bestFeasible.inner, goal, evalCounter.n, {
       solvedRetirementAge: bestFeasible.age,
       headline: `Age ${bestFeasible.age}`,
       headlineLabel,

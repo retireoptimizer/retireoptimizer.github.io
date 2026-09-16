@@ -6,7 +6,7 @@ import { planP_tightPlan, planG_californiaCouple } from './__golden/plans';
 import { runMonteCarlo } from './monteCarlo';
 import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { Plan } from '../schemas/plan';
-import type { BlendPolicy } from './blendPolicy';
+import { findWindow, type BlendPolicy } from './blendPolicy';
 import { assertProjectionInvariants, assertNoRoundTrippedConversions, assertNoConcurrentConversionAndRothDraw } from './__invariants__/assertions';
 
 import { FED_BRACKETS_MFJ } from './taxConstants';
@@ -133,6 +133,34 @@ describe('Optimizer ↔ Projection coordination', () => {
     expect(applied.endTaxAdjustedReal).toBeCloseTo(r.projection.endTaxAdjustedReal, 0);
     expect(applied.lifetimeFedTax).toBeCloseTo(r.projection.lifetimeFedTax, -1);
   }, 60_000);
+
+  it('shipped policy never asks for a bucket that was exhausted all year', () => {
+    // An exhausted bucket's percentage is a free variable: applyBlendPolicy clamps the draw to
+    // the balance and refills the remainder, so every value scores identically and the search
+    // leaves whatever the seed contained. Those values ship as a policy asking for withdrawals
+    // that cannot happen, which the explain layer reports as "withdrawal split could not be
+    // honored" for a year the optimizer deliberately accepted. normalizeUnreachableSplits folds
+    // them into traditional. Asserted on every golden plan plus the default.
+    for (const mk of [defaultPlan, planP_tightPlan, planG_californiaCouple]) {
+      const plan = mk();
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      for (const row of r.projection.rows) {
+        const w = findWindow(r.perYearPolicy, row.ageA);
+        if (!w) continue;
+        const taxDead = row.wdTax < 1 && row.endTaxable < 1;
+        const rothDead = row.wdRth < 1 && row.endRoth < 1;
+        if (taxDead) expect(w.pctTaxable, `age ${row.ageA} taxable exhausted`).toBe(0);
+        if (taxDead && rothDead) expect(w.pctRoth, `age ${row.ageA} Roth exhausted`).toBe(0);
+      }
+      // The rewrite must be score-neutral, never a way to buy end balance. When the baseline was
+      // adopted the windows carry convAmt:undefined, so mode must be forced off exactly as
+      // applyResultToPlan does — otherwise the re-projection resurrects the conversions.
+      const verifyPlan = r.conversionsDisabled
+        ? { ...plan, conversion: { ...plan.conversion, mode: 'off' as const } }
+        : plan;
+      expect(r.metric).toBeCloseTo(runProjection(verifyPlan, { policy: r.perYearPolicy }).endTaxAdjustedReal, 0);
+    }
+  }, 180_000);
 
   it('produces a projection that satisfies all dollar-flow invariants', () => {
     // Combines Layer 1's invariants with Layer 2's optimizer path — ensures the optimizer
