@@ -219,6 +219,7 @@ export default function InputsPage() {
   const updateExpenseStream = usePlanStore((s) => s.updateExpenseStream);
   const removeExpenseStream = usePlanStore((s) => s.removeExpenseStream);
   const setConversion = usePlanStore((s) => s.setConversion);
+  const setPayTaxFromBrokerage = usePlanStore((s) => s.setPayTaxFromBrokerage);
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const resetWhatIf = useWhatIfStore((s) => s.reset);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
@@ -942,6 +943,18 @@ export default function InputsPage() {
                   {!conv.optimize && conv.mode === 'manual' && <Chk />}Manual
                 </button>
               </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 2 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={plan.payTaxFromBrokerage ?? true}
+                  onChange={(e) => setPayTaxFromBrokerage(e.target.checked)}
+                  style={{ accentColor: 'var(--gold)', width: 13, height: 13 }}
+                />
+                Pay IRA withdrawal taxes from brokerage
+              </label>
             </div>
 
             <div style={{
