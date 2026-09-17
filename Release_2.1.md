@@ -57,3 +57,39 @@ This setting controls whether the taxes triggered by IRA/pre-tax withdrawals are
 Existing plans are not changed. If you previously had this turned off, your setting is preserved.
 
 *Internal note: `src/schemas/plan.ts` default changed to `true` (Zod schema + `defaultPlan` + `samplePlan`). Checkbox added to `InputsPage.tsx` Optimization Goal panel. No migration bump needed — existing plans already carry an explicit value from the v20 migration.*
+
+---
+
+## New York State Tax — Accuracy Fix
+
+### What was wrong
+
+The New York state income tax calculation had two material errors that caused it to overstate taxes for NY residents, sometimes significantly.
+
+**1. The $20,000 per-person retirement income exclusion was not applied.**
+New York law allows each taxpayer to exclude up to $20,000 of IRA, 401(k), and pension income from state tax. For a married couple, that is $40,000 excluded before any tax is owed. The app was applying NY tax to the full withdrawal amount — as if this exclusion did not exist. On a plan with $80,000 of annual IRA withdrawals, this alone overstated NY tax by roughly $2,600 per year.
+
+**2. The NY standard deduction was not applied.**
+New York has a standard deduction ($8,000 for single filers, $16,050 for married couples filing jointly). The app was not deducting this before applying the tax rate, which further overstated taxable income.
+
+On top of both of these, the old calculation used a flat 6.5% approximation instead of New York's actual progressive bracket structure (which ranges from 4% to 9.65%). Combined, these three errors could overstate NY state tax by $3,000–$5,000 per year for a typical retired couple — a meaningful drag on projected balances over a 20–30 year retirement.
+
+### What changed
+
+- **Progressive brackets applied.** New York's actual 2025 bracket table (4%, 4.5%, 5.25%, 5.85%, 6.25%, 6.85%, 9.65%) is now used instead of the 6.5% flat approximation. Thresholds are inflation-indexed over the projection horizon.
+- **$20,000 per-person retirement exclusion applied.** IRA and pension withdrawals are reduced by $20,000 per living taxpayer before entering the tax base. A couple gets $40,000 excluded; a surviving spouse gets $20,000. Roth withdrawals are already tax-free at the state level and are not included in this calculation.
+- **Standard deduction applied by filing status.** $8,000 for single filers, $16,050 for married filing jointly (2025 law). The deduction scales with inflation over the projection.
+
+### What you will see in the app
+
+NY state tax amounts on the Taxes page and dashboard will be lower — and now accurate — for most plans. The reduction is largest in years with high IRA withdrawals and before Roth conversions push income into higher brackets.
+
+Social Security remains fully exempt from NY state tax, unchanged.
+
+### What is still approximate
+
+- **New York City additional tax** (3.08%–3.88%) is not modeled. NYC residents will see understated total state+city tax.
+- **Itemized deductions** are not modeled for any state; the standard deduction is used in all cases.
+- **NY bracket thresholds** are set by legislation rather than automatic indexing; the app inflation-indexes them as a planning-horizon approximation.
+
+*Internal note: `StateTaxProfile` interface extended with `retirementExemptionPerPerson`, `stdDeductionSingle`, `stdDeductionMFJ`, and `brackets` fields. `NY_BRACKETS` constant added. `stateTax()` refactored to apply retirement exclusion, standard deduction, and progressive brackets. IL/CA/TX/FL/WA/CUSTOM behaviour unchanged. 6 new NY unit tests added. Cold build clean.*
