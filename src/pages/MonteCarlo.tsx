@@ -1,18 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import * as Comlink from 'comlink';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { useWhatIfStore, applyWhatIf } from '../store/useWhatIfStore';
-import type { MonteCarloResult } from '../engine/monteCarlo';
 import type { Plan } from '../schemas/plan';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
-import type { OptimizeResult } from '../engine/optimizer';
 import MonteCarloFan from '../components/charts/MonteCarloFan';
 import HistoricalCohortChart from '../components/charts/HistoricalCohortChart';
 import StressScenarioModal from '../components/StressScenarioModal';
 import { fmtM, fmtK, fmtPct, fmtPtsWithSign } from '../lib/format';
-import type { HistoricalSweepResult } from '../engine/monteCarlo';
+
 import { generateInsights, insightsForSurface } from '../engine/explain';
 import InsightCard from '../components/InsightCard';
 import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
@@ -21,6 +19,7 @@ import { useOptimizerApplied } from '../hooks/useOptimizerApplied';
 import LearnMoreModal, { MC_SIMULATE_HELP, MC_OPTIMIZE_HELP } from '../components/LearnMoreModal';
 import type { HelpTopic } from '../components/LearnMoreModal';
 import { policyStatus } from '../engine/policyStatus';
+import { planInputKey } from '../engine/planInputKey';
 import { type McPosture } from '../engine/goalLabels';
 import { loadEquityPct, saveEquityPct } from '../lib/mcPrefs';
 import StalePlanGate from '../components/StalePlanGate';
@@ -48,16 +47,6 @@ const ROBUSTNESS_POSTURE: McPosture = 'balanced';
  *  At 5,000 trials the standard error on a success rate near 85% is about 0.5 points, so anything
  *  under a full point is indistinguishable from sampling noise. */
 const MIN_GAIN_PTS = 1.0;
-
-/** Outcome of a robustness run: the tuned plan and its out-of-sample scores against today's. */
-interface RobustOutcome {
-  plan: Plan;
-  optResult: OptimizeResult;
-  before: MonteCarloResult;
-  after: MonteCarloResult;
-  gainPts: number;
-  worthIt: boolean;
-}
 
 /** Subtle inline help trigger placed beside a step heading. */
 function LearnMoreLink({ onClick }: { onClick: () => void }) {
@@ -91,6 +80,17 @@ export default function MonteCarlo() {
   const robustnessComparison = useOptimizerStore((s) => s.robustnessComparison);
   const setRobustnessComparison = useOptimizerStore((s) => s.setRobustnessComparison);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
+  const mcResult = useOptimizerStore((s) => s.mcResult);
+  const setMcResult = useOptimizerStore((s) => s.setMcResult);
+  const mcHistoricalResult = useOptimizerStore((s) => s.mcHistoricalResult);
+  const setMcHistoricalResult = useOptimizerStore((s) => s.setMcHistoricalResult);
+  const mcRobustOutcome = useOptimizerStore((s) => s.mcRobustOutcome);
+  const setMcRobustOutcome = useOptimizerStore((s) => s.setMcRobustOutcome);
+  const mcTrials = useOptimizerStore((s) => s.mcTrials);
+  const setMcTrials = useOptimizerStore((s) => s.setMcTrials);
+  const mcDirty = useOptimizerStore((s) => s.mcDirty);
+  const setMcDirty = useOptimizerStore((s) => s.setMcDirty);
+  const clearMcResults = useOptimizerStore((s) => s.clearMcResults);
   const displayMode = usePlanStore((s) => s.displayMode);
   const applyOptimizerPlan = useApplyOptimizerPlan();
   const optimizerAppliedState = useOptimizerApplied();
@@ -106,19 +106,26 @@ export default function MonteCarlo() {
   const real = displayMode === 'real';
   const proj = useProjection(mcBase);
 
-  const [trials, setTrials] = useState(5000);
   const [equityPct, setEquityPct] = useState(loadEquityPct);
-  const [robustOutcome, setRobustOutcome] = useState<RobustOutcome | null>(null);
+  // trials and dirty live in the store so they survive navigation; expose local aliases for brevity.
+  const trials = mcTrials;
+  const setTrials = setMcTrials;
+  const result = mcResult;
+  const setResult = setMcResult;
+  const historicalResult = mcHistoricalResult;
+  const setHistoricalResult = setMcHistoricalResult;
+  const robustOutcome = mcRobustOutcome;
+  const setRobustOutcome = setMcRobustOutcome;
+  const dirty = mcDirty;
+  const setDirty = setMcDirty;
   // The Apply bar requires both a preview plan and a result that earned it. The second clause
   // keeps a stale preview from outliving the run that produced it.
   const isRobustnessOptimized = !!robustnessPlan && (robustOutcome === null || robustOutcome.worthIt);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<MonteCarloResult | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<number | null>(null);
   const [detailScenario, setDetailScenario] = useState<number | null>(null);
   const [optimizingRobust, setOptimizingRobust] = useState(false);
   const [robustProgress, setRobustProgress] = useState<{ frac: number; msg?: string }>({ frac: 0 });
-  const [historicalResult, setHistoricalResult] = useState<HistoricalSweepResult | null>(null);
   const [runningHistorical, setRunningHistorical] = useState(false);
   // Fixed seed — deterministic results across re-runs.
   const seed = 42;
@@ -126,8 +133,17 @@ export default function MonteCarlo() {
   // the user changes the posture picker afterwards. null = no confirmation showing.
   const [applySuccess, setApplySuccess] = useState<'floor' | 'balanced' | 'growth' | null>(null);
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
-  // dirty = inputs changed since last run; disables Optimize and shows a warning badge.
-  const [dirty, setDirty] = useState(false);
+
+  // Track the plan fingerprint. When it changes between renders (user edited inputs on another
+  // page), clear all MC results so the page never shows stale numbers.
+  const planKey = planInputKey(mcBase);
+  const prevPlanKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevPlanKeyRef.current !== null && prevPlanKeyRef.current !== planKey) {
+      clearMcResults();
+    }
+    prevPlanKeyRef.current = planKey;
+  }, [planKey, clearMcResults]);
 
   const run = async () => {
     setRunning(true);
