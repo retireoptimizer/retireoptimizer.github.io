@@ -4,11 +4,16 @@ import ConversionDetail from './ConversionDetail';
 import CustomBlendPanel from './CustomBlendPanel';
 import RothVsRmd from '../charts/RothVsRmd';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import type { ConversionParams } from '../../schemas/plan';
 
 /** Right-drawer side sheet. `mode` controls which panel is shown:
  *  'blend' → Custom Blend Editor; 'conversion' → the active conversion mode's detail fields;
  *  'chart' → the Conversions-vs-RMD chart. Mode/preset selection lives inline in StrategyChooser. */
-export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: 'blend' | 'conversion' | 'chart' }) {
+export default function StrategyCustomizeSheet({ open, onClose, mode, convOverride, onUpdate }: {
+  open: boolean; onClose: () => void; mode: 'blend' | 'conversion' | 'chart';
+  convOverride?: Partial<ConversionParams>;
+  onUpdate?: (updates: Partial<ConversionParams>) => void;
+}) {
   const isMobile = useIsMobile();
   const proj = useProjection();
   const hasConvRmd = proj.rows.some((r) => r.rothConv > 0 || r.rmd > 0);
@@ -82,7 +87,7 @@ export default function StrategyCustomizeSheet({ open, onClose, mode }: { open: 
           >Close</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: isMobile ? 'calc(16px + env(safe-area-inset-bottom))' : 16 }}>
-          {mode === 'conversion' && <ConversionDetail />}
+          {mode === 'conversion' && <ConversionDetail convOverride={convOverride} onUpdate={onUpdate} />}
           {mode === 'blend' && <CustomBlendPanel />}
           {mode === 'chart' && (
             <div>

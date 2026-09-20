@@ -18,6 +18,7 @@ import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from '../engine/taxConstants';
+import StrategyCustomizeSheet from '../components/strategy/StrategyCustomizeSheet';
 
 const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', whiteSpace: 'nowrap' };
 
@@ -233,6 +234,7 @@ export default function InputsPage() {
   const [seenGoal, setSeenGoal] = useState<UserGoal>(planGoal);
   if (planGoal !== seenGoal) { setSeenGoal(planGoal); setSelectedGoal(planGoal); }
 
+  const [convSheetOpen, setConvSheetOpen] = useState(false);
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
   const [buildError, setBuildError] = useState<string | null>(null);
@@ -912,9 +914,9 @@ export default function InputsPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <div style={inlineLabelStyle}>Roth conversions</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ ...inlineLabelStyle, paddingTop: 8 }}>Roth conversions</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <button
                   onClick={() => setConversion({ optimize: true })}
                   title="The optimizer searches conversion amounts for you"
@@ -926,25 +928,41 @@ export default function InputsPage() {
                   style={inputPillStyle(!conv.optimize && conv.mode === 'off')}>
                   {!conv.optimize && conv.mode === 'off' && <Chk />}None
                 </button>
-                <select
-                  value={!conv.optimize && conv.mode === 'bracket-fill' ? conv.bracketCeiling : ''}
-                  onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setConversion({ optimize: false, mode: 'bracket-fill', bracketCeiling: v }); }}
-                  style={inputSelectPillStyle(!conv.optimize && conv.mode === 'bracket-fill')}
-                  aria-label="Bracket-Fill conversion ceiling"
-                >
-                  <option value="">Bracket-Fill</option>
-                  {convBracketOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-                </select>
-                <button onClick={() => setConversion({ optimize: false, mode: 'auto-window' })}
-                  style={inputPillStyle(!conv.optimize && conv.mode === 'auto-window')}>
-                  {!conv.optimize && conv.mode === 'auto-window' && <Chk />}Fixed Amount
-                </button>
-                <button onClick={() => setConversion({ optimize: false, mode: 'manual' })}
-                  style={inputPillStyle(!conv.optimize && conv.mode === 'manual')}>
-                  {!conv.optimize && conv.mode === 'manual' && <Chk />}Manual
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                  <select
+                    value={!conv.optimize && conv.mode === 'bracket-fill' ? conv.bracketCeiling : ''}
+                    onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setConversion({ optimize: false, mode: 'bracket-fill', bracketCeiling: v }); }}
+                    style={inputSelectPillStyle(!conv.optimize && conv.mode === 'bracket-fill')}
+                    aria-label="Bracket-Fill conversion ceiling"
+                  >
+                    <option value="">Bracket-Fill</option>
+                    {convBracketOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                  </select>
+                  {!conv.optimize && conv.mode === 'bracket-fill' && (
+                    <button style={{ border: 'none', background: 'transparent', color: 'var(--gold)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, padding: '0 2px' }} onClick={() => setConvSheetOpen(true)}>Edit age window →</button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                  <button onClick={() => setConversion({ optimize: false, mode: 'auto-window' })}
+                    style={inputPillStyle(!conv.optimize && conv.mode === 'auto-window')}>
+                    {!conv.optimize && conv.mode === 'auto-window' && <Chk />}Fixed Amount
+                  </button>
+                  {!conv.optimize && conv.mode === 'auto-window' && (
+                    <button style={{ border: 'none', background: 'transparent', color: 'var(--gold)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, padding: '0 2px' }} onClick={() => setConvSheetOpen(true)}>Edit details →</button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                  <button onClick={() => setConversion({ optimize: false, mode: 'manual' })}
+                    style={inputPillStyle(!conv.optimize && conv.mode === 'manual')}>
+                    {!conv.optimize && conv.mode === 'manual' && <Chk />}Manual
+                  </button>
+                  {!conv.optimize && conv.mode === 'manual' && (
+                    <button style={{ border: 'none', background: 'transparent', color: 'var(--gold)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, padding: '0 2px' }} onClick={() => setConvSheetOpen(true)}>Edit details →</button>
+                  )}
+                </div>
               </div>
             </div>
+            <StrategyCustomizeSheet open={convSheetOpen} mode="conversion" onClose={() => setConvSheetOpen(false)} />
 
             <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 2 }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)', userSelect: 'none' }}>

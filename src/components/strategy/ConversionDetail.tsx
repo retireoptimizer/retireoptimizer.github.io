@@ -5,16 +5,24 @@ import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../../engine/taxConstants
 import { firstRetirementAgeA, householdPlanThroughAgeA } from '../../engine/streamWindow';
 import { preRetirementConversionAges } from '../../engine/planWarnings';
 import { calendarYearAge } from '../../lib/ageUtils';
+import type { ConversionParams } from '../../schemas/plan';
+
+type Props = {
+  convOverride?: Partial<ConversionParams>;
+  onUpdate?: (updates: Partial<ConversionParams>) => void;
+};
 
 /** Data-entry detail for the active Roth conversion mode, shown inside the Dashboard side sheet.
  *  Mode SELECTION lives inline as pills in StrategyChooser; this renders only the fields the chosen
  *  mode needs — Fixed Amount (amount + window), Bracket-Fill (ceiling + window), Manual (per-year table).
- *  For 'off' there's nothing to enter. Store-driven. */
-export default function ConversionDetail() {
+ *  For 'off' there's nothing to enter. Store-driven; accepts convOverride + onUpdate for pending state. */
+export default function ConversionDetail({ convOverride, onUpdate }: Props = {}) {
   const plan = usePlanStore((s) => s.plan);
   const displayMode = usePlanStore((s) => s.displayMode);
   const setConversion = usePlanStore((s) => s.setConversion);
-  const conv = plan.conversion;
+  const storeConv = plan.conversion;
+  const conv = convOverride ? { ...storeConv, ...convOverride } as typeof storeConv : storeConv;
+  const updateConv = onUpdate ?? setConversion;
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
   const convBracketOptions = brackets.slice(0, 5)
@@ -42,9 +50,9 @@ export default function ConversionDetail() {
   const preRetScheduled = preRetirementConversionAges(plan);
 
   const setManualForAge = (age: number, displayValue: number) => {
-    setConversion({ manualSchedule: { ...conv.manualSchedule, [String(age)]: fromDisplay(displayValue, age) } });
+    updateConv({ manualSchedule: { ...conv.manualSchedule, [String(age)]: fromDisplay(displayValue, age) } });
   };
-  const clearManual = () => setConversion({ manualSchedule: {} });
+  const clearManual = () => updateConv({ manualSchedule: {} });
 const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSchedule[String(age)] ?? 0, age), 0);
 
   if (conv.mode === 'off') {
@@ -66,15 +74,15 @@ const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSched
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
               <div className="form-group">
                 <label>Annual Amount (today's $)</label>
-                <NumberInput value={conv.autoAmount} min={0} onCommit={(v) => setConversion({ autoAmount: v })} />
+                <NumberInput value={conv.autoAmount} min={0} onCommit={(v) => updateConv({ autoAmount: v })} />
               </div>
               <div className="form-group">
                 <label>Start Age ({plan.personA.name})</label>
-                <NumberInput value={conv.startAge} digits={0} min={50} max={75} onCommit={(v) => setConversion({ startAge: Math.round(v) })} />
+                <NumberInput value={conv.startAge} digits={0} min={50} max={75} onCommit={(v) => updateConv({ startAge: Math.round(v) })} />
               </div>
               <div className="form-group">
                 <label>End Age ({plan.personA.name})</label>
-                <NumberInput value={conv.endAge} digits={0} min={55} onCommit={(v) => setConversion({ endAge: Math.round(v) })} />
+                <NumberInput value={conv.endAge} digits={0} min={55} onCommit={(v) => updateConv({ endAge: Math.round(v) })} />
               </div>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
@@ -91,18 +99,18 @@ const manualTotal = manualAges.reduce((s, age) => s + toDisplay(conv.manualSched
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
               <div className="form-group">
                 <label>Target Bracket Ceiling</label>
-                <select value={conv.bracketCeiling} onChange={(e) => setConversion({ bracketCeiling: parseInt(e.target.value, 10) })}
+                <select value={conv.bracketCeiling} onChange={(e) => updateConv({ bracketCeiling: parseInt(e.target.value, 10) })}
                   style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, background: '#fff' }}>
                   {convBracketOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label>Start Age</label>
-                <NumberInput value={conv.startAge} digits={0} min={50} max={75} onCommit={(v) => setConversion({ startAge: Math.round(v) })} />
+                <NumberInput value={conv.startAge} digits={0} min={50} max={75} onCommit={(v) => updateConv({ startAge: Math.round(v) })} />
               </div>
               <div className="form-group">
                 <label>End Age</label>
-                <NumberInput value={conv.endAge} digits={0} min={55} onCommit={(v) => setConversion({ endAge: Math.round(v) })} />
+                <NumberInput value={conv.endAge} digits={0} min={55} onCommit={(v) => updateConv({ endAge: Math.round(v) })} />
               </div>
             </div>
             <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>

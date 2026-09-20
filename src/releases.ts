@@ -14,6 +14,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.1.1',
+    date: '2026-09-20',
+    summary: 'Two fixes to the Roth conversion controls on the Dashboard and Inputs page.',
+    changes: [
+      { kind: 'fix', text: 'Editing the age window or details for Bracket-Fill and Fixed Amount conversions on the Dashboard no longer pops an error asking you to go back to inputs. The edit sheet now opens directly.' },
+      { kind: 'fix', text: 'The Inputs page now shows Edit age window and Edit details links under Bracket-Fill, Fixed Amount, and Manual conversion options, matching the Dashboard behavior. Previously those detail fields were only reachable from the Dashboard.' },
+    ],
+  },
+  {
     version: '2.1.0',
     date: '2026-09-17',
     summary: 'Monte Carlo redesign with persistent results, Roth conversion accuracy fix, optimizer preset improvements, Cash Flow chart redesign, and two bug fixes.',

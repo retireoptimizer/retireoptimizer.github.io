@@ -76,6 +76,7 @@ export default function StrategyChooser() {
   const applyOptimizerPlan = useApplyOptimizerPlan();
 
   const [sheetMode, setSheetMode] = useState<null | 'blend' | 'conversion' | 'chart'>(null);
+  const [sheetConvOverride, setSheetConvOverride] = useState<Partial<ConversionParams> | null>(null);
   const [optimizing, setOptimizing] = useState(false);
 
   // Derive active state from the pending plan (if one exists) or the committed plan store.
@@ -241,7 +242,16 @@ export default function StrategyChooser() {
     const selectMode = (m: ConvMode, extra?: Partial<ConversionParams>) => {
       if (tab === 'optimize') {
         setTabFreshEntry('none');
-        setPendingConv({ optimize: false, mode: m, ...extra });
+        // Revert (clear pending) only when there's an active optimizer result to revert to
+        // and the selection matches the committed store state exactly.
+        const storeC = plan.conversion;
+        const matchesStore = optimizerDriven && !storeC.optimize && storeC.mode === m && !convModeDrifted &&
+          (!extra || (Object.keys(extra) as (keyof ConversionParams)[]).every((k) => storeC[k] === extra[k]));
+        if (matchesStore) {
+          setPendingConv(null);
+        } else {
+          setPendingConv({ optimize: false, mode: m, ...extra });
+        }
       } else {
         if (hasCustom) clearCustomPolicy();
         // Discard pending optimizer result for the same reason as pickWithdrawal.
@@ -254,9 +264,9 @@ export default function StrategyChooser() {
 
     const editLink = (label: string) => (
       <button style={editLinkStyle} onClick={() => {
-        // Commit pending conv selection so ConversionDetail reads real store state.
-        // convModeDrifted will still mark the optimizer stale → re-run button stays active.
-        if (tab === 'optimize' && pendingConv) { setConversion(pendingConv); setPendingConv(null); }
+        // In optimize tab, pass pendingConv as override so ConversionDetail shows the pending
+        // mode without committing to the store (which would trigger StalePlanGate).
+        setSheetConvOverride(tab === 'optimize' && pendingConv !== null ? pendingConv : null);
         setSheetMode('conversion');
       }}>{label} →</button>
     );
@@ -283,7 +293,17 @@ export default function StrategyChooser() {
             // linger. The optimizer's search space starts at retirementAge, so a stale
             // mode:'manual' schedule would keep firing in accumulation years — conversions the
             // optimizer never chose, while this pill reads "Optimizer decides".
-            onClick={() => { setTabFreshEntry('none'); setPendingConv({ optimize: true, mode: 'off' }); }}
+            onClick={() => {
+              setTabFreshEntry('none');
+              // Revert (clear pending) only when there's an active optimizer result that already
+              // has optimize:true — the user is un-doing a drift back to the committed state.
+              // On a fresh plan (no optimizer run yet), always stage as pending.
+              if (optimizerDriven && plan.conversion.optimize === true) {
+                setPendingConv(null);
+              } else {
+                setPendingConv({ optimize: true, mode: 'off' });
+              }
+            }}
             title="The optimizer searches conversion amounts for you"
             style={pillStyle(optDecidesSt)}
           >
@@ -401,7 +421,7 @@ export default function StrategyChooser() {
               <div style={{ ...inlineLabelStyle, paddingTop: 9 }}>Roth conversions</div>
               <div>
                 {conversionRow('optimize')}
-                {convStale && <div style={{ fontSize: 11.5, color: 'var(--warning)', fontWeight: 600, marginTop: 8 }}>Takes effect when you re-optimize.</div>}
+                {(canReOptimize && !planInputsChanged) && <div style={{ fontSize: 11.5, color: 'var(--warning)', fontWeight: 600, marginTop: 8 }}>Takes effect when you re-optimize.</div>}
               </div>
               <div style={{ paddingTop: 9, display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={() => setSheetMode('chart')} style={{ ...editLinkStyle, fontSize: 12 }}>📊 Conversions vs RMDs →</button>
@@ -498,6 +518,11 @@ export default function StrategyChooser() {
         open={sheetMode !== null}
         mode={sheetMode ?? 'blend'}
         onClose={() => setSheetMode(null)}
+        convOverride={sheetMode === 'conversion' && sheetConvOverride !== null ? sheetConvOverride : undefined}
+        onUpdate={sheetMode === 'conversion' && sheetConvOverride !== null ? (updates) => {
+          setPendingConv((prev) => ({ ...(prev ?? {}), ...updates }));
+          setSheetConvOverride((prev) => ({ ...(prev ?? {}), ...updates }));
+        } : undefined}
       />
     </>
   );
