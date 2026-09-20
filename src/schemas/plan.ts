@@ -246,6 +246,19 @@ export const PlanSchema = z.object({
    *  dies with an optimizer-authored `customPolicy` (cleared whenever `customPolicy` is). */
   conversionBaselinePolicy: BlendPolicySchema.optional(),
   optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
+  /** Which surface produced the current optimizer-authored strategy. 'optimizer' = the goal
+   *  optimizer on the Inputs page. 'monte-carlo' = the "Optimize for Robustness" run on the
+   *  Monte Carlo page. Lives and dies with `customPolicy`. */
+  optimizedBy: z.enum(['optimizer', 'monte-carlo']).optional(),
+  /** Provenance detail for a Monte Carlo robustness-tuned strategy: which posture was favored
+   *  and the paired before/after success rates at the settings used for the run. */
+  mcTuning: z.object({
+    posture: z.enum(['floor', 'balanced', 'growth']),
+    before: z.number(),
+    after: z.number(),
+    trials: z.number(),
+    equityPct: z.number(),
+  }).optional(),
   /** The multiplier solved by the last max-sustainable-spending run (e.g. 1.33 = 133%).
    *  Drives the What-If Bar spending slider default so it reflects the optimized level. */
   solvedSpendingMultiplier: z.number().optional(),

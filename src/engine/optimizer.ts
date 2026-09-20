@@ -12,10 +12,19 @@ import { shiftRetirementAge } from './retirementAgeShift';
 import { taxAdjustedValue, taxAdjustedRates } from './taxAdjusted';
 
 interface Posture { failYears: number; tailWeight: number; }
+
+/** Shortfall penalty cap, in years of retirement spending. Fixed across postures: varying it
+ *  alongside tailWeight was a second dial pointed the same direction that no user could see. */
+const SHORTFALL_YEARS = 10;
+
+/** Risk postures, expressed as which slice of the simulated market histories the score listens to.
+ *  tailWeight 1 scores the worst quarter of paths only, 0 scores every path equally.
+ *  A tail *average* is used rather than a percentile: with 32 paths the 10th percentile is the
+ *  3rd-worst path, far too noisy to optimize against, while the worst quarter averages 8 paths. */
 const POSTURES: Record<string, Posture> = {
-  floor:    { failYears: 15, tailWeight: 0.75 },
-  balanced: { failYears: 10, tailWeight: 0.50 },
-  growth:   { failYears:  5, tailWeight: 0.25 },
+  floor:    { failYears: SHORTFALL_YEARS, tailWeight: 1.0 },
+  balanced: { failYears: SHORTFALL_YEARS, tailWeight: 0.5 },
+  growth:   { failYears: SHORTFALL_YEARS, tailWeight: 0.0 },
 };
 
 const MC_PATH_YEARS = 100;
@@ -141,9 +150,9 @@ export interface OptimizeOptions {
   mcAware?: boolean;
   /** Equity fraction (0–1) for MC bootstrap paths. Defaults to DEFAULT_EQUITY_PCT. */
   equityPct?: number;
-  /** Risk posture for mcAware objective. Governs failYears and CVaR tail weight.
-   *  'floor' = protect the floor (high tail weight), 'growth' = favor growth (low tail weight).
-   *  Defaults to 'balanced'. */
+  /** Risk posture for the mcAware objective. Sets how much of the score comes from the worst
+   *  quarter of paths: 'floor' = worst quarter only, 'balanced' = half, 'growth' = all paths
+   *  equally. Defaults to 'balanced'. */
   mcPosture?: 'floor' | 'balanced' | 'growth';
   /** Fixed seed for MC path generation. Default: random per call. For testing/reproducibility. */
   mcSeed?: number;

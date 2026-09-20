@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
-import { fmtM, fmtCompactWithSign } from '../lib/format';
+import { fmtM, fmtCompactWithSign, fmtPct, fmtPtsWithSign } from '../lib/format';
 import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
 import WhatIfBar from '../components/WhatIfBar';
 import ScenarioCompare from '../components/ScenarioCompare';
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const plan = usePlanStore((s) => s.plan);
   const displayMode = usePlanStore((s) => s.displayMode);
   const applyOptimizerPlan = useApplyOptimizerPlan();
+  const navigate = useNavigate();
   const real = displayMode === 'real';
   const addScenario = usePlanStore((s) => s.addScenario);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -311,6 +313,43 @@ export default function Dashboard() {
               <span style={{ fontSize: 16, lineHeight: '18px' }}>⚠</span>
               <div>
                 <strong>Bracket-fill ceiling overridden at {ageRange}</strong> — taxable and Roth accounts were depleted and spending could not be covered within the bracket-fill ceiling. Traditional draws exceeded the ceiling to prevent unfunded expenses. Without this override, the plan would stop funding retirement at age {first.age}.
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Monte Carlo provenance notice — the saved strategy came from Optimize for Robustness,
+            not from the goal optimizer. Without this the swap is silent on this page. */}
+        {(optimizerAppliedState.kind === 'applied' || optimizerAppliedState.kind === 'stale') &&
+         optimizerAppliedState.source === 'monte-carlo' && (() => {
+          const t = optimizerAppliedState.mcTuning;
+          return (
+            <div style={{
+              background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.45)', borderRadius: 8,
+              padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10,
+            }}>
+              <span style={{ fontSize: 15, lineHeight: '18px' }}>⚡</span>
+              <div style={{ flex: 1, fontSize: 12, lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>This plan uses the Monte Carlo tuned strategy</strong>
+                <div>
+                  The withdrawal ordering and Roth conversion settings below came from Optimize for Robustness on the
+                  Monte Carlo page. They replaced the ones your last goal optimizer run produced on the Inputs page.
+                  {t && (
+                    <> Across {t.trials.toLocaleString()} simulated market histories at a {Math.round(t.equityPct * 100)}/{100 - Math.round(t.equityPct * 100)} stock/bond mix,
+                    it moved your chance of success from {fmtPct(t.before, 1)} to {fmtPct(t.after, 1)} ({fmtPtsWithSign(t.after - t.before, 1)}).</>
+                  )}
+                </div>
+                <div style={{ marginTop: 4 }}>
+                  <button
+                    onClick={() => navigate('/montecarlo')}
+                    style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 600, fontSize: 11.5, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}
+                  >
+                    review it on the Monte Carlo page →
+                  </button>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>
+                    {'  '}Re-running the optimizer on the Inputs page replaces this strategy.
+                  </span>
+                </div>
               </div>
             </div>
           );

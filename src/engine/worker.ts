@@ -12,6 +12,9 @@ export interface OptimizeWorkerOptions {
   mcAware?: boolean;
   equityPct?: number;
   mcPosture?: 'floor' | 'balanced' | 'growth';
+  /** Fixed seed for the optimizer's bootstrap paths. Pass the same value across posture runs so
+   *  all three are searched against identical market histories. */
+  mcSeed?: number;
 }
 
 export interface EngineWorkerAPI {
@@ -40,6 +43,7 @@ const api: EngineWorkerAPI = {
       mcAware: options?.mcAware,
       equityPct: options?.equityPct,
       mcPosture: options?.mcPosture,
+      mcSeed: options?.mcSeed,
       onProgress: onProgress ? (frac, msg) => onProgress(frac, msg) : undefined,
     });
   },

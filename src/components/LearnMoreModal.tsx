@@ -88,6 +88,22 @@ export const MC_SIMULATE_HELP: HelpTopic = {
       ],
     },
     {
+      heading: 'How the market histories are built',
+      paras: [
+        'Each future is stitched together from three-year blocks of real S&P 500 and Treasury returns, drawn at random from 1928 through 2023 and mixed to your stock and bond split.',
+        'Keeping whole three-year blocks holds on to the way good and bad years cluster together. Long stretches such as the sixteen lean years from 1966 to 1982 get broken into pieces and spread around, so a slump that deep shows up rarely.',
+        'That makes this page a little kind to very long retirements. The historical cohort chart further down the page runs the years in their real order and gives you the stricter read.',
+      ],
+    },
+    {
+      heading: 'Why this reads higher than the Dashboard',
+      paras: [
+        'The Dashboard grows your money by one fixed return every year, taken from your own assumptions, and gives you the same answer each time you open it. That figure is set on the cautious side.',
+        'Real market history has averaged closer to 8% a year for a stock-heavy mix, so success rates here normally come out above the Dashboard number.',
+        'Use the Dashboard as your planning baseline and this page for the range of luck around it.',
+      ],
+    },
+    {
       heading: 'What the numbers tell you',
       paras: [
         'Probability of success is the share of runs in which your money lasted all the way to your plan-to age. A reading of 90% means your money held up in 9 out of every 10 futures that were tested.',
@@ -125,11 +141,18 @@ export const MC_OPTIMIZE_HELP: HelpTopic = {
       ],
     },
     {
-      heading: 'Choosing what to favor',
+      heading: 'How it weighs a bad run of markets',
       paras: [
-        'Protect the floor aims for the highest possible chance that your money lasts your whole life.',
-        'Balanced gives equal weight to your chance of success and to the size of your final balance.',
-        'Favor growth aims for the largest typical final balance, which leaves more behind for your heirs.',
+        'The optimizer scores a candidate strategy by running it through 32 simulated market histories. Half the score comes from the average across all of them, and half from the worst quarter alone.',
+        'That second half is what makes it a robustness run. A strategy that does well on average and falls apart in the worst quarter scores badly.',
+      ],
+    },
+    {
+      heading: 'Why it sometimes finds nothing',
+      paras: [
+        'Withdrawal order and Roth conversions are tax levers. They change what you keep, and on many plans they change it by a few percent. Whether your money lasts is driven far more by your spending, your retirement age, and your stock and bond mix.',
+        'So on a lot of plans the tuned strategy scores the same as the one you already have. When that happens this page says so and offers you nothing to apply, rather than dressing up a rounding error as an improvement.',
+        'A result only counts as an improvement here when it beats your current strategy by more than a full percentage point, which is the simulation\u2019s own margin of error at 5,000 trials.',
       ],
     },
     {
@@ -142,8 +165,10 @@ export const MC_OPTIMIZE_HELP: HelpTopic = {
     {
       heading: 'Applying the result',
       paras: [
-        'The search takes a few seconds. When it finishes, the charts on this page switch to a preview of the new strategy, and you see your old success rate next to the new one.',
-        'Your saved plan is left alone at this stage. Apply to Plan writes the new strategy in and saves it, replacing your current withdrawal order and Roth conversion settings. Discard clears the preview and leaves your plan exactly as it was.',
+        'The search takes about 20 seconds. When it finishes, a strip inside the Optimize section shows the outcome.',
+        'A green strip means the tuned strategy beats your current one by more than a full percentage point. A gold bar appears at the bottom of the panel with two choices: Apply to Plan (saves the new strategy permanently, replacing your current withdrawal order and Roth conversions) or Discard (clears the preview and leaves your plan exactly as it was).',
+        'A grey strip means the improvement was smaller than one percentage point, which is the margin of error for 5,000 trials. Nothing is offered to apply.',
+        'Once applied, the Dashboard labels the plan "Monte Carlo tuned" so you can always see where the saved strategy came from.',
       ],
     },
   ],

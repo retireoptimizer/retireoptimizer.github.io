@@ -24,6 +24,7 @@ export const OPTIMIZER_INPUT_FIELDS = [
 
 export const OPTIMIZER_OUTPUT_FIELDS = [
   'customPolicy', 'conversionBaselinePolicy', 'optimizedForGoal', 'solvedSpendingMultiplier',
+  'optimizedBy', 'mcTuning',
 ] as const;
 
 /** Stable fingerprint of the plan fields that affect optimizer output.

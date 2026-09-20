@@ -113,7 +113,7 @@ export const usePlanStore = create<PlanState>()(
         if (s.plan.customPolicy?.source === 'optimizer') {
           useToastStore.getState().show('info', 'Optimizer strategy cleared — re-run the optimizer to restore it.');
         }
-        return { plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
+        return { plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined, optimizedBy: undefined, mcTuning: undefined } };
       }),
       setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } })),
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
@@ -121,7 +121,7 @@ export const usePlanStore = create<PlanState>()(
         if (s.plan.customPolicy?.source === 'optimizer') {
           useToastStore.getState().show('info', 'Optimizer strategy cleared — re-run the optimizer to restore it.');
         }
-        return { plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
+        return { plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined, optimizedBy: undefined, mcTuning: undefined } };
       }),
       setConversion: (patch) => set((s) => ({
         plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } },
@@ -143,10 +143,18 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 30,
+      version: 31,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v31: add plan.optimizedBy + plan.mcTuning (strategy provenance: the goal optimizer vs a
+        // Monte Carlo robustness run). Existing optimizer-authored policies predate the Monte Carlo
+        // apply path, so stamp them as 'optimizer'. Absent === unknown provenance elsewhere.
+        if (fromVersion < 31 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const cp = planObj.customPolicy as Record<string, unknown> | undefined;
+          if (cp && cp.source === 'optimizer' && !planObj.optimizedBy) planObj.optimizedBy = 'optimizer';
+        }
         // v30: equityPct moved out of the plan. It is a Monte Carlo stress-test setting, not plan
         // data, and leaving it in assumptions put it inside planInputKey, where changing the mix
         // would mark an optimizer policy stale. Now a UI preference (lib/mcPrefs.ts). Delete the

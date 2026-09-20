@@ -25,6 +25,10 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
     // results, which also clears any stale baseline from a prior run.
     conversionBaselinePolicy: result.conversionBaselinePolicy,
     optimizedForGoal: result.goal,
+    // Provenance. Callers that run the optimizer from the Monte Carlo page overwrite these two
+    // fields afterwards, so a plain optimizer run always resets them to their 'optimizer' state.
+    optimizedBy: 'optimizer' as const,
+    mcTuning: undefined,
     solvedSpendingMultiplier: result.goal !== 'max-sustainable-spending' ? undefined : plan.solvedSpendingMultiplier,
     // When the optimizer adopted the no-conversion baseline, mirror the baseline plan exactly:
     // the adopted policy windows carry convAmt:undefined, so projection would fall back to
