@@ -54,6 +54,10 @@ interface OptimizerState {
   /** True when plan inputs have changed since the last simulation was run. */
   mcDirty: boolean;
   setMcDirty: (d: boolean) => void;
+  /** planInputKey fingerprint at the time the last simulation ran. Used to detect cross-page
+   *  input changes: if the current key differs on mount, results are stale and must be cleared. */
+  mcPlanKey: string | null;
+  setMcPlanKey: (key: string | null) => void;
   /** Clear all MC results — called when plan inputs change on any page. */
   clearMcResults: () => void;
 }
@@ -79,11 +83,14 @@ export const useOptimizerStore = create<OptimizerState>()((set) => ({
   setMcTrials: (mcTrials) => set({ mcTrials }),
   mcDirty: false,
   setMcDirty: (mcDirty) => set({ mcDirty }),
+  mcPlanKey: null,
+  setMcPlanKey: (mcPlanKey) => set({ mcPlanKey }),
   clearMcResults: () => set({
     mcResult: null,
     mcHistoricalResult: null,
     mcRobustOutcome: null,
     mcDirty: false,
+    mcPlanKey: null,
     robustnessPlan: null,
     robustnessComparison: null,
   }),

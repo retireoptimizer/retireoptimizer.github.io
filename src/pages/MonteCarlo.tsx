@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import * as Comlink from 'comlink';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
@@ -91,6 +91,8 @@ export default function MonteCarlo() {
   const mcDirty = useOptimizerStore((s) => s.mcDirty);
   const setMcDirty = useOptimizerStore((s) => s.setMcDirty);
   const clearMcResults = useOptimizerStore((s) => s.clearMcResults);
+  const mcPlanKey = useOptimizerStore((s) => s.mcPlanKey);
+  const setMcPlanKey = useOptimizerStore((s) => s.setMcPlanKey);
   const displayMode = usePlanStore((s) => s.displayMode);
   const applyOptimizerPlan = useApplyOptimizerPlan();
   const optimizerAppliedState = useOptimizerApplied();
@@ -134,16 +136,23 @@ export default function MonteCarlo() {
   const [applySuccess, setApplySuccess] = useState<'floor' | 'balanced' | 'growth' | null>(null);
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
 
-  // Track the plan fingerprint. When it changes between renders (user edited inputs on another
-  // page), clear all MC results so the page never shows stale numbers.
+  // Track the plan fingerprint. On mount: if results exist but the stored key differs from the
+  // current plan (user changed inputs on another page), clear before the user sees stale numbers.
+  // While mounted: if the key changes reactively (What-If slider or equity % changes on this page),
+  // clear immediately and mark dirty so the user knows to re-run.
   const planKey = planInputKey(mcBase);
-  const prevPlanKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (prevPlanKeyRef.current !== null && prevPlanKeyRef.current !== planKey) {
+    if (mcResult && mcPlanKey !== null && mcPlanKey !== planKey) {
       clearMcResults();
     }
-    prevPlanKeyRef.current = planKey;
-  }, [planKey, clearMcResults]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount-only: catch cross-page changes by comparing stored key vs current key
+
+  useEffect(() => {
+    if (mcPlanKey !== null && mcPlanKey !== planKey) {
+      clearMcResults();
+    }
+  }, [planKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async () => {
     setRunning(true);
@@ -154,6 +163,7 @@ export default function MonteCarlo() {
       const worker = getEngineWorker();
       const mc = await worker.monteCarlo(robustnessPlan ?? mcBase, { trials, model: 'historical', equityPct: equityPct / 100, seed });
       setResult(mc);
+      setMcPlanKey(planKey);
     } finally {
       setRunning(false);
     }
