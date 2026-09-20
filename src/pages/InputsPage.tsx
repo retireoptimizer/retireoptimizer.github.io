@@ -16,7 +16,6 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { INCOME_TEMPLATES, EXPENSE_TEMPLATES } from '../engine/streamTemplates';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
-import { planInputKey } from '../engine/planInputKey';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from '../engine/taxConstants';
 
@@ -223,9 +222,10 @@ export default function InputsPage() {
   const applyOptimizerResult = usePlanStore((s) => s.applyOptimizerResult);
   const resetWhatIf = useWhatIfStore((s) => s.reset);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
-  const setPlanKey = useOptimizerStore((s) => s.setPlanKey);
   const setPendingPlan = useOptimizerStore((s) => s.setPendingPlan);
   const setPendingGoal = useOptimizerStore((s) => s.setPendingGoal);
+  const setRobustnessPlan = useOptimizerStore((s) => s.setRobustnessPlan);
+  const setRobustnessComparison = useOptimizerStore((s) => s.setRobustnessComparison);
   const pendingGoal = useOptimizerStore((s) => s.pendingGoal);
 
   const planGoal: UserGoal = pendingGoal ?? (plan.optimizedForGoal as UserGoal | undefined) ?? 'max-end-balance';
@@ -324,6 +324,8 @@ export default function InputsPage() {
     setBuilding(true);
     setBuildProgress(0);
     setBuildError(null);
+    setRobustnessPlan(null);
+    setRobustnessComparison(null);
     try {
       const worker = getEngineWorker();
       const onProgress = Comlink.proxy((frac: number) => setBuildProgress(frac));
@@ -331,7 +333,6 @@ export default function InputsPage() {
       const appliedPlan = applyResultToPlan(plan, result);
       const mutatesInputs = selectedGoal === 'max-sustainable-spending' || selectedGoal === 'min-retirement-age';
       setOptimizerResult(result);
-      setPlanKey(planInputKey(mutatesInputs ? plan : appliedPlan));
       if (mutatesInputs) {
         setPendingPlan(appliedPlan);
         setPendingGoal(selectedGoal);

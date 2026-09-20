@@ -51,7 +51,7 @@ export function buildDiagnosticsMarkdown(
   push('');
   push(
     `**Returns** — Taxable ${fmtPct(a.taxableReturn)} · Traditional ${fmtPct(a.tradReturn)} · Roth ${fmtPct(a.rothReturn)}  `,
-    `**Inflation** ${fmtPct(a.inflation)} · **Equity** ${fmtPct(a.equityPct)}`,
+    `**Inflation** ${fmtPct(a.inflation)}`,
     '',
   );
 

@@ -134,7 +134,6 @@ export const arbPlan = (): fc.Arbitrary<Plan> =>
           tradReturn: s.tradReturn,
           rothReturn: s.rothReturn,
           inflation: s.inflation,
-          equityPct: 0.6,
           modelACA: false,
           acaHouseholdSize: 2,
           acaBenchmarkPremium: 0,

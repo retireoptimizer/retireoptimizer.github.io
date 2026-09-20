@@ -1,16 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import * as Comlink from 'comlink';
 import { usePlanStore, useProjection } from '../store/usePlanStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import { useWhatIfStore, applyWhatIf } from '../store/useWhatIfStore';
-import type { MonteCarloResult } from '../engine/monteCarlo';
+import type { Plan } from '../schemas/plan';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import MonteCarloFan from '../components/charts/MonteCarloFan';
 import HistoricalCohortChart from '../components/charts/HistoricalCohortChart';
 import StressScenarioModal from '../components/StressScenarioModal';
 import { fmtM, fmtK, fmtPct, fmtPtsWithSign } from '../lib/format';
-import type { HistoricalSweepResult } from '../engine/monteCarlo';
+
 import { generateInsights, insightsForSurface } from '../engine/explain';
 import InsightCard from '../components/InsightCard';
 import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
@@ -18,6 +18,11 @@ import OptimizerBadge from '../components/OptimizerBadge';
 import { useOptimizerApplied } from '../hooks/useOptimizerApplied';
 import LearnMoreModal, { MC_SIMULATE_HELP, MC_OPTIMIZE_HELP } from '../components/LearnMoreModal';
 import type { HelpTopic } from '../components/LearnMoreModal';
+import { policyStatus } from '../engine/policyStatus';
+import { planInputKey } from '../engine/planInputKey';
+import { type McPosture } from '../engine/goalLabels';
+import { loadEquityPct, saveEquityPct } from '../lib/mcPrefs';
+import StalePlanGate from '../components/StalePlanGate';
 
 interface RiskBand {
   label: string;
@@ -33,11 +38,15 @@ function riskBandFor(successRate: number): RiskBand {
   return { label: 'At risk', tone: 'danger', body: 'Most adverse trials deplete the portfolio — plan needs adjustment.' };
 }
 
-const POSTURES = [
-  { id: 'floor' as const, label: 'Protect the floor', short: 'max success rate', desc: 'Maximize the probability of never running out. Accepts a lower median end balance.' },
-  { id: 'balanced' as const, label: 'Balanced', short: 'equal weight', desc: 'Equal weight on success rate and median outcome. A reasonable default.' },
-  { id: 'growth' as const, label: 'Favor growth', short: 'max median end $', desc: 'Maximize the median end balance. Accepts a thinner margin in bad sequences.' },
-];
+/** Posture used for the robustness run. Measured on real plans, the three postures produce
+ *  strategies that score within a rounding error of each other, so the page no longer asks the
+ *  user to choose one. Balanced weighs the worst quarter of markets and the average equally. */
+const ROBUSTNESS_POSTURE: McPosture = 'balanced';
+
+/** Minimum success-rate gain, in percentage points, before the tuned strategy is worth offering.
+ *  At 5,000 trials the standard error on a success rate near 85% is about 0.5 points, so anything
+ *  under a full point is indistinguishable from sampling noise. */
+const MIN_GAIN_PTS = 1.0;
 
 /** Subtle inline help trigger placed beside a step heading. */
 function LearnMoreLink({ onClick }: { onClick: () => void }) {
@@ -71,6 +80,17 @@ export default function MonteCarlo() {
   const robustnessComparison = useOptimizerStore((s) => s.robustnessComparison);
   const setRobustnessComparison = useOptimizerStore((s) => s.setRobustnessComparison);
   const setOptimizerResult = useOptimizerStore((s) => s.setResult);
+  const mcResult = useOptimizerStore((s) => s.mcResult);
+  const setMcResult = useOptimizerStore((s) => s.setMcResult);
+  const mcHistoricalResult = useOptimizerStore((s) => s.mcHistoricalResult);
+  const setMcHistoricalResult = useOptimizerStore((s) => s.setMcHistoricalResult);
+  const mcRobustOutcome = useOptimizerStore((s) => s.mcRobustOutcome);
+  const setMcRobustOutcome = useOptimizerStore((s) => s.setMcRobustOutcome);
+  const mcTrials = useOptimizerStore((s) => s.mcTrials);
+  const setMcTrials = useOptimizerStore((s) => s.setMcTrials);
+  const mcDirty = useOptimizerStore((s) => s.mcDirty);
+  const setMcDirty = useOptimizerStore((s) => s.setMcDirty);
+  const clearMcResults = useOptimizerStore((s) => s.clearMcResults);
   const displayMode = usePlanStore((s) => s.displayMode);
   const applyOptimizerPlan = useApplyOptimizerPlan();
   const optimizerAppliedState = useOptimizerApplied();
@@ -83,33 +103,53 @@ export default function MonteCarlo() {
     [pendingPlan, plan, whatIf],
   );
 
-  const isRobustnessOptimized = !!robustnessPlan;
   const real = displayMode === 'real';
   const proj = useProjection(mcBase);
 
-  const [trials, setTrials] = useState(5000);
-  const [equityPct, setEquityPct] = useState(Math.round((plan.assumptions.equityPct ?? 0.6) * 100));
-  const [mcPosture, setMcPosture] = useState<'floor' | 'balanced' | 'growth'>('balanced');
+  const [equityPct, setEquityPct] = useState(loadEquityPct);
+  // trials and dirty live in the store so they survive navigation; expose local aliases for brevity.
+  const trials = mcTrials;
+  const setTrials = setMcTrials;
+  const result = mcResult;
+  const setResult = setMcResult;
+  const historicalResult = mcHistoricalResult;
+  const setHistoricalResult = setMcHistoricalResult;
+  const robustOutcome = mcRobustOutcome;
+  const setRobustOutcome = setMcRobustOutcome;
+  const dirty = mcDirty;
+  const setDirty = setMcDirty;
+  // The Apply bar requires both a preview plan and a result that earned it. The second clause
+  // keeps a stale preview from outliving the run that produced it.
+  const isRobustnessOptimized = !!robustnessPlan && (robustOutcome === null || robustOutcome.worthIt);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<MonteCarloResult | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<number | null>(null);
   const [detailScenario, setDetailScenario] = useState<number | null>(null);
   const [optimizingRobust, setOptimizingRobust] = useState(false);
   const [robustProgress, setRobustProgress] = useState<{ frac: number; msg?: string }>({ frac: 0 });
-  const [historicalResult, setHistoricalResult] = useState<HistoricalSweepResult | null>(null);
   const [runningHistorical, setRunningHistorical] = useState(false);
   // Fixed seed — deterministic results across re-runs.
   const seed = 42;
-  const [applySuccess, setApplySuccess] = useState(false);
+  // Holds the posture that was applied, so the confirmation keeps naming the right one even if
+  // the user changes the posture picker afterwards. null = no confirmation showing.
+  const [applySuccess, setApplySuccess] = useState<'floor' | 'balanced' | 'growth' | null>(null);
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
-  // dirty = inputs changed since last run; disables Optimize and shows a warning badge.
-  const [dirty, setDirty] = useState(false);
+
+  // Track the plan fingerprint. When it changes between renders (user edited inputs on another
+  // page), clear all MC results so the page never shows stale numbers.
+  const planKey = planInputKey(mcBase);
+  const prevPlanKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevPlanKeyRef.current !== null && prevPlanKeyRef.current !== planKey) {
+      clearMcResults();
+    }
+    prevPlanKeyRef.current = planKey;
+  }, [planKey, clearMcResults]);
 
   const run = async () => {
     setRunning(true);
     setDirty(false);
     setRobustnessComparison(null);
-    setApplySuccess(false);
+    setApplySuccess(null);
     try {
       const worker = getEngineWorker();
       const mc = await worker.monteCarlo(robustnessPlan ?? mcBase, { trials, model: 'historical', equityPct: equityPct / 100, seed });
@@ -133,28 +173,52 @@ export default function MonteCarlo() {
   const optimizeForRobustness = async () => {
     setOptimizingRobust(true);
     setRobustProgress({ frac: 0 });
+    setRobustOutcome(null);
+    setApplySuccess(null);
     try {
       const worker = getEngineWorker();
-      const onProgress = Comlink.proxy((frac: number, msg?: string) => {
-        setRobustProgress({ frac, msg });
-      });
-      // Use mcBase as the base — never robustnessPlan, to avoid compounding previews.
+      const onProgress = Comlink.proxy((frac: number, msg?: string) => setRobustProgress({ frac, msg }));
+      // Use mcBase as the base — never a previous preview, to avoid compounding.
       const goal = mcBase.optimizedForGoal ?? 'max-end-balance';
-      // Capture before-MC at the same seed/equityPct/trials for a paired comparison.
-      const beforeMc = await worker.monteCarlo(mcBase, { trials, model: 'historical', equityPct: equityPct / 100, seed });
+      const mcOpts = { trials, model: 'historical' as const, equityPct: equityPct / 100, seed };
+      const before = await worker.monteCarlo(mcBase, mcOpts);
       const optResult = await worker.optimize(
         mcBase, goal,
-        { useNelderMead: true, thorough: true, mcAware: true, equityPct: equityPct / 100, mcPosture },
+        { useNelderMead: true, thorough: true, mcAware: true, equityPct: equityPct / 100, mcPosture: ROBUSTNESS_POSTURE, mcSeed: seed },
         onProgress,
       );
-      // Store result so Dashboard's rationale modal has content after an MC-originated apply.
-      setOptimizerResult(optResult);
-      const updatedPlan = applyResultToPlan(mcBase, optResult);
-      setRobustnessPlan(updatedPlan);
-      // After-MC at the exact same seed/equityPct/trials — paired comparison, no sampling noise.
-      const mc = await worker.monteCarlo(updatedPlan, { trials, model: 'historical', equityPct: equityPct / 100, seed });
-      setResult(mc);
-      setRobustnessComparison({ before: beforeMc.successRate, after: mc.successRate, trials, equityPct: equityPct / 100, seed });
+      const basePlan = applyResultToPlan(mcBase, optResult);
+      // Out-of-sample score: the search used 32 bootstrap paths, so its own numbers are optimistic.
+      const after = await worker.monteCarlo(basePlan, mcOpts);
+      const gainPts = (after.successRate - before.successRate) * 100;
+      const worthIt = gainPts >= MIN_GAIN_PTS;
+      const plan: Plan = {
+        ...basePlan,
+        // Provenance, so the Dashboard can tell this apart from a goal-optimizer run.
+        optimizedBy: 'monte-carlo',
+        mcTuning: {
+          posture: ROBUSTNESS_POSTURE,
+          before: before.successRate,
+          after: after.successRate,
+          trials,
+          equityPct: equityPct / 100,
+        },
+      };
+      setRobustOutcome({ plan, optResult, before, after, gainPts, worthIt });
+      // Only a gain worth acting on becomes a preview. A wash leaves the charts on today's plan,
+      // so the page never implies a change the numbers do not support.
+      if (worthIt) {
+        setRobustnessPlan(plan);
+        setResult(after);
+        setOptimizerResult(optResult);
+        setRobustnessComparison({ before: before.successRate, after: after.successRate, trials, equityPct: equityPct / 100, seed });
+      } else {
+        // Clear any preview a previous run left behind. Without this the Apply bar would linger
+        // next to a "No meaningful gain" strip, offering a strategy this run did not endorse.
+        setRobustnessPlan(null);
+        setRobustnessComparison(null);
+        setResult(before);
+      }
     } finally {
       setOptimizingRobust(false);
     }
@@ -165,13 +229,15 @@ export default function MonteCarlo() {
     applyOptimizerPlan(robustnessPlan);
     setRobustnessPlan(null);
     setRobustnessComparison(null);
-    setApplySuccess(true);
+    setApplySuccess(robustnessPlan.mcTuning?.posture ?? ROBUSTNESS_POSTURE);
+    setRobustOutcome(null);
   };
 
   const handleDiscard = () => {
     setRobustnessPlan(null);
     setRobustnessComparison(null);
     setResult(null);
+    setRobustOutcome(null);
   };
 
   const mixLabel = `${equityPct}/${100 - equityPct}`;
@@ -185,7 +251,7 @@ export default function MonteCarlo() {
     ? (1.96 * Math.sqrt(result.successRate * (1 - result.successRate) / result.trials) * 100).toFixed(1)
     : null;
 
-  const tradReturnPct = fmtPct(mcBase.assumptions.tradReturn ?? 0.055, 1);
+  if (policyStatus(plan) === 'stale' && pendingPlan === null) return <StalePlanGate />;
 
   return (
     <div className="page">
@@ -223,7 +289,7 @@ export default function MonteCarlo() {
                       type="number"
                       value={equityPct}
                       min={0} max={100} step={5}
-                      onChange={(e) => { setEquityPct(Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0))); setDirty(true); setRobustnessComparison(null); }}
+                      onChange={(e) => { const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)); setEquityPct(v); saveEquityPct(v); setDirty(true); setRobustnessComparison(null); }}
                       style={{ width: 60 }}
                     />
                   </div>
@@ -285,41 +351,7 @@ export default function MonteCarlo() {
                   {result && dirty && <span style={{ fontSize: 11, color: 'var(--warning)' }}>(inputs changed, re-run first)</span>}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 18, flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 5 }}>Favor</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {POSTURES.map((p) => {
-                        const active = mcPosture === p.id;
-                        const locked = !result || dirty || running || optimizingRobust;
-                        return (
-                          <button
-                            key={p.id}
-                            onClick={() => setMcPosture(p.id)}
-                            disabled={locked}
-                            title={p.desc}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 7, textAlign: 'left',
-                              background: 'transparent', border: 'none', padding: '2px 0',
-                              cursor: locked ? 'default' : 'pointer',
-                            }}
-                          >
-                            <span style={{
-                              width: 12, height: 12, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box',
-                              border: active ? '4px solid var(--gold)' : '1.5px solid var(--text-muted)',
-                              background: 'var(--surface-1)',
-                            }} />
-                            <span style={{ fontSize: 12, fontWeight: active ? 700 : 400, color: active ? 'var(--text-primary)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {p.label}
-                            </span>
-                            <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                              {p.short}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                   <button
                     className={result && !dirty ? 'btn btn-gold' : 'btn'}
                     onClick={optimizeForRobustness}
@@ -327,7 +359,35 @@ export default function MonteCarlo() {
                   >
                     {optimizingRobust ? 'Optimizing…' : '⚡ Optimize for Robustness'}
                   </button>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 430 }}>
+                    Re-tunes your withdrawal order and Roth conversions against a bad run of markets, then
+                    scores the result on {trials.toLocaleString()} fresh market histories.
+                  </span>
                 </div>
+
+                {/* Outcome strip. A tuned strategy is only offered when it beats today's by more than
+                    the simulation's own margin of error, so a wash reads as a wash. */}
+                {robustOutcome && !optimizingRobust && (
+                  <div style={{
+                    marginTop: 10, padding: '8px 11px', borderRadius: 6, fontSize: 11.5, lineHeight: 1.55,
+                    background: robustOutcome.worthIt ? 'rgba(26,138,90,0.09)' : 'var(--surface-2)',
+                    border: `1px solid ${robustOutcome.worthIt ? 'rgba(26,138,90,0.4)' : 'var(--border)'}`,
+                  }}>
+                    <span style={{ fontWeight: 700, color: robustOutcome.worthIt ? 'var(--success)' : 'var(--text-secondary)' }}>
+                      {robustOutcome.worthIt ? '✓ Found a better strategy' : 'No meaningful gain'}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {'  '}{fmtPct(robustOutcome.before.successRate, 1)} → {fmtPct(robustOutcome.after.successRate, 1)} chance of success
+                      {'  ·  '}typical end balance {fmtM(real ? robustOutcome.before.medianEndBalance : robustOutcome.before.medianEndBalanceNominal)} → {fmtM(real ? robustOutcome.after.medianEndBalance : robustOutcome.after.medianEndBalanceNominal)}
+                    </span>
+                    {!robustOutcome.worthIt && (
+                      <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
+                        Your withdrawal order and Roth conversions are already doing what they can here. The levers
+                        that move this number are your spending, your retirement age, and your stock and bond mix.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -358,7 +418,7 @@ export default function MonteCarlo() {
                     Optimized strategy ready — previewing below
                     {robustnessComparison && (
                       <span style={{ marginLeft: 8, fontWeight: 600, color: robustnessComparison.after >= robustnessComparison.before ? 'var(--success)' : 'var(--danger)' }}>
-                        {fmtPct(robustnessComparison.before, 0)} → {fmtPct(robustnessComparison.after, 0)} · {fmtPtsWithSign(robustnessComparison.after - robustnessComparison.before)}
+                        {fmtPct(robustnessComparison.before, 1)} → {fmtPct(robustnessComparison.after, 1)} · {fmtPtsWithSign(robustnessComparison.after - robustnessComparison.before, 1)}
                       </span>
                     )}
                   </div>
@@ -388,11 +448,12 @@ export default function MonteCarlo() {
                 <div style={{ flex: 1, lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>✓ Applied to your plan</span>
                   <span style={{ color: 'var(--text-muted)' }}>
-                    {' '}— withdrawal ordering and Roth conversion settings were updated and saved. The Dashboard and Projections pages now reflect this strategy.
+                    {' '}Your withdrawal ordering and Roth conversion settings were replaced with the tuned strategy from this page and saved.
+                    The Dashboard and Projections pages now show it, and the Dashboard badge reads &ldquo;Monte Carlo tuned&rdquo; so you can tell it apart from a goal optimizer run.
                   </span>
                 </div>
                 <button
-                  onClick={() => setApplySuccess(false)}
+                  onClick={() => setApplySuccess(null)}
                   style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}
                 >
                   ✕
@@ -400,15 +461,9 @@ export default function MonteCarlo() {
               </div>
             )}
 
-            <div style={{ padding: '10px 18px 12px', borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              <strong style={{ color: 'var(--text-secondary)' }}>Why this differs from the Dashboard</strong> — the Dashboard projects a single fixed-return path from your assumptions ({tradReturnPct} nominal), which is deliberately conservative and gives the same answer every time. This page resamples actual 1928–2023 market history, which has averaged closer to 8% nominal at a {mixLabel} mix, so success rates here normally read higher. Use the Dashboard as your planning baseline and this page for the range of luck around it.
-            </div>
-            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              <strong style={{ color: 'var(--text-secondary)' }}>Historical block bootstrap</strong> — randomly assembles 3-year blocks of real S&amp;P 500 + Treasury returns (1928–2023), blended {mixLabel} stock/bond, into {trials} synthetic sequences.
-              Each block preserves short-run volatility clustering, but long secular trends (e.g., the 16-year 1966–1982 stagflation era) get broken up and diluted.
-              Result: a broad probability distribution over many possible futures. Tends to be somewhat optimistic for long retirements because it cannot reproduce multi-decade bear markets intact.
-            </div>
+            <div style={{ padding: '8px 18px 10px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Success rates on this page usually read higher than the Dashboard. The Dashboard uses one fixed return every year. This page replays real market history from 1928 to 2023 at your {mixLabel} stock and bond mix.{' '}
+              <LearnMoreLink onClick={() => setHelpTopic(MC_SIMULATE_HELP)} />
             </div>
           </div>
         </div>
@@ -425,7 +480,7 @@ export default function MonteCarlo() {
                   <>
                     {samplingRange && <span>±{samplingRange} pts sampling range · </span>}
                     {robustnessComparison
-                      ? <span style={{ color: robustnessComparison.after >= robustnessComparison.before ? 'var(--success)' : 'var(--danger)' }}>{fmtPct(robustnessComparison.before, 0)} → {fmtPct(robustnessComparison.after, 0)} · {fmtPtsWithSign(robustnessComparison.after - robustnessComparison.before)}</span>
+                      ? <span style={{ color: robustnessComparison.after >= robustnessComparison.before ? 'var(--success)' : 'var(--danger)' }}>{fmtPct(robustnessComparison.before, 1)} → {fmtPct(robustnessComparison.after, 1)} · {fmtPtsWithSign(robustnessComparison.after - robustnessComparison.before, 1)}</span>
                       : <span>{result.trials} trials · {Math.round(result.equityPct * 100)}/{100 - Math.round(result.equityPct * 100)}</span>
                     }
                   </>

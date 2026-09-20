@@ -80,8 +80,6 @@ export const AssumptionsSchema = z.object({
   tradReturn: z.number().default(0.055),
   rothReturn: z.number().default(0.055),
   inflation: z.number(),
-  /** Equity (stock) share of the portfolio, 0..1. Drives Monte Carlo stock/bond blend. */
-  equityPct: z.number().min(0).max(1).default(0.6),
   // ACA marketplace premium modeling (pre-Medicare gap years)
   modelACA: z.boolean().default(false),
   acaHouseholdSize: z.number().int().min(1).max(8).default(2),
@@ -199,6 +197,7 @@ export const BlendPolicySchema = z.object({
   windows: z.array(BlendWindowSchema).min(1),
   source: z.enum(['optimizer', 'manual']).optional(),
   goal: z.string().optional(),
+  inputKey: z.string().optional(),
 });
 export type BlendPolicySchemaT = z.infer<typeof BlendPolicySchema>;
 
@@ -247,6 +246,19 @@ export const PlanSchema = z.object({
    *  dies with an optimizer-authored `customPolicy` (cleared whenever `customPolicy` is). */
   conversionBaselinePolicy: BlendPolicySchema.optional(),
   optimizedForGoal: z.enum(['max-end-balance', 'max-sustainable-spending', 'min-retirement-age']).optional(),
+  /** Which surface produced the current optimizer-authored strategy. 'optimizer' = the goal
+   *  optimizer on the Inputs page. 'monte-carlo' = the "Optimize for Robustness" run on the
+   *  Monte Carlo page. Lives and dies with `customPolicy`. */
+  optimizedBy: z.enum(['optimizer', 'monte-carlo']).optional(),
+  /** Provenance detail for a Monte Carlo robustness-tuned strategy: which posture was favored
+   *  and the paired before/after success rates at the settings used for the run. */
+  mcTuning: z.object({
+    posture: z.enum(['floor', 'balanced', 'growth']),
+    before: z.number(),
+    after: z.number(),
+    trials: z.number(),
+    equityPct: z.number(),
+  }).optional(),
   /** The multiplier solved by the last max-sustainable-spending run (e.g. 1.33 = 133%).
    *  Drives the What-If Bar spending slider default so it reflects the optimized level. */
   solvedSpendingMultiplier: z.number().optional(),
@@ -285,7 +297,6 @@ export const defaultPlan = (): Plan => ({
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
-    equityPct: 0.6,
     modelACA: false,
     acaHouseholdSize: 1,
     acaBenchmarkPremium: 0,
@@ -357,7 +368,6 @@ export const samplePlan = (): Plan => ({
     tradReturn: 0.055,
     rothReturn: 0.055,
     inflation: 0.025,
-    equityPct: 0.6,
     modelACA: false,
     acaHouseholdSize: 2,
     acaBenchmarkPremium: 0,

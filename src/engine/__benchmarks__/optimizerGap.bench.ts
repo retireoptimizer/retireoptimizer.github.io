@@ -147,7 +147,6 @@ function buildACACliffPlan(): Plan {
       tradReturn: 0.065,
       rothReturn: 0.065,
       inflation: 0.025,
-      equityPct: 0.6,
       modelACA: true,
       acaHouseholdSize: 1,
       acaBenchmarkPremium: 16000,  // $16K/yr SLCSP — realistic single-person premium
@@ -302,7 +301,6 @@ function buildIRMAAPlan(): Plan {
       tradReturn: 0.065,
       rothReturn: 0.065,
       inflation: 0.025,
-      equityPct: 0.6,
       modelACA: false,
       acaHouseholdSize: 2,
       acaBenchmarkPremium: 0,

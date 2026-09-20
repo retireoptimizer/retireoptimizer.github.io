@@ -17,6 +17,7 @@ export interface BlendPolicy {
   windows: BlendWindow[];
   source?: 'optimizer' | 'manual';
   goal?: string;
+  inputKey?: string;
 }
 
 export type PresetKey = 'taxfirst' | 'rothfirst' | 'tradfirst' | 'proportional' | 'bracketfill';

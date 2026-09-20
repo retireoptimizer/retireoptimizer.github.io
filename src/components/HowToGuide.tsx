@@ -1063,11 +1063,13 @@ export function GuideContent() {
           simulation settings.
         </li>
         <li>
-          <strong>Optimize for Robustness</strong>: tests your withdrawal strategy across 15
-          different historical return sequences, picks the strategy that holds up best across all
-          of them, then runs the full simulation. Takes 60–90 seconds. Use this when you want to
-          squeeze out extra resilience. It is a fine-tuning step, not a fix for a plan that is
-          fundamentally underfunded.
+          <strong>Optimize for Robustness</strong>: searches through many combinations of
+          your withdrawal order and Roth conversion amounts, scores each one across 32 simulated
+          market histories, and picks the strategy that holds up best. Takes about 20 seconds.
+          When it finds a strategy that beats your current one by more than a full percentage
+          point it shows you the comparison and lets you apply it. If the improvement is smaller
+          than that it says so plainly and nothing changes. This is a fine-tuning step, not a
+          fix for a plan that is fundamentally underfunded.
         </li>
       </ul>
       <Tip>
@@ -1075,20 +1077,22 @@ export function GuideContent() {
         only once you have a plan you broadly feel good about.
       </Tip>
 
-      <H3>Robustness optimization: preview and apply</H3>
+      <H3>Robustness optimization: reading the result</H3>
       <P>
-        When Optimize for Robustness finishes, the result appears in <em>preview mode</em>. It
-        does not automatically change your saved plan. A gold badge lets you know, and the fan
-        chart updates to reflect the optimized strategy. You then have two choices:
+        When the run finishes, a compact strip appears inside the Optimize section showing one
+        of two outcomes:
       </P>
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.9, paddingLeft: 20, margin: '0 0 12px' }}>
-        <li><strong>Apply to Plan</strong>: permanently saves the new strategy. All other pages update to reflect it.</li>
-        <li><strong>Discard</strong>: throws away the result and reverts to your original saved plan.</li>
+        <li><strong>Found a better strategy (green)</strong>: the tuned strategy gains at least one full percentage point of success rate. The fan chart switches to a preview of it and a gold bar appears offering you two choices: <em>Apply to Plan</em> (saves the new strategy permanently) or <em>Discard</em> (reverts to your original).</li>
+        <li><strong>No meaningful gain (grey)</strong>: the optimizer could not beat your current strategy by more than a full percentage point. Nothing is offered. The strip explains which levers actually move this number — retirement age, spending, and your stock and bond mix.</li>
       </ul>
       <P>
-        The robustness optimizer typically scores slightly lower on the deterministic Projections
-        page but meaningfully higher on Monte Carlo success rate, because it optimizes for bad
-        sequences, not the average case. For most people, that trade-off is worth taking.
+        One percentage point is the margin of error for 5,000 trials near an 85% success rate.
+        Anything smaller would be indistinguishable from random variation in the simulation itself.
+      </P>
+      <P>
+        Once applied, the Dashboard labels the plan <em>Monte Carlo tuned</em> so you can always
+        see where the saved strategy came from.
       </P>
 
       <H3>Simulation settings</H3>
@@ -1100,7 +1104,7 @@ export function GuideContent() {
       </P>
       <FieldTable rows={[
         ["Equity Allocation %", "The stock/bond split applied inside each simulated year. Match this to your actual portfolio allocation. More stocks means more upside and more risk in bad years.", "60%"],
-        ["Number of Trials", "How many simulated futures to run. 500 is fast and accurate enough for planning decisions. 2,000–5,000 gives smoother percentile bands at the cost of a longer wait. Maximum is 10,000.", "500"],
+        ["Number of Trials", "How many simulated futures to run. 5,000 gives a steady, reliable answer for planning decisions. A higher number settles the answer down a little further at the cost of a longer wait. Maximum is 20,000.", "5,000"],
       ]} />
 
       <H3>How to read the success rate</H3>
@@ -1145,7 +1149,7 @@ export function GuideContent() {
         <li><strong>Reducing spending by 10%</strong> often moves the needle more than changing asset allocation or return assumptions.</li>
         <li><strong>Testing lower return assumptions</strong> shows how sensitive the plan is to market outcomes. If a 1% drop causes failure, build in more buffer before you retire.</li>
         <li><strong>Roth conversions</strong> will not dramatically shift success probability (they move tax timing, not total assets), but they can improve the 10th-percentile outcome by reducing tax drag when markets are already down.</li>
-        <li><strong>Optimize for Robustness</strong>: if you are at 85–92% and want to push higher without changing your retirement date or spending, this often finds a withdrawal sequencing that gains a few more percentage points.</li>
+        <li><strong>Optimize for Robustness</strong>: if you are at 85–92% and want to push higher without changing your retirement date or spending, run this to see if a different withdrawal order or Roth conversion schedule can add a percentage point or more.</li>
       </ul>
 
       {/* ── Section 9: Historical Sequences ─────────────────── */}

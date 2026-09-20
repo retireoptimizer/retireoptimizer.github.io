@@ -14,6 +14,22 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.1.0',
+    date: '2026-09-17',
+    summary: 'Monte Carlo redesign, Roth conversion accuracy fix, optimizer freshness gating, and New York state tax corrections.',
+    changes: [
+      { kind: 'feature', text: 'Monte Carlo page is now a two-step flow: run a simulation first, then optionally run Optimize for Robustness. The optimizer tests your withdrawal order and Roth conversions across many market histories and shows the result as a green strip with an Apply option when it finds a meaningful improvement, or a grey strip explaining that your current strategy is already doing as well as it can.' },
+      { kind: 'feature', text: 'Roth conversion accuracy: the optimizer was recommending conversions that converted money and then immediately withdrew it in the same year, accomplishing nothing. Phantom conversions are now blocked, and the Roth Converted figure on the Dashboard reflects only real repositioning.' },
+      { kind: 'feature', text: 'Optimizer freshness: if you change your plan after running the optimizer, a gate now blocks the results pages and asks you to re-run or discard the outdated strategy. Previously, a stale optimizer result was silently applied to changed inputs.' },
+      { kind: 'feature', text: 'New York state tax: three corrections applied. The $20,000 per-person retirement income exclusion is now honored. The NY standard deduction is applied before bracket math. NY progressive brackets (4% to 9.65%) replace the prior flat 6.5% estimate. For a typical retired NY couple this can reduce projected state tax by $3,000 to $5,000 a year.' },
+      { kind: 'feature', text: 'Pay IRA withdrawal taxes from brokerage moved to the Inputs page so it is easier to find. It defaults to on for new plans.' },
+      { kind: 'fix', text: 'Optimizer explain column: the WHY column was showing incorrect bracket room and headroom figures for optimizer-driven conversion years. Numbers now match the actual conversion amounts.' },
+      { kind: 'fix', text: 'Optimizer preset strategies (bracket-fill, Roth-first, and others) were being ignored even when they outperformed the main search result. All strategies now compete on equal footing.' },
+      { kind: 'fix', text: 'Monte Carlo equity mix setting now stays put when you navigate away and return. It was resetting to 60% on each visit.' },
+      { kind: 'cosmetic', text: 'Cash Flow chart redesigned: tax flows now come from the accounts that actually generated them, Roth conversions get their own ribbon, and ACA premiums appear as a separate use node.' },
+    ],
+  },
+  {
     version: '2.0.2',
     date: '2026-09-09',
     summary: 'Three accuracy fixes: income and Social Security streams are now correctly gated to the retirement phase, and the custom blend window upper age now uses the household horizon for couples.',

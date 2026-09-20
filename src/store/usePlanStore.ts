@@ -12,6 +12,7 @@ import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
 import { useOptimizerStore } from './useOptimizerStore';
 import { disposeEngineWorker } from '../engine/workerClient';
 import { migratePlanToV24, migratePlanToV25 } from './planMigrations';
+import { planInputKey } from '../engine/planInputKey';
 
 export type DisplayMode = 'real' | 'nominal';
 
@@ -112,7 +113,7 @@ export const usePlanStore = create<PlanState>()(
         if (s.plan.customPolicy?.source === 'optimizer') {
           useToastStore.getState().show('info', 'Optimizer strategy cleared — re-run the optimizer to restore it.');
         }
-        return { plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
+        return { plan: { ...s.plan, withdrawalStrategy, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined, optimizedBy: undefined, mcTuning: undefined } };
       }),
       setCustomPolicy: (policy) => set((s) => ({ plan: { ...s.plan, customPolicy: policy, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } })),
       applyOptimizerResult: (next) => set(() => ({ plan: next })),
@@ -120,19 +121,11 @@ export const usePlanStore = create<PlanState>()(
         if (s.plan.customPolicy?.source === 'optimizer') {
           useToastStore.getState().show('info', 'Optimizer strategy cleared — re-run the optimizer to restore it.');
         }
-        return { plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
+        return { plan: { ...s.plan, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined, optimizedBy: undefined, mcTuning: undefined } };
       }),
-      // Editing conversion settings invalidates an optimizer-authored withdrawal ordering, which was
-      // co-optimized against the old conversion schedule. Discard it (revert to the preset) and tell
-      // the user to re-run — otherwise the projection silently runs on a withdrawal plan they never
-      // chose. Matches StrategyChooser's Manual tab, which already clears the policy first.
-      setConversion: (patch) => set((s) => {
-        if (s.plan.customPolicy?.source === 'optimizer') {
-          useToastStore.getState().show('info', 'Withdrawal ordering reset — re-run the optimizer to co-optimize withdrawals and conversions.');
-          return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch }, customPolicy: undefined, conversionBaselinePolicy: undefined, optimizedForGoal: undefined } };
-        }
-        return { plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } } };
-      }),
+      setConversion: (patch) => set((s) => ({
+        plan: { ...s.plan, conversion: { ...s.plan.conversion, ...patch } },
+      })),
       setWithdrawalBracketCeiling: (v: number) => set((s) => ({
         plan: {
           ...s.plan,
@@ -150,10 +143,35 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 28,
+      version: 31,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v31: add plan.optimizedBy + plan.mcTuning (strategy provenance: the goal optimizer vs a
+        // Monte Carlo robustness run). Existing optimizer-authored policies predate the Monte Carlo
+        // apply path, so stamp them as 'optimizer'. Absent === unknown provenance elsewhere.
+        if (fromVersion < 31 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const cp = planObj.customPolicy as Record<string, unknown> | undefined;
+          if (cp && cp.source === 'optimizer' && !planObj.optimizedBy) planObj.optimizedBy = 'optimizer';
+        }
+        // v30: equityPct moved out of the plan. It is a Monte Carlo stress-test setting, not plan
+        // data, and leaving it in assumptions put it inside planInputKey, where changing the mix
+        // would mark an optimizer policy stale. Now a UI preference (lib/mcPrefs.ts). Delete the
+        // stale key so it stops riding along in plan exports.
+        if (fromVersion < 30 && ps.plan && typeof ps.plan === 'object') {
+          const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
+          if (asm && 'equityPct' in asm) delete asm.equityPct;
+        }
+        // v29: stamp inputKey on existing optimizer-authored customPolicy so users aren't gated on
+        // first load after the upgrade. Treats already-persisted policies as fresh (mirrors pre-v29 behavior).
+        if (fromVersion < 29 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const cp = planObj.customPolicy as Record<string, unknown> | undefined;
+          if (cp && cp.source === 'optimizer' && !cp.inputKey) {
+            cp.inputKey = planInputKey(planObj as unknown as Plan);
+          }
+        }
         // v28: add assumptions.legacyTargetTaxAdjReal (after-tax legacy floor for max-spending).
         // Absent === 0 === unconstrained === pre-v28 behavior. No data rewrite needed.
         // v27: add per-person spousalContribution / spousalTarget (spousal IRA while the other
@@ -308,11 +326,7 @@ export const usePlanStore = create<PlanState>()(
             planObj.incomeStreams = streams.filter((s: Record<string, unknown>) => s.type !== 'Wages' && s.type !== 'Rental');
           }
         }
-        // v6: equityPct (stock/bond split) added to assumptions for Monte Carlo.
-        if (fromVersion < 6 && ps.plan && typeof ps.plan === 'object') {
-          const asm = (ps.plan as Record<string, unknown>).assumptions as Record<string, unknown> | undefined;
-          if (asm && !('equityPct' in asm)) asm.equityPct = 0.6;
-        }
+        // v6 backfilled assumptions.equityPct; removed, since v30 deletes that field.
         // v5: contribGrowth moved from assumptions (household-wide) to each person's
         // portfolio. Copy the old single value onto both people so projections are
         // unchanged; persisted plans without it would otherwise yield NaN factors.

@@ -450,10 +450,25 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         return Math.max(0, gap - avTax - rothAvailForEst);
       return Math.max(0, gap - avTax); // taxfirst
     };
+    // Strategy-aware wdRth estimate: mirrors _wdTrdEst for the Roth bucket.
+    // Used to net anticipated same-year Roth draws from the conversion headroom — converting $X
+    // then immediately withdrawing $X from Roth repositions nothing (same taxable income,
+    // same ending balances as just drawing $X from pre-tax).
+    const _wdRthEst = (gap: number, avTax: number): number => {
+      if (policyWindow != null && policyWindow.convAmt == null)
+        return policyWindow.pctRoth * gap;
+      const total = avTax + tradAvailForEst + rothAvailForEst;
+      if (plan.withdrawalStrategy === 'proportional') return total > 0 ? (rothAvailForEst / total) * gap : 0;
+      if (plan.withdrawalStrategy === 'rothfirst' || plan.withdrawalStrategy === 'bracketfill')
+        return Math.min(rothAvailForEst, Math.max(0, gap - avTax));
+      // taxfirst and tradfirst both exhaust Roth last
+      return Math.max(0, gap - avTax - tradAvailForEst);
+    };
     // Pass 1 — wdTrd estimate ignoring conversion taxes on taxable
     const wdTrdEst1  = _wdTrdEst(spendingGapEst, taxAvailEst);
+    const wdRthEst1  = _wdRthEst(spendingGapEst, taxAvailEst);
     const piEst1     = other.taxableAmt + exemptIncomeEst + rmdAmt + wdTrdEst1 + annualDivEst + 0.5 * ss.total;
-    const baseOrdEst1 = taxableSocialSecurity(piEst1, ss.total, filingStatus) + rmdAmt + other.taxableAmt + wdTrdEst1 + ordDivEst;
+    const baseOrdEst1 = taxableSocialSecurity(piEst1, ss.total, filingStatus) + rmdAmt + other.taxableAmt + wdTrdEst1 + wdRthEst1 + ordDivEst;
     const ceilForConv = effectiveBracketCeiling(plan.conversion.bracketCeiling, filingStatus) * inflationFactor;
     // Inherited pre-tax IRAs cannot be converted to Roth — exclude their tracked balance.
     const inheritedTradBal = inheritedState
@@ -480,9 +495,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       ? Math.min(convBracketRate * convEst, taxAvailEst) : 0;
     const taxAvailForSpendingEst = Math.max(0, taxAvailEst - convTaxFromBrok);
     const wdTrdEstForConv = _wdTrdEst(spendingGapEst, taxAvailForSpendingEst);
+    const wdRthEstForConv = _wdRthEst(spendingGapEst, taxAvailForSpendingEst);
     const piForConv = other.taxableAmt + exemptIncomeEst + rmdAmt + wdTrdEstForConv + annualDivEst + 0.5 * ss.total;
     const taxableSSForConv = taxableSocialSecurity(piForConv, ss.total, filingStatus);
-    const baseOrdIncForConv0 = taxableSSForConv + rmdAmt + other.taxableAmt + wdTrdEstForConv + ordDivEst;
+    const baseOrdIncForConv0 = taxableSSForConv + rmdAmt + other.taxableAmt + wdTrdEstForConv + wdRthEstForConv + ordDivEst;
     // Pass 3 — SS taxability feedback: if the conversion itself pushes PI above the 85% tier,
     // SS becomes more taxable, adding to ordIncome. Compute SS gain at full headroom and absorb
     // it into the base so rothConversion sizes conv to stay within the ceiling after the flip.

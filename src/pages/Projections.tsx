@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useProjection, usePlanStore } from '../store/usePlanStore';
+import { useOptimizerStore } from '../store/useOptimizerStore';
+import { policyStatus } from '../engine/policyStatus';
+import StalePlanGate from '../components/StalePlanGate';
 import type { DisplayMode } from '../store/usePlanStore';
 import { fmtUSD, fmtFull } from '../lib/format';
 import CashFlowsBalanced from '../components/charts/CashFlowsBalanced';
@@ -163,8 +166,10 @@ const loadVisibleKeys = (): Set<string> => {
 };
 
 export default function Projections() {
+  const plan = usePlanStore((s) => s.plan);
   const mode = usePlanStore((s) => s.displayMode);
   const proj = useProjection();
+  const pendingPlan = useOptimizerStore((s) => s.pendingPlan);
   const [visibleKeys, setVisibleKeysState] = useState<Set<string>>(loadVisibleKeys);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ top: number; right: number; maxHeight: number }>({ top: 0, right: 0, maxHeight: 400 });
@@ -272,6 +277,8 @@ export default function Projections() {
     a.click();
     document.body.removeChild(a);
   };
+
+  if (policyStatus(plan) === 'stale' && pendingPlan === null) return <StalePlanGate />;
 
   return (
     <div className="page">

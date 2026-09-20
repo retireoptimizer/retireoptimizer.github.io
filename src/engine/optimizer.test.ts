@@ -1,16 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection, effectiveBracketCeiling } from './projection';
-import { optimizeStrategy } from './optimizer';
-import { planP_tightPlan } from './__golden/plans';
+import { optimizeStrategy, CONVERSION_BASELINE_MARGIN, rowsToSeed } from './optimizer';
+import { applyResultToPlan } from './applyOptimizerResult';
+import { planP_tightPlan, planG_californiaCouple } from './__golden/plans';
 import { runMonteCarlo } from './monteCarlo';
 import { samplePlan as defaultPlan } from '../schemas/plan';
 import type { Plan } from '../schemas/plan';
-import type { BlendPolicy } from './blendPolicy';
-import { assertProjectionInvariants } from './__invariants__/assertions';
+import { findWindow, type BlendPolicy } from './blendPolicy';
+import { assertProjectionInvariants, assertNoRoundTrippedConversions, assertNoConcurrentConversionAndRothDraw } from './__invariants__/assertions';
 
 import { FED_BRACKETS_MFJ } from './taxConstants';
 // 24% bracket top — the optimizer's per-year conversion cap.
 const BRACKET_24_TOP = FED_BRACKETS_MFJ[3][0];
+
+/** Deep sweeps (`thorough: true`) multiply optimizer evaluations several-fold and dominated the
+ *  default `pnpm test` wall time. The assertions below hold for the fast search too, so the deep
+ *  sweep runs only under `pnpm test:heavy`. */
+const THOROUGH = process.env.HEAVY === '1';
 
 /** Deep-clone a plan to keep test cases isolated. */
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -88,7 +94,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
     const presets: Plan['withdrawalStrategy'][] = ['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill'];
-    const opt = optimizeStrategy(plan, 'max-end-balance', { thorough: true });
+    const opt = optimizeStrategy(plan, 'max-end-balance', { thorough: THOROUGH });
 
     for (const strat of presets) {
       const presetPlan = clone(plan);
@@ -107,7 +113,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // this allows some legitimate transition-driven roughness without permitting spikes.
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: true });
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: THOROUGH });
     const convs = r.perYearPolicy.windows.map((w) => w.convAmt ?? 0);
     let totalVariation = 0;
     for (let i = 1; i < convs.length; i++) totalVariation += Math.abs(convs[i] - convs[i - 1]);
@@ -133,13 +139,103 @@ describe('Optimizer ↔ Projection coordination', () => {
     expect(applied.lifetimeFedTax).toBeCloseTo(r.projection.lifetimeFedTax, -1);
   }, 60_000);
 
+  it('shipped policy never asks for a bucket that was exhausted all year', () => {
+    // An exhausted bucket's percentage is a free variable: applyBlendPolicy clamps the draw to
+    // the balance and refills the remainder, so every value scores identically and the search
+    // leaves whatever the seed contained. Those values ship as a policy asking for withdrawals
+    // that cannot happen, which the explain layer reports as "withdrawal split could not be
+    // honored" for a year the optimizer deliberately accepted. normalizeUnreachableSplits folds
+    // them into traditional. Asserted on every golden plan plus the default.
+    for (const mk of [defaultPlan, planP_tightPlan, planG_californiaCouple]) {
+      const plan = mk();
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      for (const row of r.projection.rows) {
+        const w = findWindow(r.perYearPolicy, row.ageA);
+        if (!w) continue;
+        const taxDead = row.wdTax < 1 && row.endTaxable < 1;
+        const rothDead = row.wdRth < 1 && row.endRoth < 1;
+        if (taxDead) expect(w.pctTaxable, `age ${row.ageA} taxable exhausted`).toBe(0);
+        if (taxDead && rothDead) expect(w.pctRoth, `age ${row.ageA} Roth exhausted`).toBe(0);
+      }
+      // The rewrite must be score-neutral, never a way to buy end balance. When the baseline was
+      // adopted the windows carry convAmt:undefined, so mode must be forced off exactly as
+      // applyResultToPlan does — otherwise the re-projection resurrects the conversions.
+      const verifyPlan = r.conversionsDisabled
+        ? { ...plan, conversion: { ...plan.conversion, mode: 'off' as const } }
+        : plan;
+      expect(r.metric).toBeCloseTo(runProjection(verifyPlan, { policy: r.perYearPolicy }).endTaxAdjustedReal, 0);
+    }
+  }, 180_000);
+
   it('produces a projection that satisfies all dollar-flow invariants', () => {
     // Combines Layer 1's invariants with Layer 2's optimizer path — ensures the optimizer
     // never produces a policy that triggers phantom withdrawals or balance corruption.
     const plan = defaultPlan();
     const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
     assertProjectionInvariants(r.projection, plan);
+    // Optimizer-authored policies must never round-trip a conversion. Asserted here rather than
+    // inside assertProjectionInvariants because a user-configured plan (bracket-fill conversions
+    // plus a Roth-draining withdrawal order) can produce one legitimately, and the engine is
+    // modelling that faithfully; the conv-roth-first-incoherent warning covers that case.
+    assertNoRoundTrippedConversions(r.projection);
+    assertNoConcurrentConversionAndRothDraw(r.projection);
   }, 60_000);
+
+  it('round-trip collapse leaves no residual Roth draw in any conversion year', () => {
+    // Regression: the collapse originally adjusted pctRoth by subtracting roundTrip/totalWD, but
+    // the split fractions apply to the spending gap (which carries conversion tax), not to
+    // totalWD. The delta therefore undershot and left a sliver of pctRoth alive, surfacing as a
+    // few dollars of Roth withdrawal beside a large conversion — $2 next to $57k on a real plan.
+    // Asserted on the applied plan too, since that is what the user actually sees.
+    for (const [label, mk] of [
+      ['samplePlan', () => { const p = defaultPlan(); p.conversion.mode = 'off'; return p; }],
+      ['planG', planG_californiaCouple],
+      ['planP', planP_tightPlan],
+    ] as const) {
+      const plan = mk();
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      try {
+        assertNoConcurrentConversionAndRothDraw(r.projection);
+        assertNoConcurrentConversionAndRothDraw(runProjection(applyResultToPlan(plan, r)));
+      } catch (e) {
+        throw new Error(`${label}: ${(e as Error).message}`);
+      }
+    }
+  }, 300_000);
+
+  it('metric >= conversionBaselineMetric - margin on all golden plans (adoption guard holds)', () => {
+    // Durable invariant: the shipped result must never score worse than the no-conversion
+    // baseline by more than the adoption margin. If this fires, the adoption guard failed to
+    // adopt a superior baseline — either a new code path bypasses it or the margin constant drifted.
+    // Does NOT pin absolute dollar figures so legitimate search improvements don't break this.
+    const goldenPlans = [
+      defaultPlan(),
+      planG_californiaCouple(),
+      planP_tightPlan(),
+    ];
+    for (const plan of goldenPlans) {
+      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      if (r.conversionBaselineMetric !== undefined) {
+        const margin = CONVERSION_BASELINE_MARGIN(r.metric);
+        expect(
+          r.metric,
+          `Plan scored ${r.metric.toFixed(0)} but no-conv baseline scored ${r.conversionBaselineMetric.toFixed(0)} — adoption guard should have fired (margin ${margin.toFixed(0)})`
+        ).toBeGreaterThanOrEqual(r.conversionBaselineMetric - margin);
+      }
+    }
+  }, 300_000);
+
+  it('planG (bracket-fill optimize:false): conversionsDisabled=true and lifetimeConversion<1000 after fix', () => {
+    // Before Part 1+2: plan G had 100% round-tripped conversions ($1.2M gross) and the optimizer
+    // shipped a result $64,885 worse than its own no-conversion baseline.
+    // After the fix: the adoption guard must fire and conversions must be disabled.
+    const plan = planG_californiaCouple();
+    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    expect(r.conversionsDisabled, 'adoption guard must fire for planG').toBe(true);
+    expect(r.projection.lifetimeConversion, 'no conversions should survive after adoption').toBeLessThan(1000);
+    // Don't pin the absolute metric: any improvement above the old $6,134,672 is acceptable.
+    expect(r.metric, 'planG metric should improve above the old result').toBeGreaterThan(6_000_000);
+  }, 180_000);
 });
 
 describe('Custom BlendPolicy ↔ Projection', () => {
@@ -155,6 +251,37 @@ describe('Custom BlendPolicy ↔ Projection', () => {
     const projA = runProjection(plan, { policy: opt.perYearPolicy });
     const projB = runProjection(plan, { policy: manualPolicy });
     expect(JSON.stringify(projA.rows)).toBe(JSON.stringify(projB.rows));
+  }, 60_000);
+
+  it('rowsToSeed carries the realized conversion schedule, not convAmt: 0', () => {
+    // Regression: rowsToSeed hardcoded convAmt: 0 in both branches. Competitors 4–8 screen each
+    // ordering preset with the incumbent's conversion schedule pinned as manual mode; reseeding
+    // the escalation with conversions stripped drops the schedule that made the screen win, so a
+    // candidate proven better than the incumbent could be lost when the re-search landed lower.
+    const plan = defaultPlan();
+    plan.conversion.mode = 'bracket-fill';
+    plan.conversion.bracketCeiling = 250_000;
+    const proj = runProjection(plan);
+    const retireAge = plan.personA.retirementAge;
+    const planToAge = plan.personA.planThroughAge;
+
+    const seed = rowsToSeed(proj, retireAge, planToAge, true);
+    // The source projection must actually convert, or the test proves nothing.
+    const converting = proj.rows.filter((r) => r.ageA >= retireAge && r.rothConv > 1);
+    expect(converting.length, 'fixture should produce conversions').toBeGreaterThan(0);
+
+    for (const row of converting) {
+      const w = seed.find((x) => x.fromAge === row.ageA);
+      expect(w, `age ${row.ageA} missing from seed`).toBeDefined();
+      // convAmt is today's $ while row.rothConv is nominal — the deflation is load-bearing.
+      expect(w!.convAmt).toBe(Math.round(row.rothConv / row.inflationFactor));
+    }
+    expect(seed.some((w) => (w.convAmt ?? 0) > 1), 'seed carries no conversions').toBe(true);
+
+    // optimizeConversions=false must leave convAmt undefined: 0 would pin conversions to zero
+    // via the policyConv != null branch and override the plan's own conversion mode.
+    const modeOwned = rowsToSeed(proj, retireAge, planToAge, false);
+    expect(modeOwned.every((w) => w.convAmt === undefined)).toBe(true);
   }, 60_000);
 
   it('explicit convAmt=0 means truly zero, not a fallback to plan.conversion.mode', () => {
@@ -252,10 +379,11 @@ describe('conversion.optimize gate', () => {
     expect(r.projection.lifetimeConversion).toBe(0);
   }, 60_000);
 
-  it('optimizeConversions=false, mode=bracket-fill → conversions follow the mode', () => {
+  it('optimizeConversions=false, mode=bracket-fill → conversions follow the mode unless adoption fires', () => {
     // When optimize=false, the optimizer must NOT set explicit convAmt on any window
     // (doing so would override bracket-fill and break the user's Pick-tab intent).
-    // Conversions come entirely from the mode; the optimizer only searches withdrawals.
+    // Conversions come from the mode; if the adoption guard finds no-conv is better, it ships
+    // the baseline (conversionsDisabled=true) and r.projection has zero conversions — correct.
     const plan = defaultPlan();
     plan.conversion.mode = 'bracket-fill';
     plan.conversion.optimize = false;
@@ -263,7 +391,10 @@ describe('conversion.optimize gate', () => {
     for (const w of r.perYearPolicy.windows) {
       expect(w.convAmt, `window ${w.fromAge}-${w.toAge} convAmt must be undefined`).toBeUndefined();
     }
-    expect(r.projection.lifetimeConversion).toBeGreaterThan(0);
+    if (!r.conversionsDisabled) {
+      // Adoption did not fire: mode-driven conversions survived.
+      expect(r.projection.lifetimeConversion).toBeGreaterThan(0);
+    }
     // Withdrawals still optimized: end balance beats the all-taxable, mode-driven baseline.
     const baseline = runProjection(plan); // no policy → all-taxable withdrawals + same mode conversions
     expect(r.projection.endTotalReal).toBeGreaterThanOrEqual(baseline.endTotalReal - 1);
@@ -277,13 +408,15 @@ describe('conversion.optimize gate', () => {
   }, 60_000);
 
   it('optimizeConversions=false round-trips: applied plan matches result.projection', () => {
+    // Use applyResultToPlan (same path as the UI Apply button) so conversion.mode is correctly
+    // overridden to 'off' when the adoption guard fires. Manually setting customPolicy alone
+    // would leave conversion.mode=bracket-fill, resurrecting conversions (the landmine).
     const plan = defaultPlan();
     plan.conversion.mode = 'bracket-fill';
     plan.conversion.optimize = false;
     const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-    const applied = clone(plan);
-    applied.customPolicy = { ...r.perYearPolicy, source: 'optimizer' };
-    const verify = runProjection(applied, { policy: r.perYearPolicy });
+    const applied = applyResultToPlan(plan, r);
+    const verify = runProjection(applied);
     expect(verify.endTotalReal).toBeCloseTo(r.projection.endTotalReal, 0);
   }, 60_000);
 });
@@ -366,25 +499,28 @@ describe('MC-aware optimizer (P2)', () => {
     expect(r1.projection.endTaxAdjustedReal).toBeCloseTo(r2.projection.endTaxAdjustedReal, 0);
   }, 300_000);
 
-  it('MC-aware optimization improves or maintains 500-path success rate on planP_tightPlan (balanced)', () => {
+  it('MC-aware optimization improves or maintains 100-path success rate on planP_tightPlan (balanced)', () => {
     const plan = planP_tightPlan();
     const seed = 77777;
     const equityPct = 0.6;
 
     const detResult = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: true, thorough: false });
-    const detMC = runMonteCarlo(plan, { trials: 500, seed, model: 'historical', equityPct });
+    // 100 trials: the three scoring runs below are pure overhead next to the two optimizer calls,
+    // and the comparison is paired on `seed`, so the same paths score both policies.
+    const TRIALS = 100;
+    const detMC = runMonteCarlo(plan, { trials: TRIALS, seed, model: 'historical', equityPct });
     // Apply deterministic policy to plan
     const detPlan = { ...plan, customPolicy: { ...detResult.perYearPolicy, source: 'optimizer' as const } };
-    const detSR = runMonteCarlo(detPlan, { trials: 500, seed, model: 'historical', equityPct }).successRate;
+    const detSR = runMonteCarlo(detPlan, { trials: TRIALS, seed, model: 'historical', equityPct }).successRate;
 
     const mcResult = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: true, thorough: false, mcAware: true, mcSeed: seed, mcPosture: 'balanced' });
     void detMC;
     const mcPlan = { ...plan, customPolicy: { ...mcResult.perYearPolicy, source: 'optimizer' as const } };
-    const mcSR = runMonteCarlo(mcPlan, { trials: 500, seed, model: 'historical', equityPct }).successRate;
+    const mcSR = runMonteCarlo(mcPlan, { trials: TRIALS, seed, model: 'historical', equityPct }).successRate;
 
     expect(
       mcSR,
       `MC-aware success rate ${(mcSR * 100).toFixed(1)}% should be ≥ deterministic ${(detSR * 100).toFixed(1)}% on planP`
-    ).toBeGreaterThanOrEqual(detSR - 0.02);  // allow 2 pts noise from path randomness
+    ).toBeGreaterThanOrEqual(detSR - 0.05);  // 5 pts: one standard error at 100 paired trials
   }, 600_000);
 });

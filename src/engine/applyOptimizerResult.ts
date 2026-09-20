@@ -1,6 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import type { OptimizeResult } from './optimizer';
 import { shiftRetirementAge } from './retirementAgeShift';
+import { planInputKey } from './planInputKey';
 
 /** Pure function that returns the plan as it would be after the optimizer runs.
  *  The caller is responsible for deciding whether to commit this to the plan store
@@ -24,7 +25,19 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
     // results, which also clears any stale baseline from a prior run.
     conversionBaselinePolicy: result.conversionBaselinePolicy,
     optimizedForGoal: result.goal,
+    // Provenance. Callers that run the optimizer from the Monte Carlo page overwrite these two
+    // fields afterwards, so a plain optimizer run always resets them to their 'optimizer' state.
+    optimizedBy: 'optimizer' as const,
+    mcTuning: undefined,
     solvedSpendingMultiplier: result.goal !== 'max-sustainable-spending' ? undefined : plan.solvedSpendingMultiplier,
+    // When the optimizer adopted the no-conversion baseline, mirror the baseline plan exactly:
+    // the adopted policy windows carry convAmt:undefined, so projection would fall back to
+    // plan.conversion mode (e.g. bracket-fill) and resurrect the conversions. Setting mode:'off'
+    // closes that path at the source without requiring a store migration (mode:'off' is already
+    // in the enum; version stays at 28).
+    conversion: result.conversionsDisabled
+      ? { ...plan.conversion, mode: 'off' as const, optimize: false }
+      : plan.conversion,
   };
 
   // max-sustainable-spending: scale all expense streams proportionally to the optimizer's
@@ -59,6 +72,15 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
   ) {
     next = shiftRetirementAge(next, result.solvedRetirementAge);
   }
+
+  // Stamp the fingerprint from the fully-mutated plan so the key stays valid even when
+  // max-sustainable-spending or min-retirement-age rewrites fields that are inside planInputKey.
+  next = {
+    ...next,
+    customPolicy: next.customPolicy
+      ? { ...next.customPolicy, inputKey: planInputKey(next) }
+      : next.customPolicy,
+  };
 
   return next;
 }

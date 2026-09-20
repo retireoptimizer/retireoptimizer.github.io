@@ -13,13 +13,15 @@ describe('conversion-benefit baseline (optimizer-authored)', () => {
   it('is flat across all five withdrawal presets (invariance, not an absolute pin)', () => {
     // The optimizer-authored no-conversion baseline must be a function of plan economics only,
     // not of whichever withdrawal preset happens to be sitting in the plan as invisible UI history.
+    // After the adoption guard, the baseline may be adopted (conversionsDisabled) rather than stored
+    // as conversionBaselinePolicy — assert on conversionBaselineMetric, which is set in both cases.
     const base = samplePlan();
     const baselineEnds: number[] = [];
     for (const preset of PRESETS) {
       const plan = clone(base);
       plan.withdrawalStrategy = preset;
       const result = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-      expect(result.conversionBaselinePolicy, `expected conversions on preset ${preset}`).toBeTruthy();
+      expect(result.conversionBaselineMetric, `expected baseline to run on preset ${preset}`).toBeDefined();
       const applied = applyResultToPlan(plan, result);
       const cmp = compareWithWithoutConversion(applied);
       baselineEnds.push(cmp.noConv.endTotalReal);
@@ -32,20 +34,29 @@ describe('conversion-benefit baseline (optimizer-authored)', () => {
     // Plan-B scenario: the optimizer owns only the withdrawal ordering; conversions come from
     // conversion.mode, so customPolicy windows carry no convAmt. The baseline must still be built —
     // keying "has conversions" off convAmt alone would skip it and reintroduce the +142K artifact.
+    // conversionBaselineMetric is defined whenever the baseline ran, independent of whether the
+    // adoption guard then chose the baseline (conversionsDisabled) or kept the with-conv result.
     const plan = samplePlan();
     plan.conversion = { ...plan.conversion, mode: 'auto-window', optimize: false, startAge: 59, endAge: 82, autoAmount: 70_000 };
     const result = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-    expect(result.projection.lifetimeConversion, 'expected mode-driven conversions').toBeGreaterThan(1000);
     expect(result.policy.windows.every((w) => (w.convAmt ?? 0) === 0), 'convAmt is mode-owned, not on policy').toBe(true);
-    expect(result.conversionBaselinePolicy, 'baseline must be computed for fixed-schedule plans').toBeTruthy();
+    // conversionBaselineMetric defined → baseline ran → mode-driven conversions were present in withConvInner.
+    expect(result.conversionBaselineMetric, 'baseline must be computed for fixed-schedule plans').toBeDefined();
   }, 120_000);
 
   it('uses the stored baseline, not the zeroed with-conversion ordering', () => {
     const plan = samplePlan();
     const result = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
     const applied = applyResultToPlan(plan, result);
-    expect(applied.conversionBaselinePolicy).toBeTruthy();
 
+    if (result.conversionsDisabled) {
+      // Baseline was adopted — conversion mode is off, no stored policy needed.
+      expect(applied.conversion.mode).toBe('off');
+      expect(applied.conversionBaselinePolicy).toBeUndefined();
+      return;
+    }
+
+    expect(applied.conversionBaselinePolicy).toBeTruthy();
     const cmp = compareWithWithoutConversion(applied);
 
     // The stored baseline (re-adapted ordering) should differ from the naive counterfactual that
