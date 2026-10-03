@@ -12,7 +12,8 @@ A retiree who inherited an IRA 3 years ago could not model the remaining 10-year
 
 ### 1. Past inherited IRA / Roth events (new)
 - Inherited Pre-Tax IRA and Inherited Roth events may be dated up to 10 years before today's age.
-- For a past date, **Amount = balance today** (reuses the existing `amount` field).
+- For a past date, **Amount = balance on Jan 1 of the current year** (same date as Portfolio
+  balances; reuses the existing `amount` field).
 - The balance is added to the opening balance in year 0 (`tradA` / `tradB` / `roth`), not shown
   as a "Lump Sum" injection. It grows with the host account from year 0.
 - The 10-year clock still runs from `ev.age`. Per-event depletion tracking is seeded with

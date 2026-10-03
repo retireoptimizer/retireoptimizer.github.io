@@ -634,7 +634,7 @@ export default function InputsPage() {
 
             <div className="subsection-label" style={{ marginTop: 24 }}>One-Time Income Events</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-              Enter the nominal amount you expect to receive. For inherited IRAs and Roth accounts, the balance is added to your pre-tax or Roth portfolio and must be emptied by the end of the 10th year after the original owner died. For these accounts, enter your age in the year the owner died. The optimizer picks the timing to keep taxes low. Inherited HSAs are fully taxable as ordinary income in the year received. If you already inherited an IRA or Roth account, enter its balance today as the amount.
+              Enter the nominal amount you expect to receive. For inherited IRAs and Roth accounts, the balance is added to your pre-tax or Roth portfolio and must be emptied by the end of the 10th year after the original owner died. For these accounts, enter your age in the year the owner died. The optimizer picks the timing to keep taxes low. Inherited HSAs are fully taxable as ordinary income in the year received. If you already inherited an IRA or Roth account, enter its balance on January 1 of this year as the amount.
             </div>
             <div className="stream-rows-scroll">
               <div className="stream-row lumpsum-row" style={{ padding: '6px 0', borderBottom: '2px solid var(--border-light)' }}>
@@ -675,7 +675,7 @@ export default function InputsPage() {
                   <NumberInput value={ev.age} digits={0} min={minLumpAge(ev.whose, ev.bucket)} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateLumpSumEvent(ev.id, { age: Math.max(Math.round(v), minLumpAge(ev.whose, ev.bucket)) })} />
                   <div className="input-prefix-wrap">
                     {isPastInherited
-                      ? <span className="input-prefix" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--gold)' }}>Balance today $</span>
+                      ? <span className="input-prefix" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--gold)' }}>Jan 1 balance $</span>
                       : <span className="input-prefix">$</span>}
                     <NumberInput
                       value={ev.amount}
@@ -698,7 +698,7 @@ export default function InputsPage() {
                     const yearsLeft = INHERITED_DEADLINE_YEARS + 1 - yearsAgo;
                     return (
                       <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--text-secondary)', padding: '2px 0 4px' }}>
-                        <strong style={{ color: 'var(--text-primary)' }}>Enter the account balance as of today, from your latest statement.</strong>{' '}
+                        <strong style={{ color: 'var(--text-primary)' }}>Enter the account balance on January 1, {new Date().getFullYear()}, the same date as your Portfolio balances.</strong>{' '}
                         Inherited {yearsAgo} {yearsAgo === 1 ? 'year' : 'years'} ago. It must be emptied within {yearsLeft} {yearsLeft === 1 ? 'year' : 'years'}, counting this year. Don't include this account in your Portfolio balances.
                       </div>
                     );

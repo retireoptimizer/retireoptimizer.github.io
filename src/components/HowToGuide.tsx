@@ -490,16 +490,16 @@ export function GuideContent() {
 
       <H3>One-Time Lump Sum Events</H3>
       <P>
-        Use this section to model a single cash event at a specific age, such as an inheritance, a
-        business sale, a large bonus, or an inherited retirement account. Click{' '}
+        Use this section to model a single cash event at a specific age, such as a cash inheritance,
+        home-sale proceeds, an insurance payout, or an inherited retirement account. Click{' '}
         <strong>+ Add One-Time Event</strong> in the Income &amp; Expenses section to create a row.
       </P>
       <FieldTable rows={[
         ["Description", "A label shown in tables. Has no effect on calculations.", '"Inherited IRA"'],
         ["Whose", 'For couples, which person&apos;s age the event is anchored to. "Household" uses Person A&apos;s age.', "Household"],
         ["Account", "The account type determines tax treatment and depletion rules. Four options are available.", "Inherited Pre-Tax IRA"],
-        ["At Age", "The age at which the account is received. Based on the selected person's age.", "65"],
-        ["Amount", "The account balance at the time of inheritance, in today's dollars.", "$250,000"],
+        ["At Age", "The selected person's age when the money arrives. For an inherited IRA or Roth account, your age in the year the original owner died. This can be up to 10 years in the past.", "65"],
+        ["Amount", "For a future event, the amount you expect to receive, in nominal dollars. For an inherited IRA or Roth account you already have, its balance on January 1 of this year (the same date as your Portfolio balances).", "$250,000"],
       ]} />
 
       <H3>How the four account types are handled</H3>
