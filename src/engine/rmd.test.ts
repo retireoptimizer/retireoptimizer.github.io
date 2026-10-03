@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rmdDivisor, requiredMinDistribution, rmdStartAgeForDob } from './rmd';
+import { rmdDivisor, requiredMinDistribution, rmdStartAgeForDob, singleLifeExpectancy, inheritedRmdDivisor } from './rmd';
 
 describe('rmdStartAgeForDob', () => {
   it('born before July 1 1949 → 70', () => expect(rmdStartAgeForDob('1948-12-31')).toBe(70));
@@ -33,4 +33,23 @@ describe('requiredMinDistribution', () => {
   it('zero with zero balance', () => {
     expect(requiredMinDistribution(80, 0)).toBe(0);
   });
+});
+
+describe('singleLifeExpectancy (26 CFR 1.401(a)(9)-9(b))', () => {
+  it('spot values', () => {
+    expect(singleLifeExpectancy(0)).toBe(84.6);
+    expect(singleLifeExpectancy(55)).toBe(31.6);
+    expect(singleLifeExpectancy(80)).toBe(11.2);
+    expect(singleLifeExpectancy(86)).toBe(7.6);
+    expect(singleLifeExpectancy(120)).toBe(1.0);
+  });
+  it('clamps beyond the table', () => expect(singleLifeExpectancy(130)).toBe(1.0));
+});
+
+describe('inheritedRmdDivisor', () => {
+  it('set from age in year after death, minus 1 per year after', () => {
+    expect(inheritedRmdDivisor(85, 1)).toBeCloseTo(7.6, 6);
+    expect(inheritedRmdDivisor(85, 3)).toBeCloseTo(5.6, 6);
+  });
+  it('never below 1', () => expect(inheritedRmdDivisor(85, 9)).toBe(1));
 });

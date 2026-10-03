@@ -510,25 +510,28 @@ export function GuideContent() {
       <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: 20, margin: '0 0 12px' }}>
         <li>
           <strong>Taxable (home sale, insurance, etc.)</strong>: deposited into your brokerage at
-          full cost basis (no embedded capital gain). The engine includes the amount as ordinary
-          income in the year it arrives. Use this for cash inheritances, business-sale proceeds, or
-          large bonuses.
+          full cost basis (no embedded capital gain). The amount is not taxed when it arrives, so
+          enter what you receive after any tax owed on it. Use this for cash inheritances, home-sale
+          proceeds, or insurance payouts.
         </li>
         <li>
           <strong>Inherited Pre-Tax IRA</strong>: follows the 10-year distribution rule for a
-          non-spouse beneficiary. The balance is added to your Traditional IRA at the age you enter.
-          Each subsequent year the engine computes a floor distribution (remaining balance ÷ years
-          left in the 10-year window) and forces enough out to meet it, counting those distributions
-          as ordinary income. Strategy withdrawals from your traditional account proportionally
-          reduce the required supplement, so if your withdrawal plan already draws heavily from
-          pre-tax, the forced add-on shrinks accordingly. Any balance still in the account at the
-          end of year 10 is fully distributed. Use this for a traditional IRA or 401(k) inherited
+          non-spouse beneficiary. The balance is added to your Traditional IRA at the age you enter,
+          which is your age in the year the original owner died. Each year the engine computes a floor distribution (remaining balance ÷ years
+          left before the deadline) and forces enough out to meet it, counting those distributions
+          as ordinary income. If the original owner had already started their own required
+          withdrawals, check the box under the event. You then also owe a yearly minimum in years
+          1 through 9, based on the IRS Single Life Table for your age, and the engine forces out
+          whichever is larger: that minimum or the even spread. Strategy withdrawals from your
+          traditional account proportionally reduce the required supplement, so if your withdrawal plan already draws heavily from
+          pre-tax, the forced add-on shrinks accordingly. Any balance still in the account in the
+          10th year after the year of death is fully distributed. Use this for a traditional IRA or 401(k) inherited
           from a non-spouse.
         </li>
         <li>
           <strong>Inherited Roth IRA</strong>: the same 10-year distribution rule applies, but
           distributions are tax-free. The balance is added to your Roth account and a proportional
-          annual floor is forced out over the 10-year window. Those distributions generate no
+          annual floor is forced out by the end of the 10th year after the year of death. Those distributions generate no
           ordinary income and reduce your need for taxable or traditional withdrawals in those years.
           Use this for a Roth IRA inherited from a non-spouse.
         </li>
@@ -541,10 +544,11 @@ export function GuideContent() {
         </li>
       </ul>
       <Tip>
-        <strong>Inherited Pre-Tax IRA example:</strong> You inherit $250,000 at age 65. In year 1,
-        the floor is $250,000 ÷ 10 = $25,000. If your withdrawal strategy already pulls $15,000
-        of traditional proportionally, the engine only forces an additional $10,000 supplement. By
-        year 10 (age 74) any remaining balance is fully distributed. All distributions are ordinary
+        <strong>Inherited Pre-Tax IRA example:</strong> You inherit $250,000 at age 65, the year the
+        owner died. The account must be empty by the end of age 75, so the first-year floor is
+        $250,000 ÷ 11 = about $22,700. If your withdrawal strategy already pulls $15,000
+        of traditional proportionally, the engine only forces an additional $7,700 supplement. At
+        age 75 any remaining balance is fully distributed. All distributions are ordinary
         income and appear in the "Inherited Income" column on the Projections page.
       </Tip>
       <Tip>

@@ -14,6 +14,21 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.2.0',
+    date: '2026-10-03',
+    summary: 'Inherited IRA and Roth accounts you already received can now be added to your plan, an optional yearly minimum for inherited IRAs, and four accuracy fixes for inherited accounts and one-time events.',
+    changes: [
+      { kind: 'feature', text: 'Inherited IRA and Roth accounts you received in the past can now be modeled. Pick Inherited Pre-Tax IRA or Inherited Roth IRA, enter your age in the year the original owner died (up to 10 years back), and enter the account balance as of today. The Amount box shows a gold "Balance today" label for these rows, and a note under the row shows how many years are left to empty the account. These events were previously dropped from the plan without notice.' },
+      { kind: 'feature', text: 'Yearly minimum withdrawals on inherited IRAs: a new checkbox on Inherited Pre-Tax IRA rows covers the case where the original owner had already started required withdrawals. When checked, the plan takes the IRS yearly minimum in each year of the 10-year window, along with emptying the account by the deadline. This mostly affects people who were about 81 or older when they inherited.' },
+      { kind: 'feature', text: 'New plan warnings flag a past-dated Taxable or Inherited HSA event (these are left out of the plan), and an inherited account whose 10-year deadline has already passed.' },
+      { kind: 'fix', text: 'Inherited account 10-year deadline now allows the full window. The rule gives you until the end of the 10th year after the year of death. The plan was emptying the account one year early, which pushed slightly more taxable income into each year.' },
+      { kind: 'fix', text: 'Your own required minimum withdrawal no longer counts the inherited IRA balance. For people already at their own withdrawal age, the inherited money was counted in both minimums, which forced extra withdrawals and extra tax during the inherited window.' },
+      { kind: 'fix', text: 'How-To guide now describes Taxable one-time events correctly. These amounts go into your brokerage account with no tax, so enter the after-tax amount. Examples now list cash inheritances, home-sale proceeds, and insurance payouts.' },
+      { kind: 'fix', text: 'How-To guide inherited IRA example updated to match the corrected deadline, and the new yearly minimum checkbox is explained.' },
+      { kind: 'cosmetic', text: 'One-Time Income Events table gives the Amount column more room and the Description column less.' },
+    ],
+  },
+  {
     version: '2.1.1',
     date: '2026-09-20',
     summary: 'Two fixes to the Roth conversion controls on the Dashboard and Inputs page.',

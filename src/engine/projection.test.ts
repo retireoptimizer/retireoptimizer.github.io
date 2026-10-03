@@ -289,7 +289,7 @@ describe('Inherited account types — one-time income events', () => {
     }
   });
 
-  it('inheritedPreTaxIRA + taxfirst: supplement fires every year in [age, age+9]', () => {
+  it('inheritedPreTaxIRA + taxfirst: drawn every year in [age, age+10], emptied in the deadline year', () => {
     const plan = baseInheritedPlan();
     plan.withdrawalStrategy = 'taxfirst';
     plan.lumpSumEvents = [{ id: 'ira-1', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: 65, amount: 100_000 }];
@@ -300,24 +300,28 @@ describe('Inherited account types — one-time income events', () => {
     expect(injRow).toBeDefined();
     expect(injRow.lumpSumInjectTrad).toBeCloseTo(100_000, -1);
 
-    // Supplement fires in every year of the 10-year window.
-    for (let age = 65; age <= 74; age++) {
+    // Every year from the year of death through the deadline year (age 75) draws on the account:
+    // either a forced supplement, or strategy trad withdrawals whose proportional share already
+    // meets the floor (samplePlan drains taxable by 66, so trad funds spending at 66-68).
+    for (let age = 65; age <= 75; age++) {
       const r = proj.rows.find(row => row.ageA === age);
       if (!r) continue;
-      expect(r.lumpSumForcedTradDist).toBeGreaterThan(0);
-      expect(r.lumpSumOrdinaryIncome).toBeGreaterThan(0);
+      expect((r.lumpSumForcedTradDist ?? 0) + r.wdTrd).toBeGreaterThan(0);
     }
+    expect(proj.rows.find(r => r.ageA === 65)!.lumpSumOrdinaryIncome).toBeGreaterThan(0);
+    // Deadline year forces out whatever remains.
+    expect(proj.rows.find(r => r.ageA === 75)!.lumpSumForcedTradDist).toBeGreaterThan(0);
 
     // No forced dist outside the window.
     for (const r of proj.rows) {
-      if (r.ageA < 65 || r.ageA > 74) {
+      if (r.ageA < 65 || r.ageA > 75) {
         expect(r.lumpSumForcedTradDist ?? 0).toBe(0);
       }
     }
 
-    // Supplement fires every year (taxfirst barely touches trad). Total supplement should be
-    // substantial — at least half the initial amount. The rest depletes proportionally via wdTrd.
-    const totalSuppl = proj.rows.filter(r => r.ageA >= 65 && r.ageA <= 74).reduce((s, r) => s + (r.lumpSumForcedTradDist ?? 0), 0);
+    // Total supplement should be substantial: at least half the initial amount. The rest
+    // depletes proportionally via wdTrd.
+    const totalSuppl = proj.rows.filter(r => r.ageA >= 65 && r.ageA <= 75).reduce((s, r) => s + (r.lumpSumForcedTradDist ?? 0), 0);
     expect(totalSuppl).toBeGreaterThan(50_000);
   });
 
@@ -330,12 +334,12 @@ describe('Inherited account types — one-time income events', () => {
 
     // With tradfirst, strategy already drains trad aggressively — proportional depletion
     // covers or exceeds the floor most years, so lumpSumForcedTradDist should be 0 or small.
-    const windowRows = proj.rows.filter(r => r.ageA >= 65 && r.ageA < 74);
+    const windowRows = proj.rows.filter(r => r.ageA >= 65 && r.ageA < 75);
     const zeroOrNearZero = windowRows.filter(r => (r.lumpSumForcedTradDist ?? 0) < 100);
     expect(zeroOrNearZero.length).toBeGreaterThan(windowRows.length / 2);
 
-    // Final year (age 74) forces any remaining balance out — lumpSumForcedTradDist may be nonzero.
-    const finalRow = proj.rows.find(r => r.ageA === 74);
+    // Deadline year (age 75) forces any remaining balance out — lumpSumForcedTradDist may be nonzero.
+    const finalRow = proj.rows.find(r => r.ageA === 75);
     if (finalRow) expect(finalRow.lumpSumForcedTradDist ?? 0).toBeGreaterThanOrEqual(0);
   });
 
@@ -356,7 +360,7 @@ describe('Inherited account types — one-time income events', () => {
     }
 
     // Forced Roth dists move to taxable each year in window — taxable should have extra from that.
-    for (let age = 65; age <= 74; age++) {
+    for (let age = 65; age <= 75; age++) {
       const r = proj.rows.find(row => row.ageA === age);
       if (!r) continue;
       expect(r.lumpSumForcedRothDist ?? 0).toBeGreaterThanOrEqual(0);
@@ -370,6 +374,115 @@ describe('Inherited account types — one-time income events', () => {
       // Roth dists are tax-free, so inherited Roth year should have ≤ baseline fedTax.
       expect(injRow.fedTax).toBeLessThanOrEqual(baseRow65.fedTax + 1);
     }
+  });
+});
+
+describe('Inherited accounts received before plan start', () => {
+  const startAge = new Date().getFullYear() - 1974; // samplePlan personA dob 1974
+
+  it('inheritedPreTaxIRA 3 years ago: balance today seeds trad and empties over the remaining 8 years', () => {
+    const plan = baseInheritedPlan();
+    plan.withdrawalStrategy = 'taxfirst';
+    plan.lumpSumEvents = [{ id: 'past-ira', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: startAge - 3, amount: 100_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+
+    const base = runProjection(baseInheritedPlan());
+    expect(proj.rows[0].begTraditional - base.rows[0].begTraditional).toBeCloseTo(100_000, -1);
+    // Seeded into the opening balance, not reported as a new injection.
+    expect(proj.rows.reduce((s, r) => s + (r.lumpSumInjectTrad ?? 0), 0)).toBe(0);
+
+    // Years elapsed 3..10 are rows 0..7; the deadline year (row 7) empties the account.
+    for (let i = 0; i < 8; i++) expect(proj.rows[i].lumpSumForcedTradDist).toBeGreaterThan(0);
+    for (let i = 8; i < proj.rows.length; i++) expect(proj.rows[i].lumpSumForcedTradDist ?? 0).toBe(0);
+  });
+
+  it('inheritedRoth 5 years ago: forced distributions only in the remaining 6 years', () => {
+    const plan = baseInheritedPlan();
+    plan.withdrawalStrategy = 'taxfirst';
+    plan.lumpSumEvents = [{ id: 'past-roth', description: 'Inherited Roth', whose: 'A', bucket: 'inheritedRoth', age: startAge - 5, amount: 80_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+
+    const base = runProjection(baseInheritedPlan());
+    expect(proj.rows[0].begRoth - base.rows[0].begRoth).toBeCloseTo(80_000, -1);
+    for (let i = 6; i < proj.rows.length; i++) expect(proj.rows[i].lumpSumForcedRothDist ?? 0).toBe(0);
+  });
+
+  it('ignores past events whose 10-year window closed, and past taxable events', () => {
+    const plan = baseInheritedPlan();
+    plan.lumpSumEvents = [
+      { id: 'expired', description: 'Old IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: startAge - 11, amount: 100_000 },
+      { id: 'past-tax', description: 'Old sale', whose: 'A', bucket: 'taxable', age: startAge - 2, amount: 100_000 },
+    ];
+    const proj = runProjection(plan);
+    const base = runProjection(baseInheritedPlan());
+    expect(proj.rows[0].begTraditional).toBeCloseTo(base.rows[0].begTraditional, 2);
+    expect(proj.rows[0].begTaxable).toBeCloseTo(base.rows[0].begTaxable, 2);
+    expect(proj.rows.reduce((s, r) => s + (r.lumpSumForcedTradDist ?? 0), 0)).toBe(0);
+  });
+
+  it('ownerStartedRmds: annual RMD raises the floor for an older beneficiary and empties the account early', () => {
+    const y = new Date().getFullYear();
+    const build = (flag: boolean) => {
+      const plan = baseInheritedPlan();
+      plan.withdrawalStrategy = 'taxfirst';
+      plan.personA.dob = `${y - 86}-01-01`; plan.personA.retirementAge = 65; plan.personA.planThroughAge = 100;
+      if (plan.personB) { plan.personB.dob = `${y - 86}-01-01`; plan.personB.retirementAge = 65; plan.personB.planThroughAge = 100; }
+      // Owner died when A was 85; A is 86 now (1 year elapsed). Divisor = LE(86) = 7.6.
+      plan.lumpSumEvents = [{ id: 'rmd', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: 85, amount: 200_000, ownerStartedRmds: flag }];
+      return { plan, proj: runProjection(plan) };
+    };
+    const off = build(false), on = build(true);
+    assertProjectionInvariants(on.proj, on.plan);
+
+    expect(on.proj.rows[0].wdTrd).toBe(0); // forced dist is the only draw on the account
+    expect(on.proj.rows[0].lumpSumForcedTradDist).toBeCloseTo(200_000 / 7.6, 0);
+    expect(on.proj.rows[0].lumpSumForcedTradDist).toBeGreaterThan(off.proj.rows[0].lumpSumForcedTradDist);
+    // Divisor reaches 1 at 8 years elapsed (age 93): account emptied then, nothing after.
+    const emptyIdx = on.proj.rows.findIndex(r => r.ageA === 93);
+    expect(on.proj.rows[emptyIdx].lumpSumForcedTradDist).toBeGreaterThan(0);
+    for (let i = emptyIdx + 1; i < on.proj.rows.length; i++) expect(on.proj.rows[i].lumpSumForcedTradDist ?? 0).toBe(0);
+  });
+
+  it("own RMD excludes the tracked inherited balance (beneficiary past own RMD age)", () => {
+    const y = new Date().getFullYear();
+    const build = (withEvent: boolean) => {
+      const plan = baseInheritedPlan();
+      plan.withdrawalStrategy = 'taxfirst';
+      plan.personA.dob = `${y - 80}-01-01`; plan.personA.retirementAge = 65; plan.personA.planThroughAge = 95;
+      if (plan.personB) { plan.personB.dob = `${y - 80}-01-01`; plan.personB.retirementAge = 65; plan.personB.planThroughAge = 95; }
+      plan.lumpSumEvents = withEvent
+        ? [{ id: 'own-rmd', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: 78, amount: 300_000 }]
+        : [];
+      return { plan, proj: runProjection(plan) };
+    };
+    const without = build(false), withEv = build(true);
+    assertProjectionInvariants(withEv.proj, withEv.plan);
+    // Year 0: same own balances, so own RMD is unchanged by the inherited account.
+    expect(withEv.proj.rows[0].begTraditional - without.proj.rows[0].begTraditional).toBeCloseTo(300_000, -1);
+    expect(withEv.proj.rows[0].rmd).toBeCloseTo(without.proj.rows[0].rmd, 0);
+  });
+
+  it('ownerStartedRmds: no effect when the even spread already exceeds the RMD (younger beneficiary)', () => {
+    const build = (flag: boolean) => {
+      const plan = baseInheritedPlan();
+      plan.withdrawalStrategy = 'taxfirst';
+      plan.lumpSumEvents = [{ id: 'young', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: startAge - 3, amount: 100_000, ownerStartedRmds: flag }];
+      return runProjection(plan);
+    };
+    const off = build(false), on = build(true);
+    on.rows.forEach((r, i) => expect(r.lumpSumForcedTradDist ?? 0).toBeCloseTo(off.rows[i].lumpSumForcedTradDist ?? 0, 6));
+  });
+
+  it('inherited exactly 10 years ago: deadline year forces out the full balance', () => {
+    const plan = baseInheritedPlan();
+    plan.withdrawalStrategy = 'taxfirst';
+    plan.lumpSumEvents = [{ id: 'deadline', description: 'Inherited IRA', whose: 'A', bucket: 'inheritedPreTaxIRA', age: startAge - 10, amount: 50_000 }];
+    const proj = runProjection(plan);
+    assertProjectionInvariants(proj, plan);
+    expect(proj.rows[0].lumpSumForcedTradDist).toBeGreaterThan(0);
+    for (let i = 1; i < proj.rows.length; i++) expect(proj.rows[i].lumpSumForcedTradDist ?? 0).toBe(0);
   });
 });
 

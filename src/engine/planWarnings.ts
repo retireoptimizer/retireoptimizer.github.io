@@ -1,6 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import { firstRetirementAgeA } from './streamWindow';
 import { calendarYearAge } from '../lib/ageUtils';
+import { INHERITED_DEADLINE_YEARS } from './taxConstants';
 
 /**
  * Ages (Person A's frame) with a non-zero manual Roth conversion that will actually run before the
@@ -97,6 +98,17 @@ export function computePlanWarnings(plan: Plan): PlanWarning[] {
     const ownerCurrentAge = s.whose === 'B' ? currentAgeB : currentAgeA;
     if (ownerCurrentAge !== undefined && s.startAge < ownerCurrentAge) {
       warnings.push({ id: `exp-past-${s.id}`, severity: 'warn', message: `Expense "${s.description}": start age (${s.startAge}) is before the first simulation year (age ${ownerCurrentAge}) — earlier years are not modeled.` });
+    }
+  }
+
+  for (const ev of plan.lumpSumEvents ?? []) {
+    const ownerCurrentAge = ev.whose === 'B' ? currentAgeB : currentAgeA;
+    if (ownerCurrentAge === undefined || ev.age >= ownerCurrentAge) continue;
+    const inheritedAcct = ev.bucket === 'inheritedPreTaxIRA' || ev.bucket === 'inheritedRoth';
+    if (!inheritedAcct) {
+      warnings.push({ id: `lump-past-${ev.id}`, severity: 'warn', message: `"${ev.description}": age ${ev.age} is in the past, so this event is not counted. If you still have this money, include it in your Portfolio balances.` });
+    } else if (ownerCurrentAge - ev.age > INHERITED_DEADLINE_YEARS) {
+      warnings.push({ id: `lump-expired-${ev.id}`, severity: 'warn', message: `"${ev.description}": the 10-year deadline to empty this inherited account has passed, so it is not counted.` });
     }
   }
 

@@ -1,4 +1,4 @@
-import { RMD_DIVISORS } from './taxConstants';
+import { RMD_DIVISORS, SINGLE_LIFE_TABLE } from './taxConstants';
 
 const SORTED_AGES = Object.keys(RMD_DIVISORS).map(Number).sort((a, b) => a - b);
 
@@ -32,4 +32,20 @@ export function requiredMinDistribution(
   if (age < rmdStartAge) return 0;
   if (traditionalBalance <= 0) return 0;
   return traditionalBalance / rmdDivisor(age);
+}
+
+/** Single Life Table expectancy for a beneficiary's age (120+ uses the last entry). */
+export function singleLifeExpectancy(age: number): number {
+  return SINGLE_LIFE_TABLE[Math.max(0, Math.min(age, SINGLE_LIFE_TABLE.length - 1))];
+}
+
+/**
+ * Divisor for the annual RMD from an inherited IRA whose owner had reached their RMD start age.
+ * Set from the beneficiary's age in the year after death, then reduced by 1 each year (not
+ * recalculated). Applies in years 1..9 after death; year 10 is the full-distribution deadline.
+ * Uses the beneficiary's expectancy only. The rule allows the owner's remaining expectancy when
+ * longer (owner younger than beneficiary); ignoring it can only raise the RMD.
+ */
+export function inheritedRmdDivisor(ageInDeathYear: number, yearsElapsed: number): number {
+  return Math.max(1, singleLifeExpectancy(ageInDeathYear + 1) - (yearsElapsed - 1));
 }

@@ -169,6 +169,9 @@ export const LumpSumEventSchema = z.object({
   bucket: z.enum(['taxable', 'inheritedPreTaxIRA', 'inheritedRoth', 'inheritedHSA']),
   age: z.number().int().min(0).max(115),
   amount: z.number().nonnegative(),
+  // inheritedPreTaxIRA only: the original owner had reached their RMD start age, so annual RMDs
+  // are due in years 1..9 on top of the 10-year deadline. Absent === false === pre-v32 behavior.
+  ownerStartedRmds: z.boolean().optional(),
 });
 export type LumpSumEvent = z.infer<typeof LumpSumEventSchema>;
 

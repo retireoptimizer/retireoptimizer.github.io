@@ -143,10 +143,12 @@ export const usePlanStore = create<PlanState>()(
     }),
     {
       name: 'fireopt-plan-v1',
-      version: 31,
+      version: 32,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v32: add optional lumpSumEvents[].ownerStartedRmds (annual RMDs on inherited pre-tax IRAs).
+        // Absent === false === pre-v32 behavior, so no data rewrite is needed.
         // v31: add plan.optimizedBy + plan.mcTuning (strategy provenance: the goal optimizer vs a
         // Monte Carlo robustness run). Existing optimizer-authored policies predate the Monte Carlo
         // apply path, so stamp them as 'optimizer'. Absent === unknown provenance elsewhere.

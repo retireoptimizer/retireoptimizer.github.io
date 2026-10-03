@@ -141,3 +141,30 @@ export const SS_FACTORS_FRA67: Readonly<Record<number, number>> = {
   62: 0.70, 63: 0.75, 64: 0.80, 65: 0.866, 66: 0.933,
   67: 1.00, 68: 1.08, 69: 1.16, 70: 1.24,
 };
+
+/**
+ * SECURE Act 10-year rule: an inherited IRA/Roth must be empty by Dec 31 of the 10th year after
+ * the year of death. ev.age is the beneficiary's age in the year of death (year 0), so the open
+ * window is years 0..10 (11 calendar years) and year 10 is the deadline year.
+ */
+export const INHERITED_DEADLINE_YEARS = 10;
+
+/**
+ * IRS Single Life Table (26 CFR 1.401(a)(9)-9(b), effective 2022). Index = age; last entry is 120+.
+ * Used for annual RMDs from an inherited IRA when the original owner had reached their RMD start age.
+ */
+export const SINGLE_LIFE_TABLE: readonly number[] = [
+  84.6, 83.7, 82.8, 81.8, 80.8, 79.8, 78.8, 77.9, 76.9, 75.9, // 0-9
+  74.9, 73.9, 72.9, 71.9, 70.9, 69.9, 69.0, 68.0, 67.0, 66.0, // 10-19
+  65.0, 64.1, 63.1, 62.1, 61.1, 60.2, 59.2, 58.2, 57.3, 56.3, // 20-29
+  55.3, 54.4, 53.4, 52.5, 51.5, 50.5, 49.6, 48.6, 47.7, 46.7, // 30-39
+  45.7, 44.8, 43.8, 42.9, 41.9, 41.0, 40.0, 39.0, 38.1, 37.1, // 40-49
+  36.2, 35.3, 34.3, 33.4, 32.5, 31.6, 30.6, 29.8, 28.9, 28.0, // 50-59
+  27.1, 26.2, 25.4, 24.5, 23.7, 22.9, 22.0, 21.2, 20.4, 19.6, // 60-69
+  18.8, 18.0, 17.2, 16.4, 15.6, 14.8, 14.1, 13.3, 12.6, 11.9, // 70-79
+  11.2, 10.5, 9.9, 9.3, 8.7, 8.1, 7.6, 7.1, 6.6, 6.1, // 80-89
+  5.7, 5.3, 4.9, 4.6, 4.3, 4.0, 3.7, 3.4, 3.2, 3.0, // 90-99
+  2.8, 2.6, 2.5, 2.3, 2.2, 2.1, 2.1, 2.1, 2.0, 2.0, // 100-109
+  2.0, 2.0, 2.0, 1.9, 1.9, 1.8, 1.8, 1.6, 1.4, 1.1, // 110-119
+  1.0, // 120-120
+];

@@ -17,7 +17,7 @@ import { INCOME_TEMPLATES, EXPENSE_TEMPLATES } from '../engine/streamTemplates';
 import { getEngineWorker } from '../engine/workerClient';
 import { applyResultToPlan } from '../engine/applyOptimizerResult';
 import { USER_GOALS, type UserGoal } from '../engine/recommender';
-import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from '../engine/taxConstants';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE, INHERITED_DEADLINE_YEARS } from '../engine/taxConstants';
 import StrategyCustomizeSheet from '../components/strategy/StrategyCustomizeSheet';
 
 const headerStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', whiteSpace: 'nowrap' };
@@ -309,6 +309,15 @@ export default function InputsPage() {
     if (whose === 'Household' && B) return Math.min(A.retirementAge, B.retirementAge);
     return A.retirementAge;
   };
+
+  // Calendar-year age (the engine's frame). Household events run on A's ages.
+  const lumpAgeNow = (whose: LumpSumEvent['whose']) =>
+    calendarYearAge(whose === 'B' && B ? B.dob : A.dob);
+  const isInheritedAcct = (bucket: LumpSumEvent['bucket']) =>
+    bucket === 'inheritedPreTaxIRA' || bucket === 'inheritedRoth';
+  // Inherited IRA/Roth may be dated back to the deadline year (window still open); others start today.
+  const minLumpAge = (whose: LumpSumEvent['whose'], bucket: LumpSumEvent['bucket']) =>
+    lumpAgeNow(whose) - (isInheritedAcct(bucket) ? INHERITED_DEADLINE_YEARS : 0);
 
   const addIncomeFromTemplate = (tplId: string) => {
     const tpl = INCOME_TEMPLATES.find((t) => t.id === tplId);
@@ -625,7 +634,7 @@ export default function InputsPage() {
 
             <div className="subsection-label" style={{ marginTop: 24 }}>One-Time Income Events</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-              Enter the nominal amount you expect to receive. For inherited IRAs and Roth accounts, the balance is added to your pre-tax or Roth portfolio and forced out over 10 years per SECURE Act rules — the optimizer decides timing to minimize taxes within that constraint. Inherited HSAs are fully taxable as ordinary income in the year received.
+              Enter the nominal amount you expect to receive. For inherited IRAs and Roth accounts, the balance is added to your pre-tax or Roth portfolio and must be emptied by the end of the 10th year after the original owner died. For these accounts, enter your age in the year the owner died. The optimizer picks the timing to keep taxes low. Inherited HSAs are fully taxable as ordinary income in the year received. If you already inherited an IRA or Roth account, enter its balance today as the amount.
             </div>
             <div className="stream-rows-scroll">
               <div className="stream-row lumpsum-row" style={{ padding: '6px 0', borderBottom: '2px solid var(--border-light)' }}>
@@ -641,27 +650,62 @@ export default function InputsPage() {
                   No one-time events — click "+ Add" for home sale, insurance payouts, inherited IRA/HSA, etc.
                 </div>
               )}
-              {(plan.lumpSumEvents ?? []).map((ev) => (
+              {(plan.lumpSumEvents ?? []).map((ev) => {
+                const isPastInherited = isInheritedAcct(ev.bucket) && ev.age < lumpAgeNow(ev.whose);
+                return (
                 <div key={ev.id} className="stream-row lumpsum-row" style={{ flexWrap: 'wrap' }}>
                   <input type="text" value={ev.description} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { description: e.target.value })} />
-                  <select value={ev.whose} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { whose: e.target.value as LumpSumEvent['whose'] })}>
+                  <select value={ev.whose} style={{ fontSize: 13 }} onChange={(e) => {
+                    const whose = e.target.value as LumpSumEvent['whose'];
+                    updateLumpSumEvent(ev.id, { whose, age: Math.max(ev.age, minLumpAge(whose, ev.bucket)) });
+                  }}>
                     <option value="A">{nameA}</option>
                     {B && <option value="B">{nameB}</option>}
                     <option value="Household">Household</option>
                   </select>
-                  <select value={ev.bucket} style={{ fontSize: 13 }} onChange={(e) => updateLumpSumEvent(ev.id, { bucket: e.target.value as LumpSumEvent['bucket'] })}>
+                  <select value={ev.bucket} style={{ fontSize: 13 }} onChange={(e) => {
+                    const bucket = e.target.value as LumpSumEvent['bucket'];
+                    updateLumpSumEvent(ev.id, { bucket, age: Math.max(ev.age, minLumpAge(ev.whose, bucket)) });
+                  }}>
                     <option value="taxable">Taxable (home sale, insurance, etc.)</option>
                     <option value="inheritedPreTaxIRA">Inherited Pre-Tax IRA</option>
                     <option value="inheritedRoth">Inherited Roth IRA</option>
                     <option value="inheritedHSA">Inherited HSA</option>
                   </select>
-                  <NumberInput value={ev.age} digits={0} min={0} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateLumpSumEvent(ev.id, { age: Math.round(v) })} />
-                  <div className="input-prefix-wrap"><span className="input-prefix">$</span>
-                    <NumberInput value={ev.amount} min={0} style={{ fontSize: 13, paddingLeft: 22 }} onCommit={(v) => updateLumpSumEvent(ev.id, { amount: v })} />
+                  <NumberInput value={ev.age} digits={0} min={minLumpAge(ev.whose, ev.bucket)} max={115} style={{ fontSize: 13 }} onCommit={(v) => updateLumpSumEvent(ev.id, { age: Math.max(Math.round(v), minLumpAge(ev.whose, ev.bucket)) })} />
+                  <div className="input-prefix-wrap">
+                    {isPastInherited
+                      ? <span className="input-prefix" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--gold)' }}>Balance today $</span>
+                      : <span className="input-prefix">$</span>}
+                    <NumberInput
+                      value={ev.amount}
+                      min={0}
+                      style={isPastInherited
+                        ? { fontSize: 13, paddingLeft: 104, borderColor: 'var(--gold)', boxShadow: '0 0 0 1px var(--gold)' }
+                        : { fontSize: 13, paddingLeft: 22 }}
+                      onCommit={(v) => updateLumpSumEvent(ev.id, { amount: v })}
+                    />
                   </div>
                   <button className="remove-btn" onClick={() => removeLumpSumEvent(ev.id)}>×</button>
+                  {ev.bucket === 'inheritedPreTaxIRA' && (
+                    <label style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 11.5, color: 'var(--text-secondary)', padding: '2px 0' }}>
+                      <input type="checkbox" checked={ev.ownerStartedRmds ?? false} onChange={(e) => updateLumpSumEvent(ev.id, { ownerStartedRmds: e.target.checked })} style={{ accentColor: 'var(--gold)', width: 13, height: 13 }} />
+                      The original owner had already started required withdrawals (you must also take a yearly minimum)
+                    </label>
+                  )}
+                  {isPastInherited && (() => {
+                    const yearsAgo = lumpAgeNow(ev.whose) - ev.age;
+                    const yearsLeft = INHERITED_DEADLINE_YEARS + 1 - yearsAgo;
+                    return (
+                      <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--text-secondary)', padding: '2px 0 4px' }}>
+                        <strong style={{ color: 'var(--text-primary)' }}>Enter the account balance as of today, from your latest statement.</strong>{' '}
+                        Inherited {yearsAgo} {yearsAgo === 1 ? 'year' : 'years'} ago. It must be emptied within {yearsLeft} {yearsLeft === 1 ? 'year' : 'years'}, counting this year. Don't include this account in your Portfolio balances.
+                      </div>
+                    );
+                  })()}
                 </div>
-              ))}
+                );
+              })}
             </div>
             <button className="add-row-btn" onClick={() => addLumpSumEvent({ id: `lump-${Date.now()}`, description: 'New Event', whose: 'Household', bucket: 'taxable', age: A.retirementAge, amount: 0 })}>+ Add one-time event</button>
 

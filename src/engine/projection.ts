@@ -10,10 +10,10 @@ import {
   type ResolvedExpense,
 } from './streamWindow';
 import { filingStatusForYear, type FilingStatus } from './filingStatus';
-import { rmdDivisor, rmdStartAgeForDob } from './rmd';
+import { rmdDivisor, rmdStartAgeForDob, inheritedRmdDivisor } from './rmd';
 import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity, seniorBonusDeduction } from './tax';
-import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE } from './taxConstants';
+import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE, INHERITED_DEADLINE_YEARS } from './taxConstants';
 import { rothConversion } from './conversion';
 import { applyWithdrawalOrder, applyBlendPolicy, type SpillKind } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
@@ -243,6 +243,20 @@ function rateAtBracketCeiling(ceilingMFJ: number, fs: FilingStatus): number {
   return brackets[brackets.length - 1][1];
 }
 
+/** Annual RMD owed on an inherited pre-tax IRA in years 1..9 (0 when the owner had not started RMDs). */
+function inheritedAnnualRmd(ev: LumpSumEvent, priorYearEndBal: number, yearsElapsed: number): number {
+  if (ev.bucket !== 'inheritedPreTaxIRA' || !ev.ownerStartedRmds) return 0;
+  if (yearsElapsed < 1 || yearsElapsed >= INHERITED_DEADLINE_YEARS) return 0;
+  return priorYearEndBal / inheritedRmdDivisor(ev.age, yearsElapsed);
+}
+
+/** Inherited IRA/Roth received before plan start with part of its 10-year window still open. */
+export function isPastInheritedEvent(ev: LumpSumEvent, ageNow: number): boolean {
+  if (ev.bucket !== 'inheritedPreTaxIRA' && ev.bucket !== 'inheritedRoth') return false;
+  const yearsElapsed = ageNow - ev.age;
+  return yearsElapsed > 0 && yearsElapsed <= INHERITED_DEADLINE_YEARS;
+}
+
 export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionResult {
   const activePolicy: BlendPolicy | undefined = opts?.policy ?? (plan.customPolicy as BlendPolicy | undefined);
   const startYear = new Date().getFullYear();
@@ -279,6 +293,18 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     (plan.lumpSumEvents ?? [])
       .filter(ev => ev.bucket === 'inheritedPreTaxIRA' || ev.bucket === 'inheritedRoth')
       .map(ev => ({ ev, remainingBal: 0, injected: false }));
+  // Inherited before plan start: ev.amount is the balance today. Seed it into the opening
+  // balance so it grows like any held account; the 10-year clock still runs from ev.age.
+  // Past events whose deadline has passed (or past taxable/HSA events) contribute nothing.
+  for (const s of inheritedState) {
+    const ageNow = s.ev.whose === 'B' ? startAgeB : startAgeA;
+    if (ageNow === undefined || !isPastInheritedEvent(s.ev, ageNow)) continue;
+    if (s.ev.bucket === 'inheritedPreTaxIRA') {
+      if (s.ev.whose === 'B') tradB += s.ev.amount; else tradA += s.ev.amount;
+    } else roth += s.ev.amount;
+    s.remainingBal = s.ev.amount;
+    s.injected = true;
+  }
   const filingStatusHistory: FilingStatus[] = [];
 
   const maxYears = Math.min(80, planToAge - startAgeA + 1);
@@ -394,10 +420,22 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     if (plan.personB && !aliveB && tradB > 0) { tradA += tradB; tradB = 0; }
     const trad = tradA + tradB;
 
+    // Inherited pre-tax balances still being tracked sit inside tradA/tradB but follow the
+    // inherited-account rules, so they are excluded from the owner's own RMD base. A/Household
+    // events live in tradA, or in tradB once A has died and the balance rolled over.
+    let inheritedInTradA = 0, inheritedInTradB = 0;
+    for (const s of inheritedState) {
+      if (!s.injected || s.remainingBal <= 0 || s.ev.bucket !== 'inheritedPreTaxIRA') continue;
+      const tracked = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
+      if (!tracked) continue;
+      if (s.ev.whose === 'B' || !aliveA) inheritedInTradB += s.remainingBal;
+      else inheritedInTradA += s.remainingBal;
+    }
+
     // Per-person RMD — each governed by their own age and SECURE 2.0 start age.
-    const rmdA = (aliveA && ageA >= rmdStartAgeA) ? Math.max(0, tradA) / rmdDivisor(ageA) : 0;
+    const rmdA = (aliveA && ageA >= rmdStartAgeA) ? Math.max(0, tradA - inheritedInTradA) / rmdDivisor(ageA) : 0;
     const rmdB = (aliveB && ageB !== undefined && ageB >= rmdStartAgeB)
-      ? Math.max(0, tradB) / rmdDivisor(ageB) : 0;
+      ? Math.max(0, tradB - inheritedInTradB) / rmdDivisor(ageB) : 0;
     const rmdAmt = rmdA + rmdB;
     lifetimeRMD += rmdAmt;
     lifetimeRMDReal += rmdAmt / inflationFactor;
@@ -566,11 +604,14 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const evAlive = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
       if (!evAlive) continue;
       const yearsElapsedEst = evAge - s.ev.age;
-      if (yearsElapsedEst < 0 || yearsElapsedEst >= 10) continue;
+      if (yearsElapsedEst < 0 || yearsElapsedEst > INHERITED_DEADLINE_YEARS) continue;
       const balEst = s.injected ? s.remainingBal : (evAge === s.ev.age ? s.ev.amount : 0);
       if (balEst <= 0) continue;
       const gRateEst = s.ev.bucket === 'inheritedPreTaxIRA' ? gRateTradYear : gRateRothYear;
-      const floorEst = balEst * (1 + gRateEst) / (10 - yearsElapsedEst);
+      const rmdEst = inheritedAnnualRmd(s.ev, balEst, yearsElapsedEst);
+      const floorEst = rmdEst > 0 && rmdEst >= balEst
+        ? balEst * (1 + gRateEst)
+        : Math.max(balEst * (1 + gRateEst) / (INHERITED_DEADLINE_YEARS + 1 - yearsElapsedEst), rmdEst);
       if (s.ev.bucket === 'inheritedPreTaxIRA') lumpSumForcedTradDistEst += floorEst;
       else lumpSumTaxFreeEst += floorEst;
     }
@@ -804,8 +845,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     taxableBasis = Math.max(0, taxableBasis + contribToTax + (annualDivForBasis - divDistributed) + (exemptIntForBasis - exemptDistributed) - wdTax * (1 - gainFraction));
 
     // One-time income events: inject directly into target account.
-    // Amount is stored in plan-start-year (today's) dollars — inflate to nominal at event year,
-    // consistent with how income stream annualAmounts are treated. Taxable bucket gets full
+    // Amount is nominal dollars in the event year (the UI asks for the nominal amount), so it is
+    // injected as-is with no inflation adjustment. Taxable bucket gets full
     // stepped-up basis; inherited IRA types seed per-event depletion tracking.
     let lumpSumInjectTaxable = 0, lumpSumInjectTrad = 0, lumpSumInjectRoth = 0;
     let lumpSumHSAIncome = 0;
@@ -841,13 +882,21 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       const personAlive = s.ev.whose === 'A' ? aliveA : s.ev.whose === 'B' ? aliveB : (aliveA || aliveB);
       if (!personAlive) continue;
       const yearsElapsed = personAge - s.ev.age;
-      if (yearsElapsed < 0 || yearsElapsed >= 10) continue;
+      if (yearsElapsed < 0 || yearsElapsed > INHERITED_DEADLINE_YEARS) continue;
 
       const gRate = s.ev.bucket === 'inheritedPreTaxIRA' ? gRateTradYear : gRateRothYear;
+      // Annual RMD is figured on the prior year-end balance, i.e. before this year's growth.
+      const priorBal = s.remainingBal;
+      const annualRmd = inheritedAnnualRmd(s.ev, priorBal, yearsElapsed);
       s.remainingBal *= (1 + gRate);
 
-      const yearsRemaining = 10 - yearsElapsed;
-      const floor = s.remainingBal / yearsRemaining;
+      // Years left including this one; 1 in the deadline year, which forces out the remainder.
+      // Floor = even spread over the years left, or the annual RMD when that is larger. Once the
+      // life-expectancy divisor runs out (RMD = whole prior balance), the account must be emptied.
+      const yearsRemaining = INHERITED_DEADLINE_YEARS + 1 - yearsElapsed;
+      const floor = annualRmd > 0 && annualRmd >= priorBal
+        ? s.remainingBal
+        : Math.min(s.remainingBal, Math.max(s.remainingBal / yearsRemaining, annualRmd));
 
       const hostBal = s.ev.bucket === 'inheritedPreTaxIRA'
         ? (s.ev.whose === 'B' ? tradB : tradA)
