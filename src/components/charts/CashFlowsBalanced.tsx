@@ -141,12 +141,12 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
         stack: 'in',
       },
       {
-        // Forced annual distributions from inherited pre-tax/Roth IRAs (SECURE Act 10-year rule).
-        // These reduce the gross-up gap (so totalWD is smaller), but must appear as income here
-        // or the chart's net understates cash-in by exactly the forced-dist amount each year.
+        // Cash from inherited accounts: forced pre-tax/Roth distributions (SECURE Act 10-year
+        // rule) plus inherited HSA cash. lumpSumOrdinaryIncome = forced pre-tax + HSA. This cash
+        // reduces the gross-up gap (so totalWD is smaller), so it must appear as income here.
         type: 'bar',
         label: 'Inherited Distributions',
-        data: rows.map((r) => scale((r.lumpSumForcedTradDist ?? 0) + (r.lumpSumForcedRothDist ?? 0), r.inflationFactor)),
+        data: rows.map((r) => scale((r.lumpSumOrdinaryIncome ?? 0) + (r.lumpSumForcedRothDist ?? 0), r.inflationFactor)),
         backgroundColor: palette.successLight,
         stack: 'in',
       },

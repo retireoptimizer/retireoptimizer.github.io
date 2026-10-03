@@ -15,7 +15,7 @@ import { householdSS } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity, seniorBonusDeduction } from './tax';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE, INHERITED_DEADLINE_YEARS } from './taxConstants';
 import { rothConversion } from './conversion';
-import { applyWithdrawalOrder, applyBlendPolicy, type SpillKind } from './withdrawal';
+import { applyWithdrawalOrder, applyBlendPolicy, type SpillKind, type WithdrawalOutputs } from './withdrawal';
 import type { BlendPolicy } from './blendPolicy';
 import { findWindow } from './blendPolicy';
 import { annualIRMAACost } from './irmaa';
@@ -64,6 +64,7 @@ export interface ProjectionRow {
   ordinaryDiv: number;     // ordinary (non-qualified) dividends from taxable account
   qualifiedDiv: number;    // qualified dividends from taxable account (subset of ltcg)
   distributedCash: number; // yield paid out in cash (not reinvested); taxed same as reinvested yield
+  distributedDiv?: number; // taxable dividend part of distributedCash (excludes tax-exempt interest)
   fedTax: number;
   stateTaxAmt: number;
   irmaa: number;
@@ -671,6 +672,19 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const numPersons = (aliveA ? 1 : 0) + (aliveB ? 1 : 0);
     let stateAmt = stateTax(plan.state, other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + lumpSumHSAIncomeEst, other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS); // initial pass; ltcg unknown until loop iter 1
 
+    // ACA marketplace premium (pre-Medicare years when the user has opted in).
+    const acaPremiumFor = (surchargeMAGI: number, taxableSS: number): number => {
+      if (!plan.assumptions.modelACA || plan.assumptions.acaBenchmarkPremium <= 0) return 0;
+      const acaStartA = plan.assumptions.acaStartAgeA ?? retireAgeA;
+      const acaStartB = plan.assumptions.acaStartAgeB ?? retireAgeB;
+      const preMedicareCount = (aliveA && ageA >= acaStartA && ageA < 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= acaStartB && ageB < 65 ? 1 : 0);
+      if (preMedicareCount === 0) return 0;
+      const scaledPremium = plan.assumptions.acaBenchmarkPremium * inflationFactor * preMedicareCount;
+      return plan.assumptions.acaNoSubsidy
+        ? scaledPremium  // full cost, no APTC applied
+        : acaNetPremium({ magi: surchargeMAGI + (ss.total - taxableSS), householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium, inflationFactor });
+    };
+
     // 16 iterations: 8 was enough for IL/TX plans but CA/NY (which tax retirement + conversions)
     // need more to fully converge fedTax + irmaa + stateAmt jointly.
     for (let iter = 0; iter < 16; iter++) {
@@ -735,19 +749,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       // IL exempts retirement distributions but NOT capital gains.
       stateAmt = stateTax(plan.state, other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcg + lumpSumHSAIncomeEst, wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDistEst, numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS);
 
-      // ACA marketplace premium (pre-Medicare years when the user has opted in).
-      acaPremiumYear = 0;
-      if (plan.assumptions.modelACA && plan.assumptions.acaBenchmarkPremium > 0) {
-        const acaStartA = plan.assumptions.acaStartAgeA ?? retireAgeA;
-        const acaStartB = plan.assumptions.acaStartAgeB ?? retireAgeB;
-        const preMedicareCount = (aliveA && ageA >= acaStartA && ageA < 65 ? 1 : 0) + (aliveB && ageB !== undefined && ageB >= acaStartB && ageB < 65 ? 1 : 0);
-        if (preMedicareCount > 0) {
-          const scaledPremium = plan.assumptions.acaBenchmarkPremium * inflationFactor * preMedicareCount;
-          acaPremiumYear = plan.assumptions.acaNoSubsidy
-            ? scaledPremium  // full cost, no APTC applied
-            : acaNetPremium({ magi: surchargeMAGI + (ss.total - taxableSS), householdSize: plan.assumptions.acaHouseholdSize, annualBenchmarkPremium: scaledPremium, inflationFactor });
-        }
-      }
+      acaPremiumYear = acaPremiumFor(surchargeMAGI, taxableSS);
 
       if (
         Math.abs(fedTax - prevTax) < 1 &&
@@ -778,9 +780,10 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // a tiny wdTrd is a floating-point artifact from the safety-valve (last-resort funding when
     // preferred sources are depleted near end-of-plan). Apply after the gross-up loop so tax
     // convergence is unaffected; only the output values and balance update are cleaned up.
+    let trdClamped = false;
     if (activePolicy) {
       const bw = findWindow(activePolicy, ageA);
-      if (bw && bw.pctTraditional === 0 && wdTrd < 100) wdTrd = 0;
+      if (bw && bw.pctTraditional === 0 && wdTrd > 0 && wdTrd < 100) { wdTrd = 0; trdClamped = true; }
     }
 
     // Per-year decision attribution (gated on opts.explain so the optimizer never pays for it).
@@ -921,21 +924,36 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     const lumpSumOrdIncome = lumpSumHSAIncome + lumpSumForcedTradDist;
     const lumpSumTaxFreeCash = lumpSumForcedRothDist;
 
-    // Correct ordIncome/tax/state for cases where actual != estimate (e.g. tradfirst zeroed supplement).
-    if (lumpSumOrdIncome !== lumpSumOrdIncomeEst || lumpSumTaxFreeCash !== lumpSumTaxFreeEst) {
-      const ordIncomeActual = ordIncomeFinal - lumpSumOrdIncomeEst + lumpSumOrdIncome;
-      seniorBonus = seniorBonusDeduction(filingStatus, filerAge, ageB, ordIncomeActual + ltcgFinal, calYear);
-      const tCorrected = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeActual, ltcgIncome: ltcgFinal, standardDeduction: stdD + seniorBonus });
-      fedTax = tCorrected.fedTax;
-      ordIncomeFinal = ordIncomeActual;
-      effRate = tCorrected.effRate;
-      marginalRate = tCorrected.marginalRate;
+    // Re-solve every tax term from the year's actual withdrawals and inherited amounts.
+    // Mirrors one pass of the gross-up loop body.
+    const resolveYearTaxes = () => {
+      const ltcg = wdTax * gainFraction + qualifiedDiv;
+      const provisionalIncome = other.taxableAmt + exemptIncome + wdTrd + rmdAmt + conv + lumpSumOrdIncome + annualDiv + 0.5 * ss.total;
+      const taxableSS = taxableSocialSecurity(provisionalIncome, ss.total, filingStatus);
+      const ordIncome = taxableSS + other.taxableAmt + wdTrd + rmdAmt + conv + lumpSumOrdIncome + ordinaryDiv;
+      const magi = ordIncome + ltcg;
+      const surchargeMAGI = magi + exemptIncome;
+      seniorBonus = seniorBonusDeduction(filingStatus, filerAge, ageB, magi, calYear);
+      const t = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncome, ltcgIncome: ltcg, standardDeduction: stdD + seniorBonus });
+      fedTax = t.fedTax; effRate = t.effRate; marginalRate = t.marginalRate;
+      ordIncomeFinal = ordIncome; ltcgFinal = ltcg; taxableSSFinal = taxableSS;
+      irmaaMAGIFinal = i >= 2 ? surchargeMagiHistory[i - 2] : surchargeMAGI;
+      const irmaaFS = i >= 2 ? filingStatusHistory[i - 2] : filingStatus;
+      irmaa = numAt65Plus > 0 ? annualIRMAACost(irmaaMAGIFinal, inflationFactor, numAt65Plus, irmaaFS) : 0;
+      niit = annualNIIT(magi, ltcg + ordinaryDiv, filingStatus);
       stateAmt = stateTax(
         plan.state,
-        other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcgFinal + lumpSumHSAIncome,
+        other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcg + lumpSumHSAIncome,
         wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDist,
         numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS,
       );
+      acaPremiumYear = acaPremiumFor(surchargeMAGI, taxableSS);
+    };
+
+    // Correct taxes when actual != estimate (e.g. tradfirst zeroed supplement) or the
+    // de-minimis clamp removed a pre-tax draw the loop had taxed.
+    if (trdClamped || lumpSumOrdIncome !== lumpSumOrdIncomeEst || lumpSumTaxFreeCash !== lumpSumTaxFreeEst) {
+      resolveYearTaxes();
     }
 
     // Debit forced dist cash from host account (the cash is counted in the reconciliation below).
@@ -946,23 +964,42 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // Year-end cash reconciliation (replaces the old surplus sweep), using actual amounts.
     // residual > 0: more cash received than needed -> sweep to taxable at full basis.
     // residual < 0: need exceeds cash received (gross-up drift, or the inherited estimate
-    // exceeded the actual cash) -> top-up draw from taxable, then Roth, then pre-tax. Taxes are
-    // re-solved after each draw because the draw itself adds income. taxableSS, IRMAA and ACA are
-    // not re-solved (second order). Whatever the portfolio still cannot cover is the shortfall.
+    // exceeded the actual cash) -> top-up draw split by the same withdrawal strategy or blend
+    // policy as the main draw. All taxes are re-solved after each draw because the draw itself
+    // adds income. Each round leaves a deficit of roughly need x marginal rate, so the loop
+    // converges geometrically; 40 rounds clears it even at very high combined rates.
+    // Whatever the portfolio still cannot cover is the shortfall.
     const cashIn = ss.total + other.gross + distributedCash + rmdAmt + lumpSumOrdIncome + lumpSumTaxFreeCash;
     const residualOf = () => cashIn + wdTax + wdTrd + wdRth
       - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear;
     let residual = residualOf();
-    for (let k = 0; k < 8 && residual < -0.01; k++) {
-      let need = -residual;
-      const fromTax = Math.min(taxable, need); need -= fromTax;
-      const fromRoth = Math.min(roth, need); need -= fromRoth;
+    for (let k = 0; k < 40 && residual < -0.01; k++) {
+      const need = -residual;
       const tradTotal = tradA + tradB;
-      const fromTrad = Math.min(tradTotal, need);
+      let top: WithdrawalOutputs;
+      if (activePolicy) {
+        // The window's pre-tax cap covers the whole year, so only the unused part is left.
+        const bw = findWindow(activePolicy, ageA);
+        const policy = bw?.tradCap != null
+          ? { ...activePolicy, windows: activePolicy.windows.map((x) => x === bw ? { ...x, tradCap: Math.max(0, bw.tradCap! - wdTrd) } : x) }
+          : activePolicy;
+        top = applyBlendPolicy({ policy, ageA, gap: need, taxable, traditional: tradTotal, roth });
+      } else {
+        top = applyWithdrawalOrder({
+          strategy: plan.withdrawalStrategy,
+          gap: need, taxable, traditional: tradTotal, roth,
+          rmd: rmdAmt, baseOrdinaryIncome: baseOrdIncForWd + wdTrd,
+          bracketCeiling: effectiveBracketCeiling(plan.withdrawalBracketCeiling, filingStatus),
+          stdD: stdD + seniorBonus, inflationFactor,
+        });
+      }
+      const fromTax = Math.min(taxable, top.wdTax);
+      const fromRoth = Math.min(roth, top.wdRth);
+      const fromTrad = Math.min(tradTotal, top.wdTrd);
       if (fromTax + fromRoth + fromTrad <= 0) break;
+      if (top.bracketOverridden) overrideFiredThisYear = true;
       if (fromTax > 0) {
         wdTax += fromTax;
-        ltcgFinal += fromTax * gainFraction;
         taxable -= fromTax;
         taxableBasis = Math.max(0, taxableBasis - fromTax * (1 - gainFraction));
       }
@@ -975,21 +1012,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
         tradA = Math.max(0, tradA - fromTrad * shareA);
         tradB = Math.max(0, tradB - fromTrad * (1 - shareA));
         wdTrd += fromTrad;
-        ordIncomeFinal += fromTrad;
       }
-      const magiTopUp = ordIncomeFinal + ltcgFinal;
-      seniorBonus = seniorBonusDeduction(filingStatus, filerAge, ageB, magiTopUp, calYear);
-      const tTopUp = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeFinal, ltcgIncome: ltcgFinal, standardDeduction: stdD + seniorBonus });
-      fedTax = tTopUp.fedTax;
-      effRate = tTopUp.effRate;
-      marginalRate = tTopUp.marginalRate;
-      niit = annualNIIT(magiTopUp, ltcgFinal + ordinaryDiv, filingStatus);
-      stateAmt = stateTax(
-        plan.state,
-        other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcgFinal + lumpSumHSAIncome,
-        wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDist,
-        numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS,
-      );
+      resolveYearTaxes();
       residual = residualOf();
     }
     let cashSurplus = 0;
@@ -1049,6 +1073,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       ordinaryDiv,
       qualifiedDiv,
       distributedCash,
+      distributedDiv: divDistributed,
       fedTax,
       stateTaxAmt: stateAmt,
       irmaa,

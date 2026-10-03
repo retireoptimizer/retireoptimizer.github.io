@@ -61,7 +61,7 @@ describe('CashFlowSankey ledger', () => {
       const { container, unmount } = render(<CashFlowSankey row={row} />);
       const flows = Array.from(container.querySelectorAll('path[data-flow]'))
         .map((p) => p.getAttribute('data-flow')!);
-      expect(flows.some((f) => f === 'wdTrd-fed' || f === 'rmd-fed' || f === 'conv-fed')).toBe(true);
+      expect(flows.some((f) => f === 'wdTrd-fed' || f === 'rmd-fed')).toBe(true);
       unmount();
     }
   });
