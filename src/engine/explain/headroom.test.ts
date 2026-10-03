@@ -25,7 +25,7 @@ function makeRow(overrides: Partial<ProjectionRow>): ProjectionRow {
     lumpSumOrdinaryIncome: 0, lumpSumForcedTradDist: 0, lumpSumForcedRothDist: 0,
     cashSurplus: 0, begTaxable: 0, begTraditional: 0, begRoth: 0,
     endTaxable: 0, endTraditional: 0, endRoth: 0, endTotal: 0,
-    endTaxableBasis: 0, endTaxAdjusted: 0, ranOut: false,
+    endTaxableBasis: 0, endTaxAdjusted: 0, ranOut: false, taxFromBrokerage: 0,
     ...overrides,
   } as ProjectionRow;
 }

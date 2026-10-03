@@ -96,7 +96,8 @@ export interface ProjectionRow {
   endTaxableBasis: number;
   endTaxAdjusted: number;
   ranOut: boolean;          // true from the first year spending could not be funded from the portfolio
-  shortfall: number;        // unfunded spending gap this year (today's $, 0 when plan survives)
+  shortfall: number;        // unfunded spending gap this year (nominal $, scaled to real at lifetimeShortfallReal)
+  taxFromBrokerage: number;   // amount pulled from taxable to cover taxes (taxFromBrokFinal)
 }
 
 export interface ProjectionResult {
@@ -857,8 +858,6 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       if (ev.bucket === 'taxable') {
         taxable += ev.amount; taxableBasis += ev.amount; lumpSumInjectTaxable += ev.amount;
       } else if (ev.bucket === 'inheritedHSA') {
-        taxable += ev.amount; taxableBasis += ev.amount;
-        lumpSumInjectTaxable += ev.amount;
         lumpSumHSAIncome += ev.amount;
       } else if (ev.bucket === 'inheritedPreTaxIRA') {
         if (ev.whose === 'B') tradB += ev.amount; else tradA += ev.amount;
@@ -933,33 +932,72 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       marginalRate = tCorrected.marginalRate;
       stateAmt = stateTax(
         plan.state,
-        other.nonExempt + exemptInt * exemptStatePct + ltcgFinal + lumpSumHSAIncome,
+        other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcgFinal + lumpSumHSAIncome,
         wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDist,
         numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS,
       );
     }
 
-    // Move supplemental forced dist cash from host account to taxable.
-    if (lumpSumForcedTradDistA > 0) {
-      tradA   = Math.max(0, tradA - lumpSumForcedTradDistA);
-      taxable += lumpSumForcedTradDistA;
-      taxableBasis += lumpSumForcedTradDistA;
-    }
-    if (lumpSumForcedTradDistB > 0) {
-      tradB   = Math.max(0, tradB - lumpSumForcedTradDistB);
-      taxable += lumpSumForcedTradDistB;
-      taxableBasis += lumpSumForcedTradDistB;
-    }
-    if (lumpSumTaxFreeCash > 0) {
-      roth    = Math.max(0, roth - lumpSumTaxFreeCash);
-      taxable += lumpSumTaxFreeCash;
-      taxableBasis += lumpSumTaxFreeCash;
-    }
+    // Debit forced dist cash from host account (the cash is counted in the reconciliation below).
+    if (lumpSumForcedTradDistA > 0) tradA = Math.max(0, tradA - lumpSumForcedTradDistA);
+    if (lumpSumForcedTradDistB > 0) tradB = Math.max(0, tradB - lumpSumForcedTradDistB);
+    if (lumpSumTaxFreeCash > 0) roth = Math.max(0, roth - lumpSumTaxFreeCash);
 
-    // Surplus sweep: when SS + other income + RMD exceed spending + all taxes, the leftover
-    // cash is already received and taxed — sweep it into the taxable account at full basis.
-    const cashSurplus = Math.max(0, ss.total + other.gross + distributedCash + rmdAmt - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear);
-    if (cashSurplus > 0) { taxable += cashSurplus; taxableBasis += cashSurplus; }
+    // Year-end cash reconciliation (replaces the old surplus sweep), using actual amounts.
+    // residual > 0: more cash received than needed -> sweep to taxable at full basis.
+    // residual < 0: need exceeds cash received (gross-up drift, or the inherited estimate
+    // exceeded the actual cash) -> top-up draw from taxable, then Roth, then pre-tax. Taxes are
+    // re-solved after each draw because the draw itself adds income. taxableSS, IRMAA and ACA are
+    // not re-solved (second order). Whatever the portfolio still cannot cover is the shortfall.
+    const cashIn = ss.total + other.gross + distributedCash + rmdAmt + lumpSumOrdIncome + lumpSumTaxFreeCash;
+    const residualOf = () => cashIn + wdTax + wdTrd + wdRth
+      - netSpend - fedTax - stateAmt - irmaa - niit - acaPremiumYear;
+    let residual = residualOf();
+    for (let k = 0; k < 8 && residual < -0.01; k++) {
+      let need = -residual;
+      const fromTax = Math.min(taxable, need); need -= fromTax;
+      const fromRoth = Math.min(roth, need); need -= fromRoth;
+      const tradTotal = tradA + tradB;
+      const fromTrad = Math.min(tradTotal, need);
+      if (fromTax + fromRoth + fromTrad <= 0) break;
+      if (fromTax > 0) {
+        wdTax += fromTax;
+        ltcgFinal += fromTax * gainFraction;
+        taxable -= fromTax;
+        taxableBasis = Math.max(0, taxableBasis - fromTax * (1 - gainFraction));
+      }
+      if (fromRoth > 0) {
+        wdRth += fromRoth;
+        roth -= fromRoth;
+      }
+      if (fromTrad > 0) {
+        const shareA = tradA / tradTotal;
+        tradA = Math.max(0, tradA - fromTrad * shareA);
+        tradB = Math.max(0, tradB - fromTrad * (1 - shareA));
+        wdTrd += fromTrad;
+        ordIncomeFinal += fromTrad;
+      }
+      const magiTopUp = ordIncomeFinal + ltcgFinal;
+      seniorBonus = seniorBonusDeduction(filingStatus, filerAge, ageB, magiTopUp, calYear);
+      const tTopUp = yearFederalTax({ filingStatus, inflationFactor, ordinaryIncome: ordIncomeFinal, ltcgIncome: ltcgFinal, standardDeduction: stdD + seniorBonus });
+      fedTax = tTopUp.fedTax;
+      effRate = tTopUp.effRate;
+      marginalRate = tTopUp.marginalRate;
+      niit = annualNIIT(magiTopUp, ltcgFinal + ordinaryDiv, filingStatus);
+      stateAmt = stateTax(
+        plan.state,
+        other.nonExempt + exemptInt * exemptStatePct + ordinaryDiv + ltcgFinal + lumpSumHSAIncome,
+        wdTrd + rmdAmt + conv + other.pensionAmt + lumpSumForcedTradDist,
+        numPersons, inflationFactor, numAt65Plus, plan.customStateTaxRate, other.nonExemptSS,
+      );
+      residual = residualOf();
+    }
+    let cashSurplus = 0;
+    if (residual > 0) {
+      cashSurplus = residual;
+      taxable += cashSurplus;
+      taxableBasis += cashSurplus;
+    }
 
     const endTotal = taxable + tradA + tradB + roth;
     // Depletion is "could not fund the year's spending need from the portfolio", NOT just
@@ -969,7 +1007,8 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
     // while silently failing to pay expenses.
     let shortfall = 0;
     if (retired) {
-      shortfall = Math.max(0, gap - (wdTax + wdTrd + wdRth));
+      // Sub-dollar deficits are rounding drift, not unfunded spending.
+      shortfall = residual <= -1 ? -residual : 0;
       if (!ranOut && shortfall > 1) ranOut = true;
     }
     lifetimeShortfallReal += shortfall / inflationFactor;
@@ -1035,6 +1074,7 @@ export function runProjection(plan: Plan, opts?: ProjectionOptions): ProjectionR
       endTaxAdjusted: taxAdjustedValue(taxable, taxableBasis, tradA + tradB, roth, taxAdjRates.ordRate, taxAdjRates.ltcgRate),
       ranOut,
       shortfall,
+      taxFromBrokerage: taxFromBrokFinal,
     });
   }
 

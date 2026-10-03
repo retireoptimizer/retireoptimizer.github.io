@@ -68,7 +68,7 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
   if (Math.abs(r.endRoth - expectedEndRoth) > tol) {
     out.push(`Roth MASS BALANCE: endRoth $${r.endRoth.toFixed(2)} != expected $${expectedEndRoth.toFixed(2)}`);
   }
-  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax) + (r.lumpSumInjectTaxable ?? 0) + (r.cashSurplus ?? 0) + (r.lumpSumForcedTradDist ?? 0) + (r.lumpSumForcedRothDist ?? 0);
+  const expectedEndTax = Math.max(0, r.begTaxable * (1 + gRateTax) + contribToTax - r.wdTax) + (r.lumpSumInjectTaxable ?? 0) + (r.cashSurplus ?? 0);
   if (Math.abs(r.endTaxable - expectedEndTax) > tol) {
     out.push(`Taxable MASS BALANCE: endTaxable $${r.endTaxable.toFixed(2)} != expected $${expectedEndTax.toFixed(2)}`);
   }
@@ -141,6 +141,39 @@ function checkRow(r: ProjectionRow, plan: Plan, tol: number, opts: { skipSpendin
 }
 
 /**
+ * Whole-portfolio cash conservation for retired years with no contributions, including years
+ * where an account empties and depletion years (unfunded spending is added back as `shortfall`).
+ * Forced inherited distributions are internal transfers that cancel; only external cash
+ * (HSA = lumpSumOrdinaryIncome − lumpSumForcedTradDist) enters alongside SS/other income.
+ */
+export function assertPortfolioConservation(
+  proj: ProjectionResult,
+  plan: Plan,
+  tol = 5,
+): void {
+  const a = plan.assumptions;
+  for (const r of proj.rows) {
+    if (r.ageA < plan.personA.retirementAge) continue;
+    if (r.contribA !== 0 || r.contribB !== 0) continue;
+    const grown = r.begTaxable * (1 + a.taxableReturn)
+      + r.begTraditional * (1 + a.tradReturn)
+      + r.begRoth * (1 + a.rothReturn);
+    const acctInjects = (r.lumpSumInjectTaxable ?? 0) + (r.lumpSumInjectTrad ?? 0) + (r.lumpSumInjectRoth ?? 0);
+    const hsaCash = (r.lumpSumOrdinaryIncome ?? 0) - (r.lumpSumForcedTradDist ?? 0);
+    const inflows = r.totalSS + r.otherIncome + acctInjects + hsaCash;
+    const outflows = r.netSpend + r.fedTax + r.stateTaxAmt + r.irmaa + r.niit + (r.acaPremium ?? 0);
+    const expected = grown + inflows - outflows + (r.shortfall ?? 0);
+    const leak = r.endTotal - expected;
+    if (Math.abs(leak) > tol) {
+      throw new Error(
+        `Portfolio conservation failed at year ${r.year} (ageA=${r.ageA}): ` +
+        `endTotal=$${r.endTotal.toFixed(0)} expected=$${expected.toFixed(0)} leak=$${leak.toFixed(0)}`
+      );
+    }
+  }
+}
+
+/**
  * Top-level invariant check for a finished projection. Throws on first failing row
  * with a message that names the bucket/value and the year — so a single failure
  * is enough to root-cause.
@@ -205,6 +238,8 @@ export function assertProjectionInvariants(
   if (proj.endTaxAdjustedReal < lowerFloor - proj.endTotalReal * 0.10) {
     throw new Error(`endTaxAdjustedReal (${proj.endTaxAdjustedReal.toFixed(2)}) below floor ${lowerFloor.toFixed(2)} (endTotalReal=${proj.endTotalReal.toFixed(2)}, maxRate=${Math.max(ordRate, ltcgRate)})`);
   }
+
+  assertPortfolioConservation(proj, plan, Math.max(tol, 5));
 }
 
 /**

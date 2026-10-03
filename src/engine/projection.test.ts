@@ -274,7 +274,7 @@ describe('Inherited account types — one-time income events', () => {
     const hsaRow = proj.rows.find(r => r.ageA === 65)!;
     expect(hsaRow).toBeDefined();
     expect(hsaRow.lumpSumOrdinaryIncome).toBeCloseTo(50_000, -1);
-    expect(hsaRow.lumpSumInjectTaxable).toBeCloseTo(50_000, -1);
+    expect(hsaRow.lumpSumInjectTaxable).toBe(0);
 
     // All other years have zero inherited income.
     for (const r of proj.rows) {
