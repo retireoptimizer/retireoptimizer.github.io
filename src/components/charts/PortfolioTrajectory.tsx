@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData, Plugin } from 'chart.js';
-import { bucketColors, fmtCompact, fmtFull, palette, ageTooltipTitle, indexInteraction } from './setup';
+import { bucketColors, fmtCompact, fmtFull, palette, indexInteraction } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -51,6 +52,7 @@ const milestonePlugin: Plugin<'line'> = {
 };
 
 export default function PortfolioTrajectory({ proj, real = true, height = 320 }: Props) {
+  const age = useAgeAxis();
   const rows = proj.rows;
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
@@ -111,7 +113,7 @@ export default function PortfolioTrajectory({ proj, real = true, height = 320 }:
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => `${item.dataset.label}: ${fmtFull(item.parsed.y ?? 0)}`,
           footer: (items) => {
             const total = items.reduce((s, it) => s + (it.parsed.y ?? 0), 0);
@@ -131,7 +133,8 @@ export default function PortfolioTrajectory({ proj, real = true, height = 320 }:
         grid: { color: palette.borderLight },
       },
       x: {
-        title: { display: true, text: 'Age', color: palette.textMuted, font: { size: 11 } },
+        title: age.title('Age'),
+        ticks: age.ticks,
         grid: { display: false },
       },
     },
@@ -139,7 +142,7 @@ export default function PortfolioTrajectory({ proj, real = true, height = 320 }:
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} plugins={[milestonePlugin]} />
+      <Line data={data} options={options} plugins={[milestonePlugin, age.plugin]} />
     </div>
   );
 }

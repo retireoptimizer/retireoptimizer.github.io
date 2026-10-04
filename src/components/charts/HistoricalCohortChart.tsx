@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData, Plugin } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
+import { palette, fmtCompact, fmtFull } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { HistoricalSweepResult } from '../../engine/monteCarlo';
 
 /** Draws thin red lines for each failed full-coverage cohort directly on canvas. */
@@ -38,6 +39,7 @@ interface Props {
 }
 
 export default function HistoricalCohortChart({ result, height = 320 }: Props) {
+  const age = useAgeAxis();
   const failedTrajectories = result.cohorts
     .filter((c) => c.fullCoverage && !c.survived)
     .map((c) => c.portfolioByAge);
@@ -78,7 +80,7 @@ export default function HistoricalCohortChart({ result, height = 320 }: Props) {
         filter: (item) =>
           ['p10', 'p10–p25', 'p75–p90', '25th–75th Percentile', 'Median cohort'].includes(item.dataset.label ?? ''),
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => {
             const lbl =
               item.dataset.label === 'p10' ? '10th pct' :
@@ -93,13 +95,13 @@ export default function HistoricalCohortChart({ result, height = 320 }: Props) {
     },
     scales: {
       y: { ticks: { callback: (v) => fmtCompact(Number(v)) }, grid: { color: palette.borderLight } },
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: age.ticks, title: age.title() },
     },
   };
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} plugins={[failedCohortsPlugin]} />
+      <Line data={data} options={options} plugins={[failedCohortsPlugin, age.plugin]} />
     </div>
   );
 }

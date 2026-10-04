@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
 import { bucketColors, palette } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ProjectionResult } from '../../engine/projection';
 import { fmtM } from '../../lib/format';
 
@@ -12,6 +13,7 @@ interface Props {
 
 /** 100%-stacked area showing how the bucket MIX evolves over time. */
 export default function BucketCompositionStacked({ proj, real = true, height = 220 }: Props) {
+  const age = useAgeAxis();
   const rows = proj.rows;
   const labels = rows.map((r) => r.ageA);
   const pct = (n: number, total: number) => (total > 0 ? (n / total) * 100 : 0);
@@ -77,7 +79,7 @@ export default function BucketCompositionStacked({ proj, real = true, height = 2
           title: (items) => {
             const i = items[0].dataIndex;
             const total = dollars.total[i] ?? 0;
-            return `Age ${items[0].label}  ·  Total ${fmtM(total)}`;
+            return `${age.tooltipTitle(items)}  ·  Total ${fmtM(total)}`;
           },
           label: (item) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,13 +97,13 @@ export default function BucketCompositionStacked({ proj, real = true, height = 2
         ticks: { callback: (v) => `${v}%` },
         grid: { color: palette.borderLight },
       },
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: age.ticks, title: age.title() },
     },
   };
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} />
+      <Line data={data} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

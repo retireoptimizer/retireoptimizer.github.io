@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
+import { palette, fmtCompact, fmtFull, indexInteraction } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import { IRMAA_TIERS_MFJ, IRMAA_TIERS_SINGLE } from '../../engine/taxConstants';
 import type { ProjectionResult } from '../../engine/projection';
 
@@ -14,6 +15,7 @@ interface Props {
 const TIER_COLORS = [palette.warning, palette.danger, '#7a1d12', '#4b0082'];
 
 export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props) {
+  const age = useAgeAxis();
   const rows = proj.rows.filter((r) => r.ageA >= 60);
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
@@ -58,7 +60,7 @@ export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => {
             const label = item.dataset.label ?? '';
             return `${label}: ${fmtFull(item.parsed.y ?? 0)}`;
@@ -71,13 +73,13 @@ export default function IrmaaMagiLine({ proj, height = 280, real = true }: Props
         ticks: { callback: (v) => fmtCompact(Number(v)) },
         grid: { color: palette.borderLight },
       },
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: age.ticks, title: age.title() },
     },
   };
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} />
+      <Line data={data} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

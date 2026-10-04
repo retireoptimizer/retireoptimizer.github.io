@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
+import { palette, fmtCompact, fmtFull, indexInteraction } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
  *  RMDs are a distinct cash source from voluntary withdrawals (totalWD excludes
  *  the RMD), so they get their own band rather than being silently dropped. */
 export default function IncomeSourcesArea({ proj, real = true, height = 240 }: Props) {
+  const age = useAgeAxis();
   // Only meaningful in retirement years where withdrawals or SS exist.
   const rows = proj.rows.filter((r) => r.phase === 'Retire' || r.phase === 'Survivor');
   const labels = rows.map((r) => r.ageA);
@@ -85,7 +87,7 @@ export default function IncomeSourcesArea({ proj, real = true, height = 240 }: P
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => `${item.dataset.label}: ${fmtFull(item.parsed.y ?? 0)}`,
           footer: (items) => `Total: ${fmtFull(items.reduce((s, it) => s + (it.parsed.y ?? 0), 0))}`,
         },
@@ -101,7 +103,8 @@ export default function IncomeSourcesArea({ proj, real = true, height = 240 }: P
         grid: { color: palette.borderLight },
       },
       x: {
-        title: { display: true, text: 'Age', color: palette.textMuted, font: { size: 11 } },
+        title: age.title('Age'),
+        ticks: age.ticks,
         grid: { display: false },
       },
     },
@@ -109,7 +112,7 @@ export default function IncomeSourcesArea({ proj, real = true, height = 240 }: P
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} />
+      <Line data={data} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

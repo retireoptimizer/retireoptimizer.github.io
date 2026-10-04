@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
+import { palette, fmtCompact, fmtFull } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ComparisonResult } from '../../engine/comparison';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function BalanceCompare({ cmp, real = true, height = 220, taxAdj = false }: Props) {
+  const age = useAgeAxis();
   const labels = cmp.withConv.rows.map((r) => r.ageA);
   const balWith = taxAdj
     ? (real ? cmp.endTaxAdjWith : cmp.endTaxAdjWithNom)
@@ -57,20 +59,20 @@ export default function BalanceCompare({ cmp, real = true, height = 220, taxAdj 
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => `${item.dataset.label}: ${fmtFull(item.parsed.y ?? 0)}`,
         },
       },
     },
     scales: {
       y: { ticks: { callback: (v) => fmtCompact(Number(v)) }, grid: { color: palette.borderLight } },
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: age.ticks, title: age.title() },
     },
   };
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Line data={data} options={options} />
+      <Line data={data} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

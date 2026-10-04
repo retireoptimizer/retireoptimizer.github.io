@@ -1,6 +1,7 @@
 import { Bar } from 'react-chartjs-2';
 import type { ChartOptions, ChartData, Chart, TooltipModel } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
+import { palette, fmtCompact, fmtFull } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -98,6 +99,7 @@ function cashFlowTooltip(ctx: { chart: Chart; tooltip: TooltipModel<'bar'> }) {
  * negative bars (spending/taxes) below zero, plus a net-change line overlay.
  */
 export default function CashFlowsBalanced({ proj, real = true, height = 280 }: Props) {
+  const age = useAgeAxis();
   const rows = proj.rows;
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
@@ -223,11 +225,11 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
         enabled: false,
         external: cashFlowTooltip as unknown as (this: TooltipModel<'bar'>, args: { chart: Chart; tooltip: TooltipModel<'bar'> }) => void,
         // Title still computed so the external handler can read tooltip.title.
-        callbacks: { title: ageTooltipTitle },
+        callbacks: { title: age.tooltipTitle },
       },
     },
     scales: {
-      x: { stacked: true, grid: { display: false } },
+      x: { stacked: true, grid: { display: false }, ticks: age.ticks, title: age.title() },
       y: {
         stacked: true,
         ticks: { callback: (v) => fmtCompact(Math.abs(Number(v))) },
@@ -246,7 +248,7 @@ export default function CashFlowsBalanced({ proj, real = true, height = 280 }: P
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Bar data={data as ChartData<'bar'>} options={options} />
+      <Bar data={data as ChartData<'bar'>} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

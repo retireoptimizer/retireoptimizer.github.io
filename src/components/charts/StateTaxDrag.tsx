@@ -1,6 +1,7 @@
 import { Chart } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle } from './setup';
+import { palette, fmtCompact, fmtFull } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 
 /** Dual-axis: state tax bars (left $) + effective state rate line (right %). */
 export default function StateTaxDrag({ proj, real = true, height = 220 }: Props) {
+  const age = useAgeAxis();
   const rows = proj.rows;
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
@@ -65,7 +67,7 @@ export default function StateTaxDrag({ proj, real = true, height = 220 }: Props)
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => {
             const v = item.parsed.y ?? 0;
             return item.dataset.yAxisID === 'y1'
@@ -76,7 +78,7 @@ export default function StateTaxDrag({ proj, real = true, height = 220 }: Props)
       },
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: age.ticks, title: age.title() },
       y: {
         position: 'left',
         ticks: { callback: (v) => fmtCompact(Number(v)) },
@@ -93,7 +95,7 @@ export default function StateTaxDrag({ proj, real = true, height = 220 }: Props)
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Chart type="bar" data={data as ChartData<'bar'>} options={options} />
+      <Chart type="bar" data={data as ChartData<'bar'>} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

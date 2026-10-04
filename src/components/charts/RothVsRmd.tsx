@@ -1,6 +1,7 @@
 import { Bar } from 'react-chartjs-2';
 import type { ChartOptions, ChartData } from 'chart.js';
-import { palette, fmtCompact, fmtFull, ageTooltipTitle, indexInteraction } from './setup';
+import { palette, fmtCompact, fmtFull, indexInteraction } from './setup';
+import { useAgeAxis } from './useAgeAxis';
 import type { ProjectionResult } from '../../engine/projection';
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function RothVsRmd({ proj, real = true, height = 220 }: Props) {
+  const age = useAgeAxis();
   const rows = proj.rows.filter((r) => r.rothConv > 0 || r.rmd > 0);
   const labels = rows.map((r) => r.ageA);
   const scale = (n: number, inf: number) => (real ? n / inf : n);
@@ -43,13 +45,13 @@ export default function RothVsRmd({ proj, real = true, height = 220 }: Props) {
       legend: { position: 'bottom' },
       tooltip: {
         callbacks: {
-          title: ageTooltipTitle,
+          title: age.tooltipTitle,
           label: (item) => `${item.dataset.label}: ${fmtFull(Math.abs(item.parsed.y ?? 0))}`,
         },
       },
     },
     scales: {
-      x: { stacked: true, grid: { display: false } },
+      x: { stacked: true, grid: { display: false }, ticks: age.ticks, title: age.title() },
       y: {
         stacked: true,
         ticks: { callback: (v) => fmtCompact(Math.abs(Number(v))) },
@@ -60,7 +62,7 @@ export default function RothVsRmd({ proj, real = true, height = 220 }: Props) {
 
   return (
     <div style={{ position: 'relative', height }}>
-      <Bar data={data} options={options} />
+      <Bar data={data} options={options} plugins={[age.plugin]} />
     </div>
   );
 }

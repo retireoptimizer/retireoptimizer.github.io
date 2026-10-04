@@ -96,6 +96,3 @@ export const fmtFull = (n: number): string => {
 /** Common interaction config: hover anywhere in the chart highlights all datasets
  *  at that x-position. Used by line/bar charts where multiple datasets share a year. */
 export const indexInteraction = { mode: 'index' as const, intersect: false };
-
-/** Tooltip title showing "Age <n>" for age-indexed charts. */
-export const ageTooltipTitle = (items: Array<{ label: string }>): string => `Age ${items[0]?.label ?? ''}`;
