@@ -10,7 +10,7 @@ const NAME_GAP = 8;
 
 /** Age-axis helpers for charts whose labels are Person A's age. For couples, each x tick shows
  *  both ages on two lines (A on top, B below) and `plugin` draws each person's name to the left
- *  of their row, widening the left y-axis if needed. Person B's age is dropped after their
+ *  of their row, widening the left y-axis if needed. Each person's age is blank after their
  *  plan-through age. Labels stay as A's age so anything keyed on the label value (milestone
  *  markers, filters) keeps working. */
 export function useAgeAxis() {
@@ -29,18 +29,25 @@ export function useAgeAxis() {
       return ageB <= personB.planThroughAge ? ageB : undefined;
     };
 
+    // Couples keep both rows on every tick so the names line up; a row is blank once that
+    // person is past their plan-through age.
+    const ageAFor = (ageA: number): number | undefined => (ageA <= personA.planThroughAge ? ageA : undefined);
+    const show = (age: number | undefined) => (age === undefined ? '' : String(age));
+
     const tick = function (this: Scale, value: string | number): string | string[] {
       const label = this.getLabelForValue(Number(value));
-      const ageB = ageBFor(Number(label));
-      return ageB === undefined ? label : [label, String(ageB)];
+      if (!personB) return label;
+      const ageA = Number(label);
+      return [show(ageAFor(ageA)), show(ageBFor(ageA))];
     };
 
     const tooltipTitle = (items: Array<{ label: string }>): string => {
       const label = items[0]?.label ?? '';
+      if (!personB) return `Age ${label}`;
+      const ageA = ageAFor(Number(label));
       const ageB = ageBFor(Number(label));
-      return ageB === undefined || !personB
-        ? (personB ? `${nameA} ${label}` : `Age ${label}`)
-        : `${nameA} ${label}  ·  ${nameB} ${ageB}`;
+      return [ageA !== undefined && `${nameA} ${ageA}`, ageB !== undefined && `${nameB} ${ageB}`]
+        .filter(Boolean).join('  ·  ');
     };
 
     /** x-axis title: `text` if given, otherwise none. */
