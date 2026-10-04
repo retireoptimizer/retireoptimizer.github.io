@@ -20,6 +20,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc -b --force
+      - run: pnpm lint
       - run: pnpm test:fast
 
   opt:

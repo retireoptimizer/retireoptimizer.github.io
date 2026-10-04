@@ -2,9 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  // optimizer-workflow.spec.ts waits up to 90s for a worker optimization to land.
-  // Playwright's 30s default killed those tests before their own waits could resolve.
-  timeout: 120_000,
+  timeout: 60_000,
   fullyParallel: false,
   retries: 0,
   workers: 1,

@@ -13,6 +13,7 @@ import { useOptimizerStore } from './useOptimizerStore';
 import { disposeEngineWorker } from '../engine/workerClient';
 import { migratePlanToV24, migratePlanToV25 } from './planMigrations';
 import { planInputKey } from '../engine/planInputKey';
+import { PLAN_STORE_KEY, PLAN_STORE_VERSION } from './planStoreVersion';
 
 export type DisplayMode = 'real' | 'nominal';
 
@@ -142,8 +143,8 @@ export const usePlanStore = create<PlanState>()(
       resetPlan: () => { disposeEngineWorker(); set({ plan: defaultPlan() }); },
     }),
     {
-      name: 'fireopt-plan-v1',
-      version: 32,
+      name: PLAN_STORE_KEY,
+      version: PLAN_STORE_VERSION,
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
