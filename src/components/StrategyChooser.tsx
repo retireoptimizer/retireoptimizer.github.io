@@ -519,6 +519,7 @@ export default function StrategyChooser() {
         mode={sheetMode ?? 'blend'}
         onClose={() => setSheetMode(null)}
         convOverride={sheetMode === 'conversion' && sheetConvOverride !== null ? sheetConvOverride : undefined}
+        unrestrictedCeiling={approach === 'optimize'}
         onUpdate={sheetMode === 'conversion' && sheetConvOverride !== null ? (updates) => {
           setPendingConv((prev) => ({ ...(prev ?? {}), ...updates }));
           setSheetConvOverride((prev) => ({ ...(prev ?? {}), ...updates }));

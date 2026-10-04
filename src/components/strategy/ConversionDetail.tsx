@@ -10,13 +10,15 @@ import type { ConversionParams } from '../../schemas/plan';
 type Props = {
   convOverride?: Partial<ConversionParams>;
   onUpdate?: (updates: Partial<ConversionParams>) => void;
+  // Optimize-for-me: the optimizer replaces the withdrawal preset, so its bracket-fill cap doesn't apply.
+  unrestrictedCeiling?: boolean;
 };
 
 /** Data-entry detail for the active Roth conversion mode, shown inside the Dashboard side sheet.
  *  Mode SELECTION lives inline as pills in StrategyChooser; this renders only the fields the chosen
  *  mode needs — Fixed Amount (amount + window), Bracket-Fill (ceiling + window), Manual (per-year table).
  *  For 'off' there's nothing to enter. Store-driven; accepts convOverride + onUpdate for pending state. */
-export default function ConversionDetail({ convOverride, onUpdate }: Props = {}) {
+export default function ConversionDetail({ convOverride, onUpdate, unrestrictedCeiling }: Props = {}) {
   const plan = usePlanStore((s) => s.plan);
   const displayMode = usePlanStore((s) => s.displayMode);
   const setConversion = usePlanStore((s) => s.setConversion);
@@ -26,7 +28,7 @@ export default function ConversionDetail({ convOverride, onUpdate }: Props = {})
 
   const brackets = plan.personB ? FED_BRACKETS_MFJ : FED_BRACKETS_SINGLE;
   const convBracketOptions = brackets.slice(0, 5)
-    .filter(([top]) => plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
+    .filter(([top]) => unrestrictedCeiling || plan.withdrawalStrategy !== 'bracketfill' || top <= plan.withdrawalBracketCeiling)
     .map(([top, rate]) => ({
       value: top,
       label: `Top of ${Math.round(rate * 100)}% bracket ($${top.toLocaleString()})`,

@@ -9,10 +9,11 @@ import type { ConversionParams } from '../../schemas/plan';
 /** Right-drawer side sheet. `mode` controls which panel is shown:
  *  'blend' → Custom Blend Editor; 'conversion' → the active conversion mode's detail fields;
  *  'chart' → the Conversions-vs-RMD chart. Mode/preset selection lives inline in StrategyChooser. */
-export default function StrategyCustomizeSheet({ open, onClose, mode, convOverride, onUpdate }: {
+export default function StrategyCustomizeSheet({ open, onClose, mode, convOverride, onUpdate, unrestrictedCeiling }: {
   open: boolean; onClose: () => void; mode: 'blend' | 'conversion' | 'chart';
   convOverride?: Partial<ConversionParams>;
   onUpdate?: (updates: Partial<ConversionParams>) => void;
+  unrestrictedCeiling?: boolean;
 }) {
   const isMobile = useIsMobile();
   const proj = useProjection();
@@ -87,7 +88,7 @@ export default function StrategyCustomizeSheet({ open, onClose, mode, convOverri
           >Close</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: isMobile ? 'calc(16px + env(safe-area-inset-bottom))' : 16 }}>
-          {mode === 'conversion' && <ConversionDetail convOverride={convOverride} onUpdate={onUpdate} />}
+          {mode === 'conversion' && <ConversionDetail convOverride={convOverride} onUpdate={onUpdate} unrestrictedCeiling={unrestrictedCeiling} />}
           {mode === 'blend' && <CustomBlendPanel />}
           {mode === 'chart' && (
             <div>
