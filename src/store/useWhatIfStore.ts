@@ -6,11 +6,11 @@ import type { Plan } from '../schemas/plan';
  *  in memory and reset on page reload. The Plan returned by `applyOverrides`
  *  is a shallow-copied projection input. */
 export interface WhatIfOverrides {
-  retirementAgeA?: number;  // overrides plan.personA.retirementAge
-  retirementAgeB?: number;  // overrides plan.personB.retirementAge (ignored if no person B)
-  returnRate?: number;      // overrides all three bucket returns uniformly
-  inflation?: number;       // overrides plan.assumptions.inflation
-  spendingDollars?: number; // target total annual spending in today's dollars
+  retirementAgeA?: number;    // overrides plan.personA.retirementAge
+  retirementAgeB?: number;    // overrides plan.personB.retirementAge (ignored if no person B)
+  returnRateDelta?: number;   // added to each bucket's persisted return rate (e.g. +0.01 = +1pp)
+  inflation?: number;         // overrides plan.assumptions.inflation
+  spendingDollars?: number;   // target total annual spending in today's dollars
 }
 
 interface WhatIfState {
@@ -41,7 +41,7 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
   const baseExpenses = plan.expenseStreams;
   const baseSum = baseExpenses.reduce((s, e) => s + e.annualAmount, 0);
   const hasSpending = o.spendingDollars !== undefined && baseSum > 0;
-  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.returnRate !== undefined || o.inflation !== undefined || hasSpending;
+  const hasAny = o.retirementAgeA !== undefined || o.retirementAgeB !== undefined || o.returnRateDelta !== undefined || o.inflation !== undefined || hasSpending;
   if (!hasAny) return plan;
 
   let next: Plan = plan;
@@ -95,14 +95,15 @@ export function applyWhatIf(plan: Plan, w: WhatIfState): Plan {
       }),
     };
   }
-  if (o.returnRate !== undefined || o.inflation !== undefined) {
+  if (o.returnRateDelta !== undefined || o.inflation !== undefined) {
+    const d = o.returnRateDelta ?? 0;
     next = {
       ...next,
       assumptions: {
         ...next.assumptions,
-        taxableReturn: o.returnRate ?? next.assumptions.taxableReturn,
-        tradReturn: o.returnRate ?? next.assumptions.tradReturn,
-        rothReturn: o.returnRate ?? next.assumptions.rothReturn,
+        taxableReturn: next.assumptions.taxableReturn + d,
+        tradReturn: next.assumptions.tradReturn + d,
+        rothReturn: next.assumptions.rothReturn + d,
         inflation: o.inflation ?? next.assumptions.inflation,
       },
     };

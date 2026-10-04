@@ -3,6 +3,7 @@ import { useWhatIfStore } from '../store/useWhatIfStore';
 import { useOptimizerStore } from '../store/useOptimizerStore';
 import type { DeepPartial } from '../engine/scenario';
 import type { Plan } from '../schemas/plan';
+import { householdTotals } from '../schemas/plan';
 import { calendarYearAge } from '../lib/ageUtils';
 
 function yearsToRetirement(dob: string, retirementAge: number): number {
@@ -30,9 +31,17 @@ export default function WhatIfBar() {
   // Live values fall back to the effective plan (pending or saved) when not overridden.
   const retireA = overrides.retirementAgeA ?? effectivePlan.personA.retirementAge;
   const retireB = overrides.retirementAgeB ?? effectivePlan.personB?.retirementAge ?? 0;
-  // Use tradReturn as the representative rate for the single what-if slider.
-  const returnRate = overrides.returnRate ?? effectivePlan.assumptions.tradReturn;
+  const returnRateDelta = overrides.returnRateDelta ?? 0;
   const inflation = overrides.inflation ?? effectivePlan.assumptions.inflation;
+
+  // Weighted-average effective return across the three buckets at current balances.
+  const { taxable: balTaxable, traditional: balTrad, roth: balRoth } = householdTotals(effectivePlan.portfolio);
+  const totalBalance = balTaxable + balTrad + balRoth;
+  const effectiveReturn = totalBalance > 0
+    ? (balTaxable * effectivePlan.assumptions.taxableReturn +
+       balTrad    * effectivePlan.assumptions.tradReturn +
+       balRoth    * effectivePlan.assumptions.rothReturn) / totalBalance
+    : effectivePlan.assumptions.tradReturn;
   // Spending: show absolute dollars based on the effective plan's expense streams.
   const baseSum = effectivePlan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
   const currentSum = baseSum;
@@ -42,7 +51,7 @@ export default function WhatIfBar() {
   const dirty = active && (
     overrides.retirementAgeA !== undefined ||
     overrides.retirementAgeB !== undefined ||
-    overrides.returnRate !== undefined ||
+    (overrides.returnRateDelta !== undefined && overrides.returnRateDelta !== 0) ||
     overrides.inflation !== undefined ||
     spendIsOverridden
   );
@@ -56,9 +65,14 @@ export default function WhatIfBar() {
     if (overrides.retirementAgeB !== undefined && plan.personB) {
       planOverrides.personB = { retirementAge: overrides.retirementAgeB };
     }
-    if (overrides.returnRate !== undefined || overrides.inflation !== undefined) {
+    if ((overrides.returnRateDelta !== undefined && overrides.returnRateDelta !== 0) || overrides.inflation !== undefined) {
+      const d = overrides.returnRateDelta ?? 0;
       planOverrides.assumptions = {
-        ...(overrides.returnRate !== undefined ? { taxableReturn: overrides.returnRate, tradReturn: overrides.returnRate, rothReturn: overrides.returnRate } : {}),
+        ...(d !== 0 ? {
+          taxableReturn: effectivePlan.assumptions.taxableReturn + d,
+          tradReturn:    effectivePlan.assumptions.tradReturn + d,
+          rothReturn:    effectivePlan.assumptions.rothReturn + d,
+        } : {}),
         ...(overrides.inflation !== undefined ? { inflation: overrides.inflation } : {}),
       };
     }
@@ -72,7 +86,10 @@ export default function WhatIfBar() {
     const labelParts: string[] = [];
     if (overrides.retirementAgeA !== undefined) labelParts.push(`${plan.personA.name} retire @${overrides.retirementAgeA}`);
     if (overrides.retirementAgeB !== undefined && plan.personB) labelParts.push(`${plan.personB.name} retire @${overrides.retirementAgeB}`);
-    if (overrides.returnRate !== undefined) labelParts.push(`${(overrides.returnRate * 100).toFixed(1)}% return`);
+    if (overrides.returnRateDelta !== undefined && overrides.returnRateDelta !== 0) {
+      const sign = overrides.returnRateDelta > 0 ? '+' : '';
+      labelParts.push(`${sign}${(overrides.returnRateDelta * 100).toFixed(1)}pp return`);
+    }
     if (overrides.inflation !== undefined) labelParts.push(`${(overrides.inflation * 100).toFixed(1)}% infl`);
     if (spendIsOverridden) labelParts.push(`spend $${Math.round(overrides.spendingDollars! / 1000)}K`);
     addScenario({
@@ -145,14 +162,18 @@ export default function WhatIfBar() {
           />
         )}
         <Slider
-          label="Portfolio return"
-          value={returnRate * 100}
-          min={0}
-          max={12}
+          label="Portfolio return (±)"
+          value={returnRateDelta * 100}
+          min={-4}
+          max={4}
           step={0.1}
-          format={(v) => `${v.toFixed(1)}%`}
-          onChange={(v) => setOverride('returnRate', v / 100)}
-          isOverridden={overrides.returnRate !== undefined}
+          format={(v) => {
+            const sign = v > 0 ? '+' : '';
+            const eff = ((effectiveReturn + v / 100) * 100).toFixed(1);
+            return v === 0 ? `${eff}%` : `${sign}${v.toFixed(1)}pp → ${eff}%`;
+          }}
+          onChange={(v) => setOverride('returnRateDelta', v / 100)}
+          isOverridden={overrides.returnRateDelta !== undefined && overrides.returnRateDelta !== 0}
         />
         <Slider
           label="Inflation"
