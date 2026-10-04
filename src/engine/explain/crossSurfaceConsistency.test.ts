@@ -3,7 +3,7 @@ import { runProjection, initialWithdrawalRate } from '../projection';
 import { runMonteCarlo } from '../monteCarlo';
 import { householdTotals, defaultPlan } from '../../schemas/plan';
 import { generateInsights } from './index';
-import { planF_allTradCouple, planE_allRothCouple } from '../__golden/plans';
+import { planF_allTradCouple, planE_allRothCouple, planP_tightPlan } from '../__golden/plans';
 
 /** Cross-surface consistency: every concrete number rendered in an Insight body
  *  must equal the number it was derived from in the projection.
@@ -57,12 +57,8 @@ describe('Insight bodies ↔ projection numerics', () => {
     const proj = runProjection(plan);
     const insights = generateInsights(plan, proj);
     const irmaa = insights.find((i) => i.id === 'irmaaCrossing');
-    if (!irmaa) {
-      // Rule may not fire on this plan — skip; we have a separate "fires" test
-      // in irmaa.test.ts.
-      return;
-    }
-    const claimedPeak = extractDollar(irmaa.body)!;
+    expect(irmaa, 'fixture must trigger the IRMAA rule').toBeDefined();
+    const claimedPeak = extractDollar(irmaa!.body)!;
     const actualPeak = Math.max(0, ...proj.rows.map((r) => r.irmaa / r.inflationFactor));
     // Body uses fmtUSD (rounded to dollar); allow $1 slack for the parsed string.
     expect(Math.abs(claimedPeak - actualPeak)).toBeLessThan(1.5);
@@ -90,25 +86,25 @@ describe('Insight bodies ↔ projection numerics', () => {
     const proj = runProjection(plan);
     const insights = generateInsights(plan, proj);
     const legacy = insights.find((i) => i.id === 'legacyRoth');
-    if (!legacy) return; // doesn't fire on small end balances
+    expect(legacy, 'fixture must trigger the legacy rule').toBeDefined();
 
     // First $-amount in body is the end Roth (real). fmtUSD rounds to nearest dollar.
-    const claimed = extractDollar(legacy.body)!;
+    const claimed = extractDollar(legacy!.body)!;
     const last = proj.rows[proj.rows.length - 1];
     const actual = last.endRoth / last.inflationFactor;
     expect(Math.abs(claimed - actual)).toBeLessThan(2);
   });
 
   it('sequenceRiskRule body % matches MC failure rate', () => {
-    // Use a tight plan to actually trigger the rule.
-    const plan = { ...planF_allTradCouple(), assumptions: { ...planF_allTradCouple().assumptions, taxableReturn: 0.03, tradReturn: 0.03, rothReturn: 0.03 } };
+    // planP fails in ~40% of trials with early depletion, so the rule fires.
+    const plan = planP_tightPlan();
     const proj = runProjection(plan);
     const mc = runMonteCarlo(plan, { trials: 200, stdDev: 0.18, seed: 17 });
     const insights = generateInsights(plan, proj, mc);
     const seq = insights.find((i) => i.id === 'sequenceRisk');
-    if (!seq) return; // rule may not trip even on this plan
+    expect(seq, 'fixture must trigger the sequence-risk rule').toBeDefined();
 
-    const claimedPct = extractPct(seq.body)!;
+    const claimedPct = extractPct(seq!.body)!;
     const actualPct = Math.round((1 - mc.successRate) * 100);
     expect(claimedPct).toBe(actualPct);
   });
@@ -118,10 +114,10 @@ describe('Insight bodies ↔ projection numerics', () => {
     const proj = runProjection(plan);
     const insights = generateInsights(plan, proj);
     const cliff = insights.find((i) => i.id === 'bracketCliff');
-    if (!cliff) return;
+    expect(cliff, 'fixture must trigger the bracket-cliff rule').toBeDefined();
 
     // Body says "steps from X% to Y%". Both must be valid federal bracket rates.
-    const pcts = Array.from(cliff.body.matchAll(/(\d+)%/g)).map((m) => parseInt(m[1], 10));
+    const pcts = Array.from(cliff!.body.matchAll(/(\d+)%/g)).map((m) => parseInt(m[1], 10));
     expect(pcts.length).toBeGreaterThanOrEqual(2);
     // The two are different (it's a cliff) and the second is higher (it's an upward step).
     expect(pcts[0]).not.toBe(pcts[1]);

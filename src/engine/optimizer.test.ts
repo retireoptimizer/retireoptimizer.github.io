@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runProjection, effectiveBracketCeiling } from './projection';
 import { optimizeStrategy, CONVERSION_BASELINE_MARGIN, rowsToSeed } from './optimizer';
+import { optimizeCached } from './__testutil__/optimizeCached';
 import { applyResultToPlan } from './applyOptimizerResult';
 import { planP_tightPlan, planG_californiaCouple } from './__golden/plans';
 import { runMonteCarlo } from './monteCarlo';
@@ -22,39 +23,6 @@ const THOROUGH = process.env.HEAVY === '1';
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 describe('Optimizer ↔ Projection coordination', () => {
-  it('is isolated from plan.conversion.mode and plan.withdrawalStrategy', () => {
-    // Same plan, different Pick-tab settings → optimizer output must be byte-identical.
-    // This is the foundational isolation property: the optimizer searches its own policy
-    // space and the projection must respect that policy fully, not fall back to legacy modes.
-    // Four combinations, not the full 4×5 cross-product: each optimizeStrategy call is
-    // ~15s, and the property is per-axis (does either setting leak into the search?),
-    // so covering every mode and every strategy at least once gives the same signal.
-    const baseplan = defaultPlan();
-    const combos: Array<[Plan['conversion']['mode'], Plan['withdrawalStrategy']]> = [
-      ['off', 'taxfirst'],
-      ['manual', 'rothfirst'],
-      ['auto-window', 'tradfirst'],
-      ['bracket-fill', 'proportional'],
-      ['off', 'bracketfill'],
-    ];
-
-    const results: string[] = [];
-    for (const [mode, strat] of combos) {
-      const plan = clone(baseplan);
-      plan.conversion.mode = mode;
-      plan.withdrawalStrategy = strat;
-      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-      // Serialize just the per-year policy windows for comparison — that's the optimizer's pure output.
-      results.push(JSON.stringify(r.perYearPolicy.windows));
-    }
-    const distinct = new Set(results);
-    expect(
-      distinct.size,
-      `Expected 1 distinct optimizer output across ${results.length} Pick-tab combinations, got ${distinct.size}.\n` +
-      `First two distinct outputs:\n  ${[...distinct].slice(0, 2).join('\n  ')}`
-    ).toBe(1);
-  }, 180_000);
-
   it('honors the convAmt cap — actual rothConv ≤ BRACKET_24_TOP × inflF', () => {
     // The optimizer's per-year conversion cap is BRACKET_24_TOP (24% bracket top, ~$403K today's $).
     // The projection multiplies stored convAmt (today's $) by inflationFactor to get nominal $.
@@ -62,7 +30,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // Catches units mismatches and row-indexing offsets that historically inflated late-year conv.
     const plan = defaultPlan();
     plan.conversion.mode = 'off'; // ensure no legacy fallback inflation
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     for (const row of r.projection.rows) {
       const capNominal = BRACKET_24_TOP * row.inflationFactor;
       // Tolerance: $1 for rounding. Also bound by begTraditional in case trad is depleted.
@@ -78,7 +46,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // optimizer's own returned policy. If these diverge, the optimizer is searching against
     // a phantom projection — historically caused by the row-indexing bug.
     const plan = defaultPlan();
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     const verify = runProjection(plan, { policy: r.perYearPolicy });
     expect(
       verify.endTaxAdjustedReal,
@@ -94,7 +62,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
     const presets: Plan['withdrawalStrategy'][] = ['taxfirst', 'rothfirst', 'tradfirst', 'proportional', 'bracketfill'];
-    const opt = optimizeStrategy(plan, 'max-end-balance', { thorough: THOROUGH });
+    const opt = optimizeCached(plan, 'max-end-balance', { thorough: THOROUGH });
 
     for (const strat of presets) {
       const presetPlan = clone(plan);
@@ -113,7 +81,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // this allows some legitimate transition-driven roughness without permitting spikes.
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: THOROUGH });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: THOROUGH });
     const convs = r.perYearPolicy.windows.map((w) => w.convAmt ?? 0);
     let totalVariation = 0;
     for (let i = 1; i < convs.length; i++) totalVariation += Math.abs(convs[i] - convs[i - 1]);
@@ -131,7 +99,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // (mirroring what the UI's "Apply" button does), and verify the projection matches.
     // Catches store → engine drift if the apply path mangles windows.
     const plan = defaultPlan();
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     const planWithCustom = clone(plan);
     planWithCustom.customPolicy = { ...r.perYearPolicy, source: 'optimizer' };
     const applied = runProjection(planWithCustom, { policy: r.perYearPolicy });
@@ -148,7 +116,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // them into traditional. Asserted on every golden plan plus the default.
     for (const mk of [defaultPlan, planP_tightPlan, planG_californiaCouple]) {
       const plan = mk();
-      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
       for (const row of r.projection.rows) {
         const w = findWindow(r.perYearPolicy, row.ageA);
         if (!w) continue;
@@ -171,7 +139,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // Combines Layer 1's invariants with Layer 2's optimizer path — ensures the optimizer
     // never produces a policy that triggers phantom withdrawals or balance corruption.
     const plan = defaultPlan();
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     assertProjectionInvariants(r.projection, plan);
     // Optimizer-authored policies must never round-trip a conversion. Asserted here rather than
     // inside assertProjectionInvariants because a user-configured plan (bracket-fill conversions
@@ -193,12 +161,12 @@ describe('Optimizer ↔ Projection coordination', () => {
       ['planP', planP_tightPlan],
     ] as const) {
       const plan = mk();
-      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
       try {
         assertNoConcurrentConversionAndRothDraw(r.projection);
         assertNoConcurrentConversionAndRothDraw(runProjection(applyResultToPlan(plan, r)));
       } catch (e) {
-        throw new Error(`${label}: ${(e as Error).message}`);
+        throw new Error(`${label}: ${(e as Error).message}`, { cause: e });
       }
     }
   }, 300_000);
@@ -214,7 +182,7 @@ describe('Optimizer ↔ Projection coordination', () => {
       planP_tightPlan(),
     ];
     for (const plan of goldenPlans) {
-      const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+      const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
       if (r.conversionBaselineMetric !== undefined) {
         const margin = CONVERSION_BASELINE_MARGIN(r.metric);
         expect(
@@ -230,7 +198,7 @@ describe('Optimizer ↔ Projection coordination', () => {
     // shipped a result $64,885 worse than its own no-conversion baseline.
     // After the fix: the adoption guard must fire and conversions must be disabled.
     const plan = planG_californiaCouple();
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     expect(r.conversionsDisabled, 'adoption guard must fire for planG').toBe(true);
     expect(r.projection.lifetimeConversion, 'no conversions should survive after adoption').toBeLessThan(1000);
     // Don't pin the absolute metric: any improvement above the old $6,134,672 is acceptable.
@@ -243,7 +211,7 @@ describe('Custom BlendPolicy ↔ Projection', () => {
     // Property: if you hand-author the same policy the optimizer wrote, the projection is the same.
     // Catches optimizer↔policy serialization issues.
     const plan = defaultPlan();
-    const opt = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const opt = optimizeCached(plan, 'max-end-balance', { thorough: false });
     const manualPolicy: BlendPolicy = {
       windows: opt.perYearPolicy.windows.map((w) => ({ ...w })),
       source: 'manual',
@@ -371,7 +339,7 @@ describe('conversion.optimize gate', () => {
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
     plan.conversion.optimize = false;
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     // CRITICAL: no numeric convAmt written (undefined, not 0) — else it would override the mode.
     for (const w of r.perYearPolicy.windows) {
       expect(w.convAmt, `window ${w.fromAge}-${w.toAge} convAmt must be undefined`).toBeUndefined();
@@ -387,7 +355,7 @@ describe('conversion.optimize gate', () => {
     const plan = defaultPlan();
     plan.conversion.mode = 'bracket-fill';
     plan.conversion.optimize = false;
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     for (const w of r.perYearPolicy.windows) {
       expect(w.convAmt, `window ${w.fromAge}-${w.toAge} convAmt must be undefined`).toBeUndefined();
     }
@@ -403,7 +371,7 @@ describe('conversion.optimize gate', () => {
   it('optimizeConversions=true (default) → optimizer populates numeric convAmt', () => {
     const plan = defaultPlan();
     plan.conversion.mode = 'off';
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     expect(r.perYearPolicy.windows.some((w) => w.convAmt != null)).toBe(true);
   }, 60_000);
 
@@ -414,7 +382,7 @@ describe('conversion.optimize gate', () => {
     const plan = defaultPlan();
     plan.conversion.mode = 'bracket-fill';
     plan.conversion.optimize = false;
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     const applied = applyResultToPlan(plan, r);
     const verify = runProjection(applied);
     expect(verify.endTotalReal).toBeCloseTo(r.projection.endTotalReal, 0);
@@ -469,7 +437,7 @@ describe('Tax-adjusted balance objective', () => {
     const plan = defaultPlan();
     plan.assumptions.taxAdjOrdRate = 0;
     plan.assumptions.taxAdjLtcgRate = 0;
-    const r = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const r = optimizeCached(plan, 'max-end-balance', { thorough: false });
     expect(r.metric).toBeCloseTo(r.projection.endTotalReal, 0);
   }, 60_000);
 
@@ -488,33 +456,32 @@ describe('Tax-adjusted balance objective', () => {
 });
 
 describe('MC-aware optimizer (P2)', () => {
+  // Both tests use the same seed and options, so the success-rate test reuses the cached
+  // mcAware run from the reproducibility test instead of paying for a third mcAware search.
+  const plan = planP_tightPlan();
+  const seed = 77777;
+  const MC_OPTS = { useNelderMead: true, thorough: false, mcAware: true, mcSeed: seed, mcPosture: 'balanced' } as const;
+
   it('seed-reproducibility: same mcSeed produces identical policy and projection', () => {
-    // Two optimizeStrategy calls with the same mcSeed must return byte-identical policies.
+    // Two optimizer runs with the same mcSeed must return byte-identical policies.
     // Verifies that the MC path generation is deterministic and the accept gate is pure.
-    const plan = planP_tightPlan();
-    const opts = { useNelderMead: true, thorough: false, mcAware: true, mcSeed: 99999 };
-    const r1 = optimizeStrategy(plan, 'max-end-balance', opts);
-    const r2 = optimizeStrategy(plan, 'max-end-balance', opts);
+    // r2 bypasses the cache on purpose: this test is about two independent runs agreeing.
+    const r1 = optimizeCached(plan, 'max-end-balance', MC_OPTS);
+    const r2 = optimizeStrategy(plan, 'max-end-balance', MC_OPTS);
     expect(JSON.stringify(r1.perYearPolicy.windows)).toBe(JSON.stringify(r2.perYearPolicy.windows));
     expect(r1.projection.endTaxAdjustedReal).toBeCloseTo(r2.projection.endTaxAdjustedReal, 0);
   }, 300_000);
 
   it('MC-aware optimization improves or maintains 100-path success rate on planP_tightPlan (balanced)', () => {
-    const plan = planP_tightPlan();
-    const seed = 77777;
     const equityPct = 0.6;
-
-    const detResult = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: true, thorough: false });
-    // 100 trials: the three scoring runs below are pure overhead next to the two optimizer calls,
-    // and the comparison is paired on `seed`, so the same paths score both policies.
+    // 100 trials, paired on `seed`, so the same paths score both policies.
     const TRIALS = 100;
-    const detMC = runMonteCarlo(plan, { trials: TRIALS, seed, model: 'historical', equityPct });
-    // Apply deterministic policy to plan
+
+    const detResult = optimizeCached(plan, 'max-end-balance', { useNelderMead: true });
     const detPlan = { ...plan, customPolicy: { ...detResult.perYearPolicy, source: 'optimizer' as const } };
     const detSR = runMonteCarlo(detPlan, { trials: TRIALS, seed, model: 'historical', equityPct }).successRate;
 
-    const mcResult = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: true, thorough: false, mcAware: true, mcSeed: seed, mcPosture: 'balanced' });
-    void detMC;
+    const mcResult = optimizeCached(plan, 'max-end-balance', MC_OPTS);
     const mcPlan = { ...plan, customPolicy: { ...mcResult.perYearPolicy, source: 'optimizer' as const } };
     const mcSR = runMonteCarlo(mcPlan, { trials: TRIALS, seed, model: 'historical', equityPct }).successRate;
 

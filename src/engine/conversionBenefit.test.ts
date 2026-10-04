@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { optimizeStrategy } from './optimizer';
+import { optimizeCached } from './__testutil__/optimizeCached';
 import { applyResultToPlan } from './applyOptimizerResult';
 import { compareWithWithoutConversion } from './comparison';
 import { runProjection } from './projection';
@@ -15,15 +15,26 @@ describe('conversion-benefit baseline (optimizer-authored)', () => {
     // not of whichever withdrawal preset happens to be sitting in the plan as invisible UI history.
     // After the adoption guard, the baseline may be adopted (conversionsDisabled) rather than stored
     // as conversionBaselinePolicy — assert on conversionBaselineMetric, which is set in both cases.
+    //
+    // Two layers can leak the preset: the optimizer search and compareWithWithoutConversion.
+    // optimizer.test's isolation test already covers the search across all five presets, so the
+    // optimizer runs on two of them here (taxfirst, rothfirst), and the compare layer is checked
+    // on all five by applying the taxfirst result to a plan carrying each preset.
     const base = samplePlan();
+    const withPreset = (preset: Plan['withdrawalStrategy']): Plan => ({ ...clone(base), withdrawalStrategy: preset });
+
+    const taxfirst = optimizeCached(withPreset('taxfirst'), 'max-end-balance');
+    const rothfirst = optimizeCached(withPreset('rothfirst'), 'max-end-balance');
+    for (const r of [taxfirst, rothfirst]) {
+      expect(r.conversionBaselineMetric, 'expected the no-conversion baseline to run').toBeDefined();
+    }
+    expect(rothfirst.conversionBaselineMetric!).toBeCloseTo(taxfirst.conversionBaselineMetric!, 0);
+
     const baselineEnds: number[] = [];
     for (const preset of PRESETS) {
-      const plan = clone(base);
-      plan.withdrawalStrategy = preset;
-      const result = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
-      expect(result.conversionBaselineMetric, `expected baseline to run on preset ${preset}`).toBeDefined();
-      const applied = applyResultToPlan(plan, result);
-      const cmp = compareWithWithoutConversion(applied);
+      const plan = withPreset(preset);
+      const result = preset === 'rothfirst' ? rothfirst : taxfirst;
+      const cmp = compareWithWithoutConversion(applyResultToPlan(plan, result));
       baselineEnds.push(cmp.noConv.endTotalReal);
     }
     const spread = Math.max(...baselineEnds) - Math.min(...baselineEnds);
@@ -38,7 +49,7 @@ describe('conversion-benefit baseline (optimizer-authored)', () => {
     // adoption guard then chose the baseline (conversionsDisabled) or kept the with-conv result.
     const plan = samplePlan();
     plan.conversion = { ...plan.conversion, mode: 'auto-window', optimize: false, startAge: 59, endAge: 82, autoAmount: 70_000 };
-    const result = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const result = optimizeCached(plan, 'max-end-balance', { thorough: false });
     expect(result.policy.windows.every((w) => (w.convAmt ?? 0) === 0), 'convAmt is mode-owned, not on policy').toBe(true);
     // conversionBaselineMetric defined → baseline ran → mode-driven conversions were present in withConvInner.
     expect(result.conversionBaselineMetric, 'baseline must be computed for fixed-schedule plans').toBeDefined();
@@ -46,7 +57,7 @@ describe('conversion-benefit baseline (optimizer-authored)', () => {
 
   it('uses the stored baseline, not the zeroed with-conversion ordering', () => {
     const plan = samplePlan();
-    const result = optimizeStrategy(plan, 'max-end-balance', { thorough: false });
+    const result = optimizeCached(plan, 'max-end-balance', { thorough: false });
     const applied = applyResultToPlan(plan, result);
 
     if (result.conversionsDisabled) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { optimizeStrategy } from './optimizer';
+import { optimizeCached } from './__testutil__/optimizeCached';
 import { runProjection } from './projection';
 import { applyResultToPlan } from './applyOptimizerResult';
 import { samplePlan as defaultPlan } from '../schemas/plan';
@@ -22,13 +22,15 @@ import type { UserGoal } from './recommender';
  *    4. Re-project the saved plan.
  *    5. Assert end-balance, lifetime tax, ranOut all match the optimizer's projection.
  */
+// Calls go through optimizeCached: the idempotence and optimizedForGoal tests reuse the
+// defaultPlan results from the round-trip loop instead of re-running the optimizer.
 describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () => {
   const GOALS: UserGoal[] = ['max-end-balance', 'max-sustainable-spending', 'min-retirement-age'];
 
   for (const goal of GOALS) {
     it(`${goal} on defaultPlan: applied plan re-projects to result.projection`, () => {
       const plan = defaultPlan();
-      const result = optimizeStrategy(plan, goal, { useNelderMead: false });
+      const result = optimizeCached(plan, goal, { useNelderMead: false });
       const appliedPlan = applyResultToPlan(plan, result);
       const reproj = runProjection(appliedPlan);
 
@@ -42,7 +44,7 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
 
     it(`${goal} on planF (high-Trad): applied plan re-projects to result.projection`, () => {
       const plan = planF_allTradCouple();
-      const result = optimizeStrategy(plan, goal, { useNelderMead: false });
+      const result = optimizeCached(plan, goal, { useNelderMead: false });
       const appliedPlan = applyResultToPlan(plan, result);
       const reproj = runProjection(appliedPlan);
 
@@ -54,7 +56,7 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
 
   it('applyResultToPlan is idempotent for max-sustainable-spending (no double-scaling)', () => {
     const plan = defaultPlan();
-    const result = optimizeStrategy(plan, 'max-sustainable-spending', { useNelderMead: false });
+    const result = optimizeCached(plan, 'max-sustainable-spending', { useNelderMead: false });
 
     const once = applyResultToPlan(plan, result);
     const twice = applyResultToPlan(once, result);
@@ -68,7 +70,7 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
 
   it('applyResultToPlan is idempotent for min-retirement-age (no double-drop)', () => {
     const plan = defaultPlan();
-    const result = optimizeStrategy(plan, 'min-retirement-age', { useNelderMead: false });
+    const result = optimizeCached(plan, 'min-retirement-age', { useNelderMead: false });
 
     const once = applyResultToPlan(plan, result);
     const twice = applyResultToPlan(once, result);
@@ -82,7 +84,7 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
 
   it('applyResultToPlan records optimizedForGoal so the Dashboard goal breadcrumb can highlight it', () => {
     const plan = defaultPlan();
-    const result = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: false });
+    const result = optimizeCached(plan, 'max-end-balance', { useNelderMead: false });
     const applied = applyResultToPlan(plan, result);
     expect(applied.optimizedForGoal).toBe('max-end-balance');
   }, 120_000);
@@ -93,7 +95,7 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
     // convAmt:undefined. Without the conversion.mode override in applyResultToPlan, the projection
     // falls through to plan.conversion (bracket-fill) and resurrects ~$1.2M of conversions.
     const plan = planG_californiaCouple();
-    const result = optimizeStrategy(plan, 'max-end-balance', { useNelderMead: false });
+    const result = optimizeCached(plan, 'max-end-balance', { useNelderMead: false });
     const appliedPlan = applyResultToPlan(plan, result);
     const reproj = runProjection(appliedPlan);
 
@@ -108,4 +110,36 @@ describe('Optimizer Apply round-trip — panel ≡ saved-plan projection', () =>
       expect(reproj.lifetimeConversion).toBeLessThan(1000);
     }
   }, 180_000);
+});
+
+describe('optimizeStrategy (smoke) — samplePlan spending and retirement-age goals', () => {
+  // Moved from optimizer.smoke.test.ts so they share the cached samplePlan runs above.
+  it('max-sustainable-spending returns a multiplier and a strategy that does not deplete', () => {
+    const plan = defaultPlan();
+    const r = optimizeCached(plan, 'max-sustainable-spending', { useNelderMead: false });
+    expect(r.solvedSpendingMultiplier).toBeDefined();
+    if (r.solvedSpendingMultiplier! >= 0.5) {
+      expect(r.ranOut).toBe(false);
+    }
+  }, 120_000);
+
+  it('max-sustainable-spending reports recommendedAnnualSpend = base × multiplier', () => {
+    // Regression: the apply handler needs this absolute number to detect "already
+    // applied" without snapshotting pre-apply spending. The displayed end balance
+    // (~$0 at boundary) matches the saved plan ONLY after expenses are scaled to
+    // this recommended level — if the consumer only applies policy, the global
+    // bar diverges materially from the optimizer panel.
+    const plan = defaultPlan();
+    const r = optimizeCached(plan, 'max-sustainable-spending', { useNelderMead: false });
+    expect(r.recommendedAnnualSpend).toBeDefined();
+    const baseSum = plan.expenseStreams.reduce((s, e) => s + e.annualAmount, 0);
+    expect(r.recommendedAnnualSpend!).toBeCloseTo(baseSum * r.solvedSpendingMultiplier!, 0);
+  }, 120_000);
+
+  it('min-retirement-age returns an age <= the current retirement age', () => {
+    const plan = defaultPlan();
+    const r = optimizeCached(plan, 'min-retirement-age', { useNelderMead: false });
+    expect(r.solvedRetirementAge).toBeDefined();
+    expect(r.solvedRetirementAge!).toBeLessThanOrEqual(plan.personA.retirementAge);
+  }, 120_000);
 });
