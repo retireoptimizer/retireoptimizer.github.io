@@ -49,4 +49,19 @@ describe('policyStatus', () => {
     const afterToggle = { ...applied, payTaxFromBrokerage: !base.payTaxFromBrokerage };
     expect(policyStatus(afterToggle)).toBe('stale');
   });
+
+  it('stays fresh when only the manual conversion schedule changes', () => {
+    const base = defaultPlan();
+    const manual = { ...base, conversion: { ...base.conversion, mode: 'manual' as const, optimize: false, manualSchedule: { '60': 50_000 } } };
+    const applied = { ...manual, customPolicy: { windows: [BASE_WINDOW], source: 'optimizer' as const, inputKey: planInputKey(manual) } };
+    const edited = { ...applied, conversion: { ...applied.conversion, manualSchedule: { '60': 5, '61': 80_000 } } };
+    expect(policyStatus(edited)).toBe('fresh');
+  });
+
+  it('goes stale when the conversion mode changes', () => {
+    const base = defaultPlan();
+    const applied = { ...base, customPolicy: { windows: [BASE_WINDOW], source: 'optimizer' as const, inputKey: planInputKey(base) } };
+    const nextMode = base.conversion.mode === 'manual' ? 'bracket-fill' as const : 'manual' as const;
+    expect(policyStatus({ ...applied, conversion: { ...base.conversion, mode: nextMode } })).toBe('stale');
+  });
 });
