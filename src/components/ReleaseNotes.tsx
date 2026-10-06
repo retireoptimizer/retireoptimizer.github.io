@@ -1,6 +1,20 @@
 import { useEffect } from 'react';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { RELEASES } from '../releases';
+import { RELEASES, type Change } from '../releases';
+
+function ChangeBody({ change }: { change: Change }) {
+  return (
+    <>
+      {change.title && <strong style={{ fontWeight: 600 }}>{change.title}. </strong>}
+      {change.text}
+      {change.bullets && (
+        <ul style={{ margin: '4px 0 0', paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 2, listStyleType: 'circle' }}>
+          {change.bullets.map((b, j) => <li key={j}>{b}</li>)}
+        </ul>
+      )}
+    </>
+  );
+}
 
 export default function ReleaseNotes({ open, onClose }: { open: boolean; onClose: () => void }) {
   const isMobile = useIsMobile();
@@ -96,7 +110,7 @@ export default function ReleaseNotes({ open, onClose }: { open: boolean; onClose
                     </div>
                     <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {features.map((c, i) => (
-                        <li key={i} style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.55 }}>{c.text}</li>
+                        <li key={i} style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.55 }}><ChangeBody change={c} /></li>
                       ))}
                     </ul>
                   </>
@@ -118,7 +132,7 @@ export default function ReleaseNotes({ open, onClose }: { open: boolean; onClose
                     </summary>
                     <ul style={{ margin: '8px 0 0', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {[...fixes, ...cosmetic].map((c, i) => (
-                        <li key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{c.text}</li>
+                        <li key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}><ChangeBody change={c} /></li>
                       ))}
                     </ul>
                   </details>

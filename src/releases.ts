@@ -2,7 +2,9 @@ export type ChangeKind = 'feature' | 'fix' | 'cosmetic';
 
 export interface Change {
   kind: ChangeKind;
+  title?: string;
   text: string;
+  bullets?: string[];
 }
 
 export interface Release {
@@ -16,24 +18,81 @@ export const RELEASES: Release[] = [
   {
     version: '2.2.0',
     date: '2026-10-03',
-    summary: 'Inherited IRA and Roth accounts you already received can now be added to your plan, an optional yearly minimum for inherited IRAs, a clearer yearly Cash Flow chart, both ages on charts for couples, a smarter What-If return slider that adjusts each account from its own baseline, and seven accuracy fixes for inherited accounts, one-time events, year-end cash, and plans that run out of money.',
+    summary: 'Inherited accounts you already received, a clearer Cash Flow chart, both ages on charts for couples, a per-account What-If return slider, and accuracy fixes for inherited accounts, year-end cash, and plans that run out of money.',
     changes: [
-      { kind: 'feature', text: 'Inherited IRA and Roth accounts you received in the past can now be modeled. Pick Inherited Pre-Tax IRA or Inherited Roth IRA, enter your age in the year the original owner died (up to 10 years back), and enter the account balance on January 1 of this year (the same date as your Portfolio balances). The Amount box shows a gold "Jan 1 balance" label for these rows, and a note under the row shows how many years are left to empty the account. These events were previously dropped from the plan without notice.' },
-      { kind: 'feature', text: 'Yearly minimum withdrawals on inherited IRAs: a new checkbox on Inherited Pre-Tax IRA rows covers the case where the original owner had already started required withdrawals. When checked, the plan takes the IRS yearly minimum in each year of the 10-year window, along with emptying the account by the deadline. This mostly affects people who were about 81 or older when they inherited.' },
-      { kind: 'feature', text: 'New plan warnings flag a past-dated Taxable or Inherited HSA event (these are left out of the plan), and an inherited account whose 10-year deadline has already passed.' },
-      { kind: 'fix', text: 'Inherited account 10-year deadline now allows the full window. The rule gives you until the end of the 10th year after the year of death. The plan was emptying the account one year early, which pushed slightly more taxable income into each year.' },
-      { kind: 'fix', text: 'Your own required minimum withdrawal no longer counts the inherited IRA balance. For people already at their own withdrawal age, the inherited money was counted in both minimums, which forced extra withdrawals and extra tax during the inherited window.' },
-      { kind: 'fix', text: 'Inherited HSA money and the yearly withdrawals from inherited IRA and Roth accounts were counted twice: once to pay your spending, and again as a deposit to your brokerage account. Plans with an inherited account now end lower by that extra amount plus its growth.' },
-      { kind: 'feature', text: 'The yearly Cash Flow chart now shows the full Roth conversion going into the Roth account, and taxes paid from your brokerage account as their own source. Tax is shared among the money sources by how much taxable income each one adds, so Roth withdrawals never feed a tax bar. Paycheck contributions and one-time money received now appear, and both sides of the chart always add up to the same total.' },
-      { kind: 'feature', text: 'Charts for couples now show both ages along the bottom, one row for each person, with each name to the left of its row. Hovering over a year shows both names and ages. Each person\'s age stops showing after their plan-through age.' },
-      { kind: 'feature', text: 'What-If return slider now adjusts all three accounts by the same number of percentage points rather than setting them to a single uniform rate. Taxable, Traditional, and Roth each shift from their own saved return — so if you set them to different rates in Portfolio, those differences are preserved as you explore. The slider shows the portfolio-weighted effective return alongside the adjustment (e.g. "+1.0% pts → 6.5%"). Saving the scenario bakes the shifted rates into each account separately.' },
-      { kind: 'fix', text: 'When a year ends a little short of cash, the extra withdrawal now follows your chosen withdrawal order or custom blend. It could take money from Roth during an age window set to 0% Roth. The tax on that extra withdrawal now includes its effect on Social Security tax, Medicare surcharges, and ACA premiums, and the plan keeps drawing until the year is fully paid. Before this, a year with a high tax rate could show a small unfunded amount and be marked as running out of money while savings remained.' },
-      { kind: 'fix', text: 'For plans that run out of money with Pay taxes from brokerage turned on, the unfunded spending shown for the year the money runs out is now correct. It was shown too low.' },
-      { kind: 'fix', text: 'Editing a manual Roth conversion amount after the optimizer has run no longer shows the "Your inputs have changed" message. Before, typing a single digit sent you back to rebuild your plan, sometimes before you could finish entering the amount. Your projections always use the amounts you enter. Changing the conversion type still asks you to re-run the optimizer.' },
-      { kind: 'fix', text: 'How-To guide now describes Taxable one-time events correctly. These amounts go into your brokerage account with no tax, so enter the after-tax amount. Examples now list cash inheritances, home-sale proceeds, and insurance payouts.' },
-      { kind: 'fix', text: 'How-To guide inherited IRA example updated to match the corrected deadline, and the new yearly minimum checkbox is explained.' },
-      { kind: 'cosmetic', text: 'One-Time Income Events table gives the Amount column more room and the Description column less.' },
-      { kind: 'cosmetic', text: 'The Lump Sum column on the Projections page shows money added to your accounts: Taxable one-time events and the starting balance of inherited IRA and Roth accounts. Inherited HSA money now appears only in the Inherited Inc column, so it is listed once.' },
+      {
+        kind: 'feature',
+        title: 'Inherited accounts you already received',
+        text: 'Inherited Pre-Tax and Roth IRAs from up to 10 years ago can now be added to your plan. These were previously left out without notice.',
+        bullets: [
+          'Enter your age in the year the original owner died and the account balance on January 1 of this year.',
+          'A note under the row shows how many years are left to empty the account.',
+          'New checkbox for inherited Pre-Tax IRAs takes the IRS yearly minimum each year when the original owner had already started required withdrawals (mostly people about 81 or older at inheritance).',
+          'New warnings flag past-dated Taxable or Inherited HSA events (left out of the plan) and inherited accounts whose 10-year deadline has passed.',
+        ],
+      },
+      {
+        kind: 'feature',
+        title: 'Clearer yearly Cash Flow chart',
+        text: 'Both sides of the chart now always add up to the same total.',
+        bullets: [
+          'The full Roth conversion flows into the Roth account.',
+          'Taxes paid from brokerage appear as their own source. Tax is split by how much taxable income each source adds, so Roth withdrawals never feed a tax bar.',
+          'Paycheck contributions and one-time money received now appear.',
+        ],
+      },
+      {
+        kind: 'feature',
+        title: 'Both ages on charts for couples',
+        text: 'Charts show one age row per person, labeled by name. Hovering a year shows both ages. Each age stops after that person\'s plan-through age.',
+      },
+      {
+        kind: 'feature',
+        title: 'What-If return slider keeps your per-account rates',
+        text: 'The slider shifts Taxable, Traditional, and Roth by the same number of points from each account\'s saved return, and shows the blended result (e.g. "+1.0% pts → 6.5%"). Saving the scenario keeps each account\'s shifted rate.',
+      },
+      {
+        kind: 'fix',
+        title: 'Inherited account accuracy',
+        text: 'Three fixes for plans with inherited accounts.',
+        bullets: [
+          'The 10-year deadline now runs through the end of the 10th year after the year of death. The account was being emptied one year early.',
+          'Your own required minimum withdrawal no longer includes the inherited IRA balance, which had forced extra withdrawals and tax.',
+          'Inherited HSA money and inherited IRA and Roth withdrawals were counted twice (as spending money and as a brokerage deposit). Ending balances are now lower by that amount plus growth.',
+        ],
+      },
+      {
+        kind: 'fix',
+        title: 'Years that end short of cash',
+        text: 'Two fixes for how the plan covers a shortfall.',
+        bullets: [
+          'The extra withdrawal follows your withdrawal order or custom blend, so a 0% Roth age window is respected. Its tax now includes Social Security, Medicare surcharge, and ACA effects, and the plan keeps drawing until the year is paid. This stops plans from being marked as running out of money while savings remain.',
+          'With Pay taxes from brokerage on, the unfunded spending shown in the year money runs out is now correct. It was shown too low.',
+        ],
+      },
+      {
+        kind: 'fix',
+        title: 'Manual conversion edits keep your results',
+        text: 'Editing a manual Roth conversion amount after optimizing no longer shows "Your inputs have changed." Changing the conversion type still asks you to re-run.',
+      },
+      {
+        kind: 'fix',
+        title: 'How-To guide updates',
+        text: 'Corrected guidance for one-time events and inherited IRAs.',
+        bullets: [
+          'Taxable one-time events go into brokerage with no tax, so enter the after-tax amount. Examples include cash inheritances, home-sale proceeds, and insurance payouts.',
+          'Inherited IRA example matches the corrected deadline and explains the new yearly minimum checkbox.',
+        ],
+      },
+      {
+        kind: 'cosmetic',
+        title: 'Table and column tweaks',
+        text: 'Small layout and labeling changes.',
+        bullets: [
+          'One-Time Income Events table gives the Amount column more room.',
+          'The Projections Lump Sum column shows money added to your accounts (Taxable one-time events and inherited IRA and Roth starting balances). Inherited HSA money appears only in Inherited Inc.',
+        ],
+      },
     ],
   },
   {
