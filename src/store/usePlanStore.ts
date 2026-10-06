@@ -12,7 +12,7 @@ import { useWhatIfStore, applyWhatIf } from './useWhatIfStore';
 import { useOptimizerStore } from './useOptimizerStore';
 import { disposeEngineWorker } from '../engine/workerClient';
 import { migratePlanToV24, migratePlanToV25 } from './planMigrations';
-import { planInputKey } from '../engine/planInputKey';
+import { planInputKey, manualScheduleKey } from '../engine/planInputKey';
 import { PLAN_STORE_KEY, PLAN_STORE_VERSION } from './planStoreVersion';
 
 export type DisplayMode = 'real' | 'nominal';
@@ -148,6 +148,16 @@ export const usePlanStore = create<PlanState>()(
       migrate: (persistedState: unknown, fromVersion: number) => {
         if (!persistedState || typeof persistedState !== 'object') return persistedState as PlanState;
         const ps = persistedState as Record<string, unknown> & { plan?: Record<string, unknown> };
+        // v33: stamp manualScheduleKey on optimizer-authored customPolicy so later edits to the
+        // manual conversion amounts light up Re-optimize. Treats the saved schedule as the run's.
+        if (fromVersion < 33 && ps.plan && typeof ps.plan === 'object') {
+          const planObj = ps.plan as Record<string, unknown>;
+          const cp = planObj.customPolicy as Record<string, unknown> | undefined;
+          const conv = planObj.conversion as Record<string, unknown> | undefined;
+          if (cp && cp.source === 'optimizer' && !cp.manualScheduleKey && conv) {
+            cp.manualScheduleKey = manualScheduleKey(planObj as unknown as Plan);
+          }
+        }
         // v32: add optional lumpSumEvents[].ownerStartedRmds (annual RMDs on inherited pre-tax IRAs).
         // Absent === false === pre-v32 behavior, so no data rewrite is needed.
         // v31: add plan.optimizedBy + plan.mcTuning (strategy provenance: the goal optimizer vs a

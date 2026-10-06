@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { policyStatus } from './policyStatus';
-import { planInputKey } from './planInputKey';
+import { planInputKey, manualScheduleKey } from './planInputKey';
 import { defaultPlan } from '../schemas/plan';
 import type { BlendPolicy } from './blendPolicy';
 
@@ -63,5 +63,13 @@ describe('policyStatus', () => {
     const applied = { ...base, customPolicy: { windows: [BASE_WINDOW], source: 'optimizer' as const, inputKey: planInputKey(base) } };
     const nextMode = base.conversion.mode === 'manual' ? 'bracket-fill' as const : 'manual' as const;
     expect(policyStatus({ ...applied, conversion: { ...base.conversion, mode: nextMode } })).toBe('stale');
+  });
+
+  it('manualScheduleKey ignores key order and detects amount edits', () => {
+    const base = defaultPlan();
+    const withSched = (m: Record<string, number>) => ({ ...base, conversion: { ...base.conversion, manualSchedule: m } });
+    expect(manualScheduleKey(withSched({ '60': 1, '61': 2 }))).toBe(manualScheduleKey(withSched({ '61': 2, '60': 1 })));
+    expect(manualScheduleKey(withSched({ '60': 1 }))).not.toBe(manualScheduleKey(withSched({ '60': 2 })));
+    expect(manualScheduleKey(withSched({ '60': 1, '61': 0 }))).toBe(manualScheduleKey(withSched({ '60': 1 })));
   });
 });

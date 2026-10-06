@@ -18,6 +18,8 @@ export interface BlendPolicy {
   source?: 'optimizer' | 'manual';
   goal?: string;
   inputKey?: string;
+  // Manual conversion schedule at run time; drift enables Re-optimize without tripping the stale gate.
+  manualScheduleKey?: string;
 }
 
 export type PresetKey = 'taxfirst' | 'rothfirst' | 'tradfirst' | 'proportional' | 'bracketfill';

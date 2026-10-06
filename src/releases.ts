@@ -16,6 +16,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.2.1',
+    date: '2026-10-06',
+    summary: 'Re-optimize lights up again after you edit manual Roth conversion amounts.',
+    changes: [
+      {
+        kind: 'fix',
+        title: 'Re-optimize after editing manual conversions',
+        text: 'Changing a manual Roth conversion amount on the Dashboard now turns the Re-optimize button on, so you can refresh your withdrawal order to fit the new amounts. You stay on the Dashboard while you edit. Setting an amount back to what it was turns the button off again.',
+      },
+    ],
+  },
+  {
     version: '2.2.0',
     date: '2026-10-03',
     summary: 'Inherited accounts you already received, a clearer Cash Flow chart, both ages on charts for couples, a per-account What-If return slider, and accuracy fixes for inherited accounts, year-end cash, and plans that run out of money.',

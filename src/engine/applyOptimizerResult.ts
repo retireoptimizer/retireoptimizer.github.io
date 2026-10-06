@@ -1,7 +1,7 @@
 import type { Plan } from '../schemas/plan';
 import type { OptimizeResult } from './optimizer';
 import { shiftRetirementAge } from './retirementAgeShift';
-import { planInputKey } from './planInputKey';
+import { planInputKey, manualScheduleKey } from './planInputKey';
 
 /** Pure function that returns the plan as it would be after the optimizer runs.
  *  The caller is responsible for deciding whether to commit this to the plan store
@@ -78,7 +78,7 @@ export function applyResultToPlan(plan: Plan, result: OptimizeResult): Plan {
   next = {
     ...next,
     customPolicy: next.customPolicy
-      ? { ...next.customPolicy, inputKey: planInputKey(next) }
+      ? { ...next.customPolicy, inputKey: planInputKey(next), manualScheduleKey: manualScheduleKey(next) }
       : next.customPolicy,
   };
 

@@ -11,6 +11,7 @@ import { getEngineWorker } from '../engine/workerClient';
 import StrategyCustomizeSheet from './strategy/StrategyCustomizeSheet';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE } from '../engine/taxConstants';
 import { policyStatus } from '../engine/policyStatus';
+import { manualScheduleKey } from '../engine/planInputKey';
 import { useApplyOptimizerPlan } from '../hooks/useApplyOptimizerPlan';
 import { GOAL_LABELS as GOAL_SHORT_LABELS } from '../engine/goalLabels';
 
@@ -138,7 +139,13 @@ export default function StrategyChooser() {
   const convStale = optimizerDriven && (optimizeOn !== policyHasNumericConv || convModeDrifted || pendingConv !== null);
   const goalChanged = selectedGoal !== null && selectedGoal !== activeGoal;
   const payTaxPending = pendingPayTaxFromBrok !== null;
-  const canReOptimize = !optimizing && tabFreshEntry !== 'optimize' && (goalChanged || convStale || payTaxPending || !hasCustom || planInputsChanged);
+  // Manual amounts edited since the last run: projections already use them, but the withdrawal
+  // ordering was chosen for the old schedule, so offer Re-optimize without the stale gate.
+  const runScheduleKey = effectivePlan.customPolicy?.manualScheduleKey;
+  const scheduleDrifted = optimizerDriven && !optimizeOn && conv.mode === 'manual'
+    && runScheduleKey != null && runScheduleKey !== manualScheduleKey(effectivePlan);
+  const otherPending = goalChanged || convStale || payTaxPending || !hasCustom || planInputsChanged;
+  const canReOptimize = !optimizing && tabFreshEntry !== 'optimize' && (otherPending || scheduleDrifted);
 
   const runReOptimize = async () => {
     setOptimizing(true);
@@ -421,7 +428,7 @@ export default function StrategyChooser() {
               <div style={{ ...inlineLabelStyle, paddingTop: 9 }}>Roth conversions</div>
               <div>
                 {conversionRow('optimize')}
-                {(canReOptimize && !planInputsChanged) && <div style={{ fontSize: 11.5, color: 'var(--warning)', fontWeight: 600, marginTop: 8 }}>Takes effect when you re-optimize.</div>}
+                {(canReOptimize && otherPending && !planInputsChanged) && <div style={{ fontSize: 11.5, color: 'var(--warning)', fontWeight: 600, marginTop: 8 }}>Takes effect when you re-optimize.</div>}
               </div>
               <div style={{ paddingTop: 9, display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={() => setSheetMode('chart')} style={{ ...editLinkStyle, fontSize: 12 }}>📊 Conversions vs RMDs →</button>
