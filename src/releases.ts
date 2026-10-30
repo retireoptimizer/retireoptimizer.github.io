@@ -16,6 +16,29 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '2.3.1',
+    date: '2026-10-30',
+    summary: 'A surviving spouse now gets the right Social Security benefit when the other spouse dies before claiming, and HSA contributions stop at the Social Security age you entered.',
+    changes: [
+      {
+        kind: 'fix',
+        title: 'Survivor Social Security when a spouse dies before claiming',
+        text: 'If a spouse’s Plan Through Age came before their Social Security start age, the survivor kept only their own benefit. The survivor now gets the larger of their own benefit and a survivor benefit based on the spouse who died:',
+        bullets: [
+          'Death before 67: 100% of the full-retirement-age benefit, worked out from the Social Security amount and start age you entered (for example, $55,000 at 70 is about $44,355 at 67).',
+          'Death at 67 or later, before claiming: that amount plus the delayed credits earned up to the age of death.',
+          'The survivor benefit is reduced when the survivor starts it before their own full retirement age: 71.5% at 60, rising to 100% at 67. It cannot start before 60.',
+          'Survivor benefits for a spouse who had already claimed are unchanged, apart from the same reduction for a survivor younger than 67.',
+        ],
+      },
+      {
+        kind: 'fix',
+        title: 'Social Security age now taken from your income streams',
+        text: 'HSA contributions stop when you claim Social Security (if after 65), because claiming enrolls you in Medicare. That age, the HSA plan notes, the optimizer’s explanation and the TIPS builder’s "Bridge to Social Security" hint now use the start age of your Social Security income stream. Before, they could use a default age you could not see or change. If your projection moves, click Re-optimize to refresh a saved optimizer result.',
+      },
+    ],
+  },
+  {
     version: '2.3.0',
     date: '2026-10-20',
     summary: 'Give to charity straight from your IRA, add your health savings account, and hold a TIPS ladder that pays a fixed real income, with a builder that sizes it for you.',
