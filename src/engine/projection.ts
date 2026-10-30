@@ -14,7 +14,7 @@ import { rmdDivisor, rmdStartAgeForDob, inheritedRmdDivisor } from './rmd';
 import { allocateQcd, qcdAvailable, qcdEligible, qcdLimit } from './qcd';
 import { allocateHsaContribution, hsaContribEligible, hsaLastResortDraw, hsaPayAge, hsaQualifiedPayment, HSA_MEDICARE_AGE } from './hsa';
 import { resolveTipsLadder, tipsLadderYear, type TipsYear } from './tipsLadder';
-import { householdSS } from './socialSecurity';
+import { householdSS, ssStartAge } from './socialSecurity';
 import { yearFederalTax, standardDeduction, taxableSocialSecurity, seniorBonusDeduction } from './tax';
 import { FED_BRACKETS_MFJ, FED_BRACKETS_SINGLE, IRA_CONTRIB_LIMIT, IRA_CATCHUP, IRA_CATCHUP_AGE, INHERITED_DEADLINE_YEARS, OBBBA_NONITEMIZER_CHARITY, OBBBA_NONITEMIZER_CHARITY_FIRST_YEAR } from './taxConstants';
 import { rothConversion } from './conversion';
@@ -365,6 +365,9 @@ export function runProjection(livePlan: Plan, opts?: ProjectionOptions): Project
   let hsaA = pfA.hsa ?? 0;
   let hsaB = pfB?.hsa ?? 0;
   const hasHSA = hsaA > 0 || hsaB > 0 || (pfA.hsaContribution ?? 0) > 0 || (pfB?.hsaContribution ?? 0) > 0;
+  // Claiming SS enrolls a worker in Medicare Part A, which ends HSA contributions.
+  const ssStartA = ssStartAge(plan, 'A');
+  const ssStartB = ssStartAge(plan, 'B');
   // Medical bills the HSA did not pay are kept as receipts: reimbursable tax-free later (D4).
   let hsaReceipts = hasHSA ? (pfA.hsaReceipts ?? 0) + (pfB?.hsaReceipts ?? 0) : 0;
   const hsaPayFromAge = hasHSA ? hsaPayAge(plan.portfolio) : 0;
@@ -521,9 +524,9 @@ export function runProjection(livePlan: Plan, opts?: ProjectionOptions): Project
           ? (pf.hsaContribution ?? 0) * inflationFactor : 0;
       const alloc = allocateHsaContribution(
         inflationFactor,
-        { ask: hsaAsk(pfA, ageA, plan.personA.ssClaimAge, aliveA, retiredA), coverage: aliveA ? pfA.hsaCoverage : undefined, age: ageA },
+        { ask: hsaAsk(pfA, ageA, ssStartA, aliveA, retiredA), coverage: aliveA ? pfA.hsaCoverage : undefined, age: ageA },
         pfB && ageB !== undefined
-          ? { ask: hsaAsk(pfB, ageB, plan.personB?.ssClaimAge, aliveB, retiredB), coverage: aliveB ? pfB.hsaCoverage : undefined, age: ageB }
+          ? { ask: hsaAsk(pfB, ageB, ssStartB, aliveB, retiredB), coverage: aliveB ? pfB.hsaCoverage : undefined, age: ageB }
           : undefined,
       );
       hsaContribExtA = retiredA ? 0 : alloc.a; hsaContribRetA = retiredA ? alloc.a : 0;

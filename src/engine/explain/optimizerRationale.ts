@@ -7,6 +7,7 @@ import { rmdStartAgeForDob } from '../rmd';
 import { rmdCashOf } from '../qcd';
 import { generateInsights, insightsForSurface } from './index';
 import { resolveStrategy } from '../strategy/resultSettings';
+import { ssStartAge } from '../socialSecurity';
 
 export interface RationaleSection {
   kind: 'decision' | 'timing' | 'outcome' | 'insights';
@@ -88,8 +89,8 @@ export function explainPolicy(livePlan: Plan, result: OptimizeResult, trace?: De
       stopEvent = `, stopping just before RMDs begin at ${rmdAge}`;
     } else if (stopAge === 63) {
       stopEvent = ', stopping before the 2-year IRMAA lookback window opens at 63';
-    } else if (stopAge === plan.personA.ssClaimAge) {
-      stopEvent = `, stopping before Social Security begins at ${plan.personA.ssClaimAge}`;
+    } else if (stopAge === ssStartAge(plan, 'A')) {
+      stopEvent = `, stopping before Social Security begins at ${stopAge}`;
     } else if (stopAge === plan.personA.planThroughAge) {
       stopEvent = ', running through end of plan';
     }
@@ -139,10 +140,10 @@ export function explainPolicy(livePlan: Plan, result: OptimizeResult, trace?: De
     );
   }
 
-  const ssStartAge = plan.personA.ssClaimAge;
-  if (ssStartAge >= 65 && plan.personA.retirementAge < ssStartAge - 2) {
+  const ssStartA = ssStartAge(plan, 'A')!;
+  if (ssStartA >= 65 && plan.personA.retirementAge < ssStartA - 2) {
     drivers.push(
-      `there's a low-income window from retirement (age ${plan.personA.retirementAge}) to Social Security at ${ssStartAge} — ideal for filling lower brackets cheaply`
+      `there's a low-income window from retirement (age ${plan.personA.retirementAge}) to Social Security at ${ssStartA} — ideal for filling lower brackets cheaply`
     );
   }
 

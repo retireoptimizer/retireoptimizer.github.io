@@ -7,6 +7,7 @@ import { qcdEligible } from './qcd';
 import { effectiveHsaCoverage, hsaBaseLimit, hsaCatchUp, hsaLimit, HSA_MEDICARE_AGE } from './hsa';
 import { tipsLadderIssues } from './tipsValidation';
 import { fmtFull } from '../lib/format';
+import { ssStartAge } from './socialSecurity';
 
 /**
  * Ages (Person A's frame) with a non-zero manual Roth conversion that will actually run before the
@@ -167,9 +168,9 @@ export function computePlanWarnings(livePlan: Plan): PlanWarning[] {
 
   // HSA checks. Amounts are today's dollars: the limit and the contribution both index with inflation.
   const hsaWho = [
-    { name: plan.personA.name || 'Person A', age: currentAgeA, claim: plan.personA.ssClaimAge, pf: plan.portfolio.personA },
+    { name: plan.personA.name || 'Person A', age: currentAgeA, claim: ssStartAge(plan, 'A')!, pf: plan.portfolio.personA },
     ...(plan.personB && plan.portfolio.personB && currentAgeB !== undefined
-      ? [{ name: plan.personB.name || 'Person B', age: currentAgeB, claim: plan.personB.ssClaimAge, pf: plan.portfolio.personB }]
+      ? [{ name: plan.personB.name || 'Person B', age: currentAgeB, claim: ssStartAge(plan, 'B')!, pf: plan.portfolio.personB }]
       : []),
   ];
   const money = (n: number) => fmtFull(Math.round(n));

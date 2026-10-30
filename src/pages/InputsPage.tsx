@@ -9,6 +9,7 @@ import { computePlanWarnings } from '../engine/planWarnings';
 import { computeHsaProjectionWarnings } from '../engine/hsaWarnings';
 import { computeTipsProjectionWarnings } from '../engine/tipsWarnings';
 import { runProjection } from '../engine/projection';
+import { ssStartAge } from '../engine/socialSecurity';
 import { NumberInput } from '../components/inputs/NumberInput';
 import { LegacyTargetInput } from '../components/inputs/LegacyTargetInput';
 import { listStates } from '../engine/stateTax';
@@ -943,7 +944,7 @@ export default function InputsPage() {
             <TipsLadderCard
               portfolio={pf} nameA={nameA} nameB={pf.personB ? nameB : undefined} startYear={new Date().getFullYear()}
               ageA={isValidDob(A.dob) ? new Date().getFullYear() - parseInt(A.dob.slice(0, 4), 10) : undefined}
-              retireAgeA={A.retirementAge} ssClaimAgeA={A.ssClaimAge} onChange={setTipsLadder}
+              retireAgeA={A.retirementAge} ssClaimAgeA={ssStartAge(plan, 'A')} onChange={setTipsLadder}
             />
           </div>
         </div>

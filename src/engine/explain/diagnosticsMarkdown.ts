@@ -3,6 +3,7 @@ import type { OptimizeResult } from '../optimizer';
 import type { PolicyRationale } from './optimizerRationale';
 import type { DecisionTrace, Counterfactual } from './decisionTrace';
 import { fmtM, fmtUSD, fmtPct, fmtCompactWithSign } from '../../lib/format';
+import { ssStartAge } from '../socialSecurity';
 
 const ADAPTATION_LABELS: Record<Counterfactual['adaptation'], string> = {
   're-adapted': 're-adapted',
@@ -41,11 +42,14 @@ export function buildDiagnosticsMarkdown(
 
   // ── Plan summary ──────────────────────────────────────────────────────────────
   push('### Plan summary');
-  const persons = ([plan.personA, plan.personB] as const).filter(Boolean) as NonNullable<typeof plan.personA>[];
-  for (const p of persons) {
+  const persons = ([['A', plan.personA], ['B', plan.personB]] as const)
+    .filter((e): e is ['A' | 'B', NonNullable<typeof plan.personA>] => e[1] !== undefined);
+  for (const [whose, p] of persons) {
+    const hasStream = plan.incomeStreams.some((s) =>
+      s.type === 'SS' && (s.whose === whose || (whose === 'A' && s.whose === 'Household')));
     push(
       `**${p.name}** · retire ${p.retirementAge} · plan through ${p.planThroughAge}` +
-        ` · SS claim ${p.ssClaimAge} (PIA ${fmtUSD(p.ssPIA)}/yr)`,
+        ` · SS claim ${ssStartAge(plan, whose)}` + (hasStream ? '' : ` (PIA ${fmtUSD(p.ssPIA)}/yr)`),
     );
   }
   push('');
